@@ -1,0 +1,12 @@
+-- 'fast' runs work at the same time as the rest of the program
+
+beam brew(drink, seconds) {
+    pause(seconds)
+    show "{drink} is ready"
+}
+
+launch {
+    fast brew("Tea", 0.2)
+    fast brew("Coffee", 0.1)
+    show "Ordered both drinks"
+}

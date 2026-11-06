@@ -1,0 +1,25 @@
+-- Values: names hold values, 'lock' makes one that can never change
+
+launch {
+    name = "Ada"
+    age = 36
+    lock speedOfLight = 299792
+
+    show "Name: {name}"
+    show "Next year {name} will be {age + 1}"
+    show "Light travels {speedOfLight} km every second"
+
+    age = age + 1
+    show "Age is now {age}"
+
+    price = 19.99
+    show "Two of them cost {round(price * 2, 2)}"
+
+    colors = ["red", "green", "blue"]
+    colors.add("violet")
+    show colors
+    show "The first color is {colors[0]} and there are {count(colors)}"
+
+    profile = {name: "Ada", city: "Austin"}
+    show profile.city
+}

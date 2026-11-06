@@ -1,0 +1,29 @@
+-- Beams are functions: inputs go in, 'send' shoots the result out
+
+beam add(a, b) {
+    send a + b
+}
+
+beam greet(name) {
+    send "Welcome, {name}!"
+}
+
+beam factorial(n) {
+    when n <= 1 {
+        send 1
+    }
+    send n * factorial(n - 1)
+}
+
+launch {
+    show add(2, 3)
+    show greet("Samop")
+    show "5 factorial is {factorial(5)}"
+
+    -- inputs can be named, in any order
+    show add(b: 10, a: 1)
+
+    -- a beam can be stored in a name and passed around
+    double = x => x * 2
+    show double(21)
+}

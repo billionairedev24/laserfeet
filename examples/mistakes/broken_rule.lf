@@ -1,0 +1,7 @@
+rule Greeter {
+    beam greet()
+}
+
+object Robot follows Greeter {
+    model
+}

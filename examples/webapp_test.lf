@@ -1,0 +1,26 @@
+-- Testing a web app without opening a browser
+
+use web
+
+server = web.open(8080)
+
+server.get("/hello") {
+    send "Hello from Laser Feet"
+}
+
+server.get("/square/:n") {
+    n = number(request.params.n)
+    send {number: n, square: n * n}
+}
+
+test "hello route answers" {
+    expect server.visit("/hello") is "Hello from Laser Feet"
+}
+
+test "squares come back as JSON" {
+    expect server.visit("/square/7") is "{\"number\":7,\"square\":49}"
+}
+
+test "unknown pages are 404" {
+    expect server.visit("/nope").status is 404
+}

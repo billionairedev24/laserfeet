@@ -1,0 +1,50 @@
+-- Decisions and loops
+
+launch {
+    age = 20
+
+    when age >= 18 {
+        show "Adult"
+    } otherwise {
+        show "Minor"
+    }
+
+    score = 72
+    when score >= 90 {
+        show "Grade A"
+    } otherwise when score >= 70 {
+        show "Grade B"
+    } otherwise {
+        show "Keep going"
+    }
+
+    planets = ["Mercury", "Venus", "Earth"]
+    each planet in planets {
+        show "Hello, {planet}"
+    }
+
+    each n in 1 to 10 {
+        when n % 2 is 0 {
+            skip
+        }
+        when n > 7 {
+            stop
+        }
+        show "Odd number: {n}"
+    }
+
+    countdown = 3
+    loop while countdown > 0 {
+        show countdown
+        countdown = countdown - 1
+    }
+    show "Liftoff!"
+
+    loop 2 times {
+        show "Zap"
+    }
+
+    when age > 18 and not (age > 65) {
+        show "Working age"
+    }
+}

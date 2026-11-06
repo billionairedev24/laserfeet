@@ -1,0 +1,6 @@
+# built files (rebuild with the steps in README.md)
+/lf
+/lf.exe
+/site/index.html
+/site/laserfeet.wasm
+/site/wasm_exec.js

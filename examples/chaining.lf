@@ -1,0 +1,29 @@
+-- 'then' passes a result to the next step, like a beam of light through lenses
+
+object User {
+    name
+    age
+}
+
+launch {
+    users = [
+        User("Ada", 36),
+        User("Tobi", 12),
+        User("Kemi", 25),
+        User("Bayo", 17)
+    ]
+
+    adults = users then keepIf(age >= 18) then sortBy(name)
+    each user in adults {
+        show user.name
+    }
+
+    names = users then turn(name.upper()) then join(" | ")
+    show names
+
+    total = [4, 8, 15, 16, 23, 42] then keepIf(it > 10) then sum
+    show "Total of numbers over 10: {total}"
+
+    youngest = users then sortBy(age) then first
+    show "Youngest is {youngest.name}"
+}

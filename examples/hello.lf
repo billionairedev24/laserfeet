@@ -1,0 +1,4 @@
+-- My first Laser Feet program
+launch {
+    show "Hello, world"
+}

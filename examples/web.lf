@@ -1,0 +1,49 @@
+-- A small web app. Run it with: lf run web.lf
+-- then open http://localhost:8080/hello in your browser.
+
+use web
+
+object Product {
+    id
+    name
+    price
+}
+
+products = [
+    Product(1, "Laser Pointer", 12.5),
+    Product(2, "Running Shoes", 89),
+    Product(3, "Light Bulb", 3.25)
+]
+
+server = web.open(8080)
+
+server.get("/hello") {
+    send "Hello from Laser Feet"
+}
+
+server.get("/greet/:name") {
+    send "Welcome, {request.params.name}!"
+}
+
+server.get("/products") {
+    send products
+}
+
+server.get("/products/:id") {
+    wanted = number(request.params.id)
+    found = products then findFirst(id is wanted)
+    when found is nothing {
+        send web.status(404, "No product with id {wanted}")
+    }
+    send found
+}
+
+launch {
+    -- try the routes without a browser
+    show server.visit("/hello")
+    show server.visit("/greet/Samop")
+    show server.visit("/products/2")
+    show server.visit("/products/9").status
+
+    fast server.start()
+}

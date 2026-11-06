@@ -1,0 +1,37 @@
+-- Objects are blueprints. Rules are promises an object keeps.
+
+rule Greeter {
+    beam greet()
+}
+
+object User follows Greeter {
+    name
+    age
+    visits = 0
+
+    beam greet() {
+        send "Hi, I am {name}"
+    }
+
+    beam visit() {
+        visits = visits + 1
+    }
+
+    beam isAdult() {
+        send age >= 18
+    }
+}
+
+launch {
+    ada = User(name: "Ada", age: 36)
+    show ada.greet()
+
+    ada.visit()
+    ada.visit()
+    show "{ada.name} has visited {ada.visits} times"
+
+    tobi = User("Tobi", 12)
+    show "Is Tobi an adult? {tobi.isAdult()}"
+
+    show ada
+}

@@ -1,0 +1,40 @@
+-- Tests live right next to your code. Run them with: lf test shop_test.lf
+
+object Item {
+    name
+    price
+    quantity = 1
+}
+
+beam cartTotal(items) {
+    total = 0
+    each item in items {
+        total = total + item.price * item.quantity
+    }
+    send total
+}
+
+beam discount(total) {
+    when total >= 100 {
+        send total * 0.9
+    }
+    send total
+}
+
+test "an empty cart costs nothing" {
+    expect cartTotal([]) is 0
+}
+
+test "totals add up price times quantity" {
+    cart = [Item("Shoes", 50, 2), Item("Socks", 5)]
+    expect cartTotal(cart) is 105
+}
+
+test "big carts get 10 percent off" {
+    expect discount(200) is 180
+    expect discount(50) is 50
+}
+
+test "items start with a quantity of one" {
+    expect Item("Hat", 20).quantity is 1
+}

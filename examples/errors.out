@@ -1,0 +1,4 @@
+5
+Caught: can't split 10 into zero parts
+Caught: position 10 is outside the list (it has 3 items, starting at 0)
+The program keeps going

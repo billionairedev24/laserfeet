@@ -1,0 +1,27 @@
+-- Handling problems with attempt / fails
+
+beam divide(a, b) {
+    when b is 0 {
+        fail "can't split {a} into zero parts"
+    }
+    send a / b
+}
+
+launch {
+    attempt {
+        show divide(10, 2)
+        show divide(10, 0)
+        show "This line never runs"
+    } fails problem {
+        show "Caught: {problem}"
+    }
+
+    attempt {
+        numbers = [1, 2, 3]
+        show numbers[10]
+    } fails problem {
+        show "Caught: {problem}"
+    }
+
+    show "The program keeps going"
+}

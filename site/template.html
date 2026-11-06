@@ -1,0 +1,840 @@
+<title>Laser Feet</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an optics bench. One laser line runs through the site; docs sit beside a sticky index, the playground is a two-pane instrument. */
+:root {
+  --bg: #f2f4f7;
+  --surface: #ffffff;
+  --ink: #131722;
+  --muted: #586172;
+  --line: #d8dde6;
+  --laser: #d92d20;
+  --laser-soft: #fde4e1;
+  --code-bg: #121723;
+  --code-fg: #e4e8f0;
+  --code-dim: #7f8aa0;
+  --code-key: #ff7b6e;
+  --code-str: #9fd8b1;
+  --code-num: #f2c46d;
+  --code-call: #8ec5ff;
+  --ok: #1d7a46;
+  --bad: #b42318;
+  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f131c; --surface: #171c27; --ink: #e8ebf1; --muted: #9aa3b4; --line: #2a3140;
+    --laser: #ff5b4d; --laser-soft: #3a1c1c; --code-bg: #0a0e16; --ok: #5fd08f; --bad: #ff7b6e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f131c; --surface: #171c27; --ink: #e8ebf1; --muted: #9aa3b4; --line: #2a3140;
+  --laser: #ff5b4d; --laser-soft: #3a1c1c; --code-bg: #0a0e16; --ok: #5fd08f; --bad: #ff7b6e;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+a { color: var(--laser); }
+:focus-visible { outline: 2px solid var(--laser); outline-offset: 2px; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* top bar */
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+header.top .wrap { display: flex; align-items: center; gap: 20px; min-height: 58px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font-family: var(--display); font-weight: 900; font-size: 26px; letter-spacing: .02em; text-transform: uppercase; }
+.brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--laser); box-shadow: 0 0 0 4px var(--laser-soft); }
+nav.main { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+nav.main a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: 15px; padding: 6px 10px; border-radius: 6px; }
+nav.main a:hover { color: var(--ink); }
+nav.main a[aria-current="page"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--laser); border-radius: 0; }
+@media (max-width: 640px) {
+  header.top .wrap { gap: 4px; padding-block: 8px; }
+  nav.main { margin-left: 0; width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+  nav.main a { padding: 6px 8px; white-space: nowrap; }
+}
+
+/* type */
+h1, h2, h3 { font-family: var(--display); text-transform: uppercase; letter-spacing: .01em; line-height: 1.02; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(48px, 9vw, 104px); font-weight: 900; }
+h2 { font-size: clamp(32px, 5vw, 46px); font-weight: 800; }
+h3 { font-size: 24px; font-weight: 800; }
+p { margin: 0; max-width: 66ch; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--laser); }
+.lede { font-size: 19px; color: var(--muted); max-width: 52ch; }
+code { font-family: var(--mono); font-size: .9em; background: var(--laser-soft); color: var(--ink); padding: 1px 5px; border-radius: 4px; }
+
+/* code blocks */
+pre.lf { position: relative; margin: 0; background: var(--code-bg); color: var(--code-fg); font-family: var(--mono); font-size: 14px; line-height: 1.65; padding: 16px 18px; border-radius: 10px; overflow-x: auto; min-width: 0; }
+pre.lf .k { color: var(--code-key); font-weight: 500; }
+pre.lf .s { color: var(--code-str); }
+pre.lf .n { color: var(--code-num); }
+pre.lf .c { color: var(--code-dim); font-style: italic; }
+pre.lf .b { color: var(--code-call); }
+pre.lf .t { color: #f7a8ff; }
+.try { position: absolute; top: 10px; right: 10px; font: 500 12px var(--mono); color: var(--code-fg); background: transparent; border: 1px solid #3a4458; border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+.try:hover { border-color: var(--code-key); color: var(--code-key); }
+.out { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; font-family: var(--mono); font-size: 13.5px; white-space: pre-wrap; color: var(--ink); margin: 0; overflow-x: auto; }
+.out .err { color: var(--bad); }
+.out .pass { color: var(--ok); }
+
+.btn { font: 600 15px var(--body); border-radius: 8px; padding: 10px 18px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+.btn.primary { background: var(--laser); border-color: var(--laser); color: #fff; }
+.btn:disabled { opacity: .55; cursor: wait; }
+
+/* views */
+main > section[data-view] { padding-block: 40px 80px; }
+
+/* home */
+.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding-block: 40px 24px; }
+.hero > * { min-width: 0; }
+.hero h1 span { color: var(--laser); }
+.hero .lede { margin-top: 20px; }
+.hero .actions { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+.beam { position: relative; height: 2px; margin-block: 8px 40px; background: linear-gradient(90deg, var(--laser), var(--laser) 60%, transparent); box-shadow: 0 0 12px var(--laser); transform-origin: left; animation: fire 1.1s cubic-bezier(.2,.8,.2,1) both; }
+.beam::after { content: "650 nm · 299,792 km/s"; position: absolute; right: 0; top: 8px; font: 11px var(--mono); color: var(--muted); letter-spacing: .08em; }
+@keyframes fire { from { transform: scaleX(0.02); opacity: .6; } to { transform: scaleX(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .beam { animation: none; } }
+.bench { display: grid; gap: 10px; }
+.bench .bar { display: flex; justify-content: space-between; align-items: center; font: 12px var(--mono); color: var(--muted); }
+@media (max-width: 860px) { .hero { grid-template-columns: 1fr; gap: 28px; } }
+
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 24px; }
+.features > div { background: var(--surface); padding: 24px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.features h3 { font-size: 22px; }
+.features p { color: var(--muted); font-size: 15px; }
+.features pre.lf { font-size: 13px; padding: 12px 14px; }
+@media (max-width: 860px) { .features { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .features { grid-template-columns: 1fr; } }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; margin-top: 72px; }
+.split > * { min-width: 0; }
+.split .text { display: grid; gap: 16px; }
+@media (max-width: 860px) { .split { grid-template-columns: 1fr; gap: 20px; } }
+
+.road { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 0; border-left: 2px solid var(--line); }
+.road li { position: relative; padding: 0 0 26px 26px; display: grid; gap: 4px; }
+.road li::before { content: ""; position: absolute; left: -7px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 2px solid var(--line); }
+.road li.now::before { background: var(--laser); border-color: var(--laser); box-shadow: 0 0 0 4px var(--laser-soft); }
+.road .ver { font: 500 13px var(--mono); color: var(--muted); }
+.road li.now .ver { color: var(--laser); }
+.road strong { font-size: 17px; }
+.road p { color: var(--muted); font-size: 15px; }
+
+/* docs */
+.docs { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 80px); align-self: start; display: grid; gap: 2px; font-size: 14px; }
+.toc a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-left: 2px solid var(--line); }
+.toc a:hover { color: var(--ink); border-left-color: var(--laser); }
+.toc .label { font: 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 0 10px 8px; }
+article { display: grid; gap: 18px; min-width: 0; }
+article > h2 { margin-top: 36px; padding-top: 12px; scroll-margin-top: 90px; }
+article > h2:first-of-type { margin-top: 0; }
+article > h3 { margin-top: 12px; scroll-margin-top: 90px; }
+article .num { font: 500 14px var(--mono); color: var(--laser); display: block; margin-bottom: 6px; letter-spacing: .06em; }
+.note { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 14px 16px; font-size: 15px; color: var(--muted); max-width: 70ch; }
+.note b { color: var(--ink); }
+@media (max-width: 860px) { .docs { grid-template-columns: 1fr; gap: 20px; } .toc { position: static; display: flex; flex-wrap: wrap; gap: 6px; } .toc .label { width: 100%; padding: 0; } .toc a { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; } }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+td:first-child { white-space: nowrap; }
+td code { white-space: nowrap; }
+
+/* examples */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 28px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 10px; grid-template-rows: auto auto 1fr auto; min-width: 0; }
+.card .file { font: 500 13px var(--mono); color: var(--laser); }
+.card p { color: var(--muted); font-size: 15px; }
+.card button { justify-self: start; }
+
+/* playground */
+.play { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; margin-top: 24px; }
+.play .pane { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+select { font: 15px var(--body); padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); max-width: 100%; }
+#editor { width: 100%; min-height: 460px; resize: vertical; font-family: var(--mono); font-size: 14px; line-height: 1.65; tab-size: 4; background: var(--code-bg); color: var(--code-fg); border: 0; border-radius: 10px; padding: 16px 18px; caret-color: var(--code-key); }
+#output { min-height: 460px; }
+.status { font: 12px var(--mono); color: var(--muted); }
+@media (max-width: 860px) { .play { grid-template-columns: 1fr; } #editor { min-height: 320px; } #output { min-height: 160px; } }
+
+footer { border-top: 1px solid var(--line); padding-block: 28px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#home"><span class="dot" aria-hidden="true"></span>Laser Feet</a>
+    <nav class="main" aria-label="Main">
+      <a href="#home">Home</a>
+      <a href="#learn">Learn</a>
+      <a href="#reference">Reference</a>
+      <a href="#examples">Examples</a>
+      <a href="#playground">Playground</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<!-- ================= HOME ================= -->
+<section data-view="home">
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <div class="eyebrow">Version 0.1 · prototype</div>
+        <h1 style="margin-top:14px">Code at the <span>speed of light</span></h1>
+        <p class="lede">Laser Feet is a programming language with plain English keywords, objects and functions working side by side, and a web server built in.</p>
+        <div class="actions">
+          <a class="btn primary" href="#learn">Start learning</a>
+          <a class="btn" href="#playground">Open the playground</a>
+        </div>
+      </div>
+      <div class="bench">
+        <div class="bar"><span>hello.lf</span><span id="heroStatus">loading engine…</span></div>
+<lf-code id="heroCode">launch {
+    name = "world"
+    show "Hello, {name}!"
+
+    each n in 1 to 3 {
+        show "Beam {n} fired"
+    }
+}</lf-code>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn primary" id="heroRun" disabled>Run</button>
+          <span class="status">runs right here in your browser</span>
+        </div>
+        <pre class="out" id="heroOut" aria-live="polite">Press Run to see the output.</pre>
+      </div>
+    </div>
+    <div class="beam" aria-hidden="true"></div>
+
+    <div class="eyebrow">Why Laser Feet</div>
+    <h2 style="margin-top:10px">Simple to read. Built for the web.</h2>
+    <div class="features">
+      <div>
+        <h3>Plain English</h3>
+        <p>Keywords say what they do: <code>when</code>, <code>otherwise</code>, <code>each</code>, <code>send</code>. Types are worked out for you.</p>
+<lf-code>when age >= 18 {
+    show "Adult"
+} otherwise {
+    show "Minor"
+}</lf-code>
+      </div>
+      <div>
+        <h3>Objects and beams</h3>
+        <p>Build with objects and rules, or with small functions called beams. Use whichever fits.</p>
+<lf-code>object User follows Greeter {
+    name
+    beam greet() {
+        send "Hi, I am {name}"
+    }
+}</lf-code>
+      </div>
+      <div>
+        <h3>Chain with then</h3>
+        <p>Pass a result through steps like light through lenses.</p>
+<lf-code>users then keepIf(age >= 18)
+      then sortBy(name)</lf-code>
+      </div>
+      <div>
+        <h3>Web built in</h3>
+        <p>A real web server in a few lines. Lists and objects come back as JSON automatically.</p>
+<lf-code>use web
+server = web.open(8080)
+server.get("/hello") {
+    send "Hello from Laser Feet"
+}</lf-code>
+      </div>
+      <div>
+        <h3>Tests built in</h3>
+        <p>Write tests next to your code and run them with <code>lf test</code>.</p>
+<lf-code>test "adds up" {
+    expect 2 + 2 is 4
+}</lf-code>
+      </div>
+      <div>
+        <h3>Friendly problems</h3>
+        <p>When something goes wrong, Laser Feet tells you where and suggests a fix.</p>
+        <pre class="out"><span class="err">Problem on line 3: I don't know what 'nmae' is. Did you mean 'name'?</span></pre>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="text">
+        <div class="eyebrow">Install</div>
+        <h2>Run it on your computer</h2>
+        <p>Laser Feet comes as one command, <code>lf</code>. Build it once from the source code, then run any <code>.lf</code> file.</p>
+        <p class="note"><b>You need Go 1.22 or newer</b> to build <code>lf</code> today. People who run your finished apps won't need it once native builds arrive in version 0.2.</p>
+      </div>
+<lf-code>-- 1. inside the laserfeet folder, build the tool
+go build -o lf ./cmd/lf
+
+-- 2. run a program
+./lf run examples/hello.lf
+
+-- 3. run the tests in a file
+./lf test examples/shop_test.lf
+
+-- 4. start a web app on port 8080
+./lf run examples/web.lf</lf-code>
+    </div>
+
+    <div class="split">
+      <div class="text">
+        <div class="eyebrow">Roadmap</div>
+        <h2>Where we're headed</h2>
+        <p>Version 0.1 runs your code with an interpreter written in Go, so the language can be tried and shaped quickly. Each step after that makes it faster and more independent.</p>
+      </div>
+      <ol class="road">
+        <li class="now"><span class="ver">0.1 · now</span><strong>Prototype</strong><p>Interpreter, playground, web server, tests, friendly errors.</p></li>
+        <li><span class="ver">0.2</span><strong>Native programs</strong><p><code>lf build</code> turns an app into one fast file that runs with nothing else installed.</p></li>
+        <li><span class="ver">0.3</span><strong>Standard library</strong><p>Databases, JSON reading, files, dates, and the <code>sole</code> package manager.</p></li>
+        <li><span class="ver">0.4</span><strong>Editor support</strong><p>Syntax colors and autocomplete in VS Code.</p></li>
+        <li><span class="ver">1.0</span><strong>Independent</strong><p>Laser Feet's own code generator, with the compiler rewritten in Laser Feet.</p></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ================= LEARN ================= -->
+<section data-view="learn" hidden>
+  <div class="wrap docs">
+    <nav class="toc" aria-label="Guide chapters">
+      <div class="label">The guide</div>
+      <a href="#learn" data-jump="g1">First program</a>
+      <a href="#learn" data-jump="g2">Values</a>
+      <a href="#learn" data-jump="g3">Beams</a>
+      <a href="#learn" data-jump="g4">Objects and rules</a>
+      <a href="#learn" data-jump="g5">Decisions and loops</a>
+      <a href="#learn" data-jump="g6">Chaining with then</a>
+      <a href="#learn" data-jump="g7">Handling problems</a>
+      <a href="#learn" data-jump="g8">Fast work</a>
+      <a href="#learn" data-jump="g9">Web apps</a>
+      <a href="#learn" data-jump="g10">Testing</a>
+    </nav>
+    <article>
+      <div class="eyebrow">Learn Laser Feet</div>
+      <p class="lede">Ten short chapters. Every example has a <b>Try it</b> button that opens it in the playground.</p>
+
+      <h2 id="g1"><span class="num">Chapter 1</span>Your first program</h2>
+      <p>A program starts in its <code>launch</code> block. <code>show</code> prints a line. Notes start with <code>--</code> and are ignored.</p>
+<lf-code data-try>-- my first program
+launch {
+    show "Hello, world"
+}</lf-code>
+      <p>Save it as <code>hello.lf</code> and run <code>lf run hello.lf</code>. You can also leave out <code>launch</code> for quick scripts; the lines then run from top to bottom.</p>
+
+      <h2 id="g2"><span class="num">Chapter 2</span>Values</h2>
+      <p>Give a value a name with <code>=</code>. You don't write types; Laser Feet works them out. Use <code>lock</code> for a value that must never change. Put any value inside text with <code>{ }</code>.</p>
+<lf-code data-try>launch {
+    name = "Ada"
+    age = 36
+    lock speedOfLight = 299792
+
+    age = age + 1
+    show "{name} is {age}"
+    show "Light: {speedOfLight} km/s"
+
+    colors = ["red", "green"]
+    colors.add("blue")
+    show colors[0]
+    show count(colors)
+
+    city = {name: "Austin", state: "TX"}
+    show city.name
+}</lf-code>
+      <div class="tablewrap"><table>
+        <tr><th>Kind</th><th>Looks like</th></tr>
+        <tr><td>Number</td><td><code>42</code>, <code>19.99</code>, <code>1_000_000</code></td></tr>
+        <tr><td>Text</td><td><code>"Hello {name}"</code></td></tr>
+        <tr><td>Yes / no</td><td><code>yes</code>, <code>no</code></td></tr>
+        <tr><td>Nothing</td><td><code>nothing</code></td></tr>
+        <tr><td>List</td><td><code>[1, 2, 3]</code>, positions start at 0</td></tr>
+        <tr><td>Map</td><td><code>{name: "Ada", age: 36}</code></td></tr>
+        <tr><td>Range</td><td><code>1 to 10</code> makes the list 1, 2 … 10</td></tr>
+      </table></div>
+
+      <h2 id="g3"><span class="num">Chapter 3</span>Beams</h2>
+      <p>A <code>beam</code> is a function: inputs go in, and <code>send</code> shoots the result out. Inputs can be named when you call it.</p>
+<lf-code data-try>beam add(a, b) {
+    send a + b
+}
+
+beam factorial(n) {
+    when n <= 1 {
+        send 1
+    }
+    send n * factorial(n - 1)
+}
+
+launch {
+    show add(2, 3)
+    show add(b: 10, a: 1)
+    show factorial(5)
+
+    double = x => x * 2
+    show double(21)
+}</lf-code>
+      <p><code>x => x * 2</code> is a quick one-line beam, handy for passing to other beams.</p>
+
+      <h2 id="g4"><span class="num">Chapter 4</span>Objects and rules</h2>
+      <p>An <code>object</code> is a blueprint: it lists fields and the beams that work on them. Inside its beams, fields are used by name, and <code>me</code> means the object itself. A <code>rule</code> lists beams an object promises to have; <code>follows</code> makes the promise, and Laser Feet checks it.</p>
+<lf-code data-try>rule Greeter {
+    beam greet()
+}
+
+object User follows Greeter {
+    name
+    age
+    visits = 0
+
+    beam greet() {
+        send "Hi, I am {name}"
+    }
+
+    beam visit() {
+        visits = visits + 1
+    }
+}
+
+launch {
+    ada = User(name: "Ada", age: 36)
+    ada.visit()
+    show ada.greet()
+    show "Visits: {ada.visits}"
+
+    tobi = User("Tobi", 12)
+    show tobi
+}</lf-code>
+      <p>Make an object by calling its name. Fields can be filled in order or by name. Fields with a default, like <code>visits = 0</code>, can be left out.</p>
+
+      <h2 id="g5"><span class="num">Chapter 5</span>Decisions and loops</h2>
+      <p><code>when</code> runs a block if the answer is <code>yes</code>. Chain more checks with <code>otherwise when</code>. Compare with <code>is</code>, <code>is not</code>, <code>&lt;</code>, <code>&gt;</code>, and combine with <code>and</code>, <code>or</code>, <code>not</code>.</p>
+<lf-code data-try>launch {
+    score = 72
+    when score >= 90 {
+        show "A"
+    } otherwise when score >= 70 {
+        show "B"
+    } otherwise {
+        show "Keep going"
+    }
+
+    each n in 1 to 10 {
+        when n % 2 is 0 {
+            skip
+        }
+        when n > 7 {
+            stop
+        }
+        show n
+    }
+
+    fuel = 3
+    loop while fuel > 0 {
+        fuel = fuel - 1
+    }
+
+    loop 2 times {
+        show "Zap"
+    }
+}</lf-code>
+      <p><code>skip</code> jumps to the next item and <code>stop</code> leaves the loop.</p>
+
+      <h2 id="g6"><span class="num">Chapter 6</span>Chaining with then</h2>
+      <p><code>then</code> hands the result on the left to the beam on the right, as its first input. Inside <code>keepIf</code>, <code>turn</code> and <code>sortBy</code>, you can use the item's fields by name, or <code>it</code> for the item itself.</p>
+<lf-code data-try>object User {
+    name
+    age
+}
+
+launch {
+    users = [User("Ada", 36), User("Tobi", 12), User("Kemi", 25)]
+
+    adults = users then keepIf(age >= 18) then sortBy(name)
+    show adults then turn(name) then join(", ")
+
+    show [4, 8, 15, 16, 23, 42] then keepIf(it > 10) then sum
+}</lf-code>
+
+      <h2 id="g7"><span class="num">Chapter 7</span>Handling problems</h2>
+      <p>Wrap risky work in <code>attempt</code>. If anything fails, the <code>fails</code> block runs and receives the problem. Use <code>fail</code> to report a problem yourself.</p>
+<lf-code data-try>beam divide(a, b) {
+    when b is 0 {
+        fail "can't divide {a} by zero"
+    }
+    send a / b
+}
+
+launch {
+    attempt {
+        show divide(10, 2)
+        show divide(10, 0)
+    } fails problem {
+        show "Caught: {problem}"
+    }
+    show "Still running"
+}</lf-code>
+
+      <h2 id="g8"><span class="num">Chapter 8</span>Fast work</h2>
+      <p>Put <code>fast</code> in front of work to run it at the same time as the rest of the program. The program waits for all fast work to finish before it ends.</p>
+<lf-code data-try>beam brew(drink, seconds) {
+    pause(seconds)
+    show "{drink} is ready"
+}
+
+launch {
+    fast brew("Tea", 0.4)
+    fast brew("Coffee", 0.2)
+    show "Ordered both"
+}</lf-code>
+
+      <h2 id="g9"><span class="num">Chapter 9</span>Web apps</h2>
+      <p><code>use web</code> brings in the web library. Add routes with <code>server.get</code>, <code>server.post</code> or <code>server.on</code> (any method), then <code>start</code> the server. Inside a route, <code>request</code> holds the details, and parts of the path written as <code>:name</code> arrive in <code>request.params</code>.</p>
+<lf-code data-try>use web
+
+server = web.open(8080)
+
+server.get("/hello") {
+    send "Hello from Laser Feet"
+}
+
+server.get("/square/:n") {
+    n = number(request.params.n)
+    send {number: n, square: n * n}
+}
+
+launch {
+    show server.visit("/hello")
+    show server.visit("/square/7")
+    show server.visit("/missing").status
+    fast server.start()
+}</lf-code>
+      <p>What a route sends decides the reply: text is sent as text (or as a web page if it starts with <code>&lt;</code>), lists, maps and objects become JSON, and <code>web.status(404, "Not found")</code> sends an error code. <code>server.visit</code> tries a route without a browser, which is useful in tests.</p>
+      <p class="note"><b>In the playground</b>, <code>start</code> lists your routes instead of opening a port. On your computer, <code>lf run app.lf</code> serves real pages at <code>http://localhost:8080</code>.</p>
+
+      <h2 id="g10"><span class="num">Chapter 10</span>Testing</h2>
+      <p>A <code>test</code> block holds <code>expect</code> checks. <code>lf test file.lf</code> runs every test and reports which passed. In the playground, press <b>Run tests</b>.</p>
+<lf-code data-try data-mode="test">beam discount(total) {
+    when total >= 100 {
+        send total * 0.9
+    }
+    send total
+}
+
+test "big orders get 10 percent off" {
+    expect discount(200) is 180
+}
+
+test "small orders pay full price" {
+    expect discount(50) is 50
+}</lf-code>
+    </article>
+  </div>
+</section>
+
+<!-- ================= REFERENCE ================= -->
+<section data-view="reference" hidden>
+  <div class="wrap docs">
+    <nav class="toc" aria-label="Reference sections">
+      <div class="label">Reference</div>
+      <a href="#reference" data-jump="r1">Keywords</a>
+      <a href="#reference" data-jump="r2">Operators</a>
+      <a href="#reference" data-jump="r3">Built-in beams</a>
+      <a href="#reference" data-jump="r4">List, text, map</a>
+      <a href="#reference" data-jump="r5">Web library</a>
+      <a href="#reference" data-jump="r6">The lf command</a>
+    </nav>
+    <article>
+      <div class="eyebrow">Language reference · v0.1</div>
+      <h2 id="r1">Keywords</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Keyword</th><th>Meaning</th></tr>
+        <tr><td><code>launch</code></td><td>Where the program starts</td></tr>
+        <tr><td><code>show</code></td><td>Print a value on its own line</td></tr>
+        <tr><td><code>beam</code></td><td>Make a function</td></tr>
+        <tr><td><code>send</code></td><td>Give back a result from a beam</td></tr>
+        <tr><td><code>lock</code></td><td>Make a value that can never change</td></tr>
+        <tr><td><code>object</code></td><td>Make a blueprint with fields and beams</td></tr>
+        <tr><td><code>rule</code> / <code>follows</code></td><td>List beams an object must have / promise to have them</td></tr>
+        <tr><td><code>me</code></td><td>The object a beam belongs to</td></tr>
+        <tr><td><code>when</code> / <code>otherwise</code></td><td>Make a decision</td></tr>
+        <tr><td><code>each … in</code></td><td>Go through a list, text, or map's names</td></tr>
+        <tr><td><code>loop while</code> / <code>loop … times</code></td><td>Repeat</td></tr>
+        <tr><td><code>skip</code> / <code>stop</code></td><td>Next item / leave the loop</td></tr>
+        <tr><td><code>then</code></td><td>Pass a result into the next beam</td></tr>
+        <tr><td><code>fast</code></td><td>Run work at the same time</td></tr>
+        <tr><td><code>attempt</code> / <code>fails</code> / <code>fail</code></td><td>Handle problems / report one</td></tr>
+        <tr><td><code>use</code></td><td>Bring in a library</td></tr>
+        <tr><td><code>test</code> / <code>expect</code></td><td>Write a test / check a result</td></tr>
+        <tr><td><code>yes</code> / <code>no</code> / <code>nothing</code></td><td>The yes/no values and the empty value</td></tr>
+        <tr><td><code>--</code></td><td>A note to the reader, ignored when running</td></tr>
+      </table></div>
+
+      <h2 id="r2">Operators</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Operator</th><th>Meaning</th></tr>
+        <tr><td><code>+ - * / %</code></td><td>Math. <code>+</code> also joins text and lists</td></tr>
+        <tr><td><code>is</code> / <code>is not</code></td><td>Same / different (<code>==</code> and <code>!=</code> also work)</td></tr>
+        <tr><td><code>&lt; &gt; &lt;= &gt;=</code></td><td>Compare numbers or text</td></tr>
+        <tr><td><code>and or not</code></td><td>Combine yes/no answers</td></tr>
+        <tr><td><code>a to b</code></td><td>The list of whole numbers from a to b</td></tr>
+        <tr><td><code>x => …</code></td><td>A one-line beam</td></tr>
+        <tr><td><code>"{ }"</code></td><td>Put a value inside text; write <code>\{</code> for a plain brace</td></tr>
+      </table></div>
+
+      <h2 id="r3">Built-in beams</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Beam</th><th>What it does</th></tr>
+        <tr><td><code>text(x)</code></td><td>Turn any value into text</td></tr>
+        <tr><td><code>number(x)</code></td><td>Turn text like "42" into a number</td></tr>
+        <tr><td><code>count(x)</code></td><td>How many items, letters, or entries</td></tr>
+        <tr><td><code>sum(list)</code></td><td>Add up numbers</td></tr>
+        <tr><td><code>biggest</code> / <code>smallest</code></td><td>Largest or smallest number</td></tr>
+        <tr><td><code>round(x, places)</code></td><td>Round, optionally to decimal places</td></tr>
+        <tr><td><code>first</code> / <code>last</code></td><td>First or last item, or nothing</td></tr>
+        <tr><td><code>reverse</code> / <code>sort</code></td><td>New list, reversed or sorted</td></tr>
+        <tr><td><code>join(list, sep)</code></td><td>Join items into text</td></tr>
+        <tr><td><code>keepIf(list, rule)</code></td><td>Items where the rule is yes</td></tr>
+        <tr><td><code>dropIf(list, rule)</code></td><td>Items where the rule is no</td></tr>
+        <tr><td><code>turn(list, value)</code></td><td>Change every item</td></tr>
+        <tr><td><code>sortBy(list, value)</code></td><td>Sort by a field or value</td></tr>
+        <tr><td><code>findFirst(list, rule)</code></td><td>First matching item, or nothing</td></tr>
+        <tr><td><code>pause(seconds)</code></td><td>Wait</td></tr>
+        <tr><td><code>readFile(path)</code></td><td>Read a file as text (not in the playground)</td></tr>
+      </table></div>
+
+      <h2 id="r4">List, text and map beams</h2>
+      <div class="tablewrap"><table>
+        <tr><th>On</th><th>Beams</th></tr>
+        <tr><td>List</td><td><code>add(x)</code>, <code>remove(position)</code>, <code>size()</code>, <code>has(x)</code></td></tr>
+        <tr><td>Text</td><td><code>upper()</code>, <code>lower()</code>, <code>trim()</code>, <code>size()</code>, <code>has(x)</code>, <code>startsWith(x)</code>, <code>split(sep)</code>, <code>replace(a, b)</code></td></tr>
+        <tr><td>Map</td><td><code>keys()</code>, <code>has(name)</code>, read with <code>map.name</code> or <code>map["name"]</code></td></tr>
+      </table></div>
+
+      <h2 id="r5">Web library</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Call</th><th>What it does</th></tr>
+        <tr><td><code>web.open(port)</code></td><td>Make a server (port 8080 if left out)</td></tr>
+        <tr><td><code>server.get(path) { }</code></td><td>Answer GET requests; also <code>post</code>, and <code>on</code> for any method</td></tr>
+        <tr><td><code>server.start()</code></td><td>Start serving; usually <code>fast server.start()</code></td></tr>
+        <tr><td><code>server.visit(path)</code></td><td>Try a route without a browser</td></tr>
+        <tr><td><code>request</code></td><td>Inside a route: <code>method</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>body</code></td></tr>
+        <tr><td><code>web.status(code, text)</code></td><td>Reply with a status code</td></tr>
+        <tr><td><code>web.json(x)</code> / <code>web.page(html)</code></td><td>Reply as JSON / as a web page</td></tr>
+      </table></div>
+
+      <h2 id="r6">The lf command</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Command</th><th>What it does</th></tr>
+        <tr><td><code>lf run app.lf</code></td><td>Run a program (<code>lf app.lf</code> works too)</td></tr>
+        <tr><td><code>lf test app.lf</code></td><td>Run its test blocks</td></tr>
+        <tr><td><code>lf version</code></td><td>Show the version</td></tr>
+        <tr><td><code>lf help</code></td><td>Show help</td></tr>
+      </table></div>
+    </article>
+  </div>
+</section>
+
+<!-- ================= EXAMPLES ================= -->
+<section data-view="examples" hidden>
+  <div class="wrap">
+    <div class="eyebrow">Examples</div>
+    <h2 style="margin-top:10px">Programs to read and run</h2>
+    <p class="lede" style="margin-top:12px">These ship in the <code>examples</code> folder. The test suite runs every one and checks its output.</p>
+    <div class="cards" id="cards"></div>
+  </div>
+</section>
+
+<!-- ================= PLAYGROUND ================= -->
+<section data-view="playground" hidden>
+  <div class="wrap">
+    <div class="eyebrow">Playground</div>
+    <h2 style="margin-top:10px">Write it. Run it.</h2>
+    <div class="play">
+      <div class="pane">
+        <div class="toolbar">
+          <label for="exampleSelect" class="status">Example</label>
+          <select id="exampleSelect"></select>
+        </div>
+        <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Laser Feet code"></textarea>
+      </div>
+      <div class="pane">
+        <div class="toolbar">
+          <button class="btn primary" id="runBtn" disabled>Run</button>
+          <button class="btn" id="testBtn" disabled>Run tests</button>
+          <span class="status" id="playStatus">loading engine…</span>
+        </div>
+        <pre class="out" id="output" aria-live="polite">Output appears here.</pre>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Laser Feet 0.1 · prototype interpreter written in Go</span>
+    <span>Files end in <code>.lf</code></span>
+  </div>
+</footer>
+
+<script>/*WASM_EXEC*/</script>
+<script>
+const EXAMPLES = /*EXAMPLES*/;
+const KW = new Set("launch show beam send lock object rule follows when otherwise each in loop while times then fast attempt fails fail use test expect is not and or yes no nothing me stop skip to".split(" "));
+const BI = new Set("text number count sum biggest smallest round first last reverse sort join keepIf dropIf turn sortBy findFirst pause readFile".split(" "));
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+function highlight(src) {
+  const re = /(--[^\n]*)|("(?:\\.|[^"\\])*")|(\b\d[\d_]*(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index));
+    const t = m[0];
+    if (m[1]) out += `<span class="c">${esc(t)}</span>`;
+    else if (m[2]) out += `<span class="s">${esc(t).replace(/\{([^}]*)\}/g, '<span class="k">{</span>$1<span class="k">}</span>')}</span>`;
+    else if (m[3]) out += `<span class="n">${t}</span>`;
+    else if (KW.has(t)) out += `<span class="k">${t}</span>`;
+    else if (BI.has(t)) out += `<span class="b">${t}</span>`;
+    else if (/^[A-Z]/.test(t)) out += `<span class="t">${t}</span>`;
+    else out += t;
+    last = re.lastIndex;
+  }
+  return out + esc(src.slice(last));
+}
+
+// Turn every code block into a highlighted one, with Try it buttons where asked.
+document.querySelectorAll("pre.lf").forEach(pre => {
+  const src = pre.textContent;
+  pre.dataset.src = src;
+  pre.innerHTML = highlight(src);
+  if (pre.hasAttribute("data-try")) {
+    const b = document.createElement("button");
+    b.className = "try"; b.type = "button"; b.textContent = "Try it";
+    b.addEventListener("click", () => openInPlayground(src, pre.dataset.mode === "test"));
+    pre.appendChild(b);
+  }
+});
+
+// Views
+const views = ["home", "learn", "reference", "examples", "playground"];
+function route() {
+  const v = views.includes(location.hash.slice(1)) ? location.hash.slice(1) : "home";
+  document.querySelectorAll("section[data-view]").forEach(s => s.hidden = s.dataset.view !== v);
+  document.querySelectorAll("nav.main a").forEach(a => { if (a.getAttribute("href") !== "#" + v) a.removeAttribute("aria-current"); else a.setAttribute("aria-current", "page"); });
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", route);
+document.querySelectorAll("[data-jump]").forEach(a => a.addEventListener("click", e => {
+  e.preventDefault();
+  document.getElementById(a.dataset.jump).scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}));
+
+// Examples
+const cards = document.getElementById("cards");
+const select = document.getElementById("exampleSelect");
+EXAMPLES.forEach((ex, i) => {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<span class="file">${ex.file}</span><h3>${ex.title}</h3><p>${ex.about}</p>`;
+  const b = document.createElement("button");
+  b.className = "btn"; b.type = "button"; b.textContent = ex.test ? "Run its tests" : "Open in playground";
+  b.addEventListener("click", () => openInPlayground(ex.src, ex.test));
+  card.appendChild(b);
+  cards.appendChild(card);
+  const o = document.createElement("option");
+  o.value = i; o.textContent = ex.file;
+  select.appendChild(o);
+});
+
+const editor = document.getElementById("editor");
+const output = document.getElementById("output");
+let wantTest = false;
+function draftKey() { return "lf-draft"; }
+try { editor.value = localStorage.getItem(draftKey()) || EXAMPLES[0].src; } catch (e) { editor.value = EXAMPLES[0].src; }
+editor.addEventListener("input", () => { try { localStorage.setItem(draftKey(), editor.value); } catch (e) {} });
+editor.addEventListener("keydown", e => {
+  if (e.key === "Tab" && !e.shiftKey) {
+    e.preventDefault();
+    const s = editor.selectionStart;
+    editor.setRangeText("    ", s, editor.selectionEnd, "end");
+    editor.dispatchEvent(new Event("input"));
+  }
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runCode(wantTest); }
+});
+select.addEventListener("change", () => {
+  const ex = EXAMPLES[+select.value];
+  editor.value = ex.src; wantTest = ex.test;
+  editor.dispatchEvent(new Event("input"));
+  output.textContent = ex.test ? "Press Run tests." : "Press Run.";
+});
+
+function openInPlayground(src, test) {
+  editor.value = src; wantTest = !!test;
+  try { localStorage.setItem(draftKey(), src); } catch (e) {}
+  location.hash = "#playground";
+  route();
+  runCode(wantTest);
+}
+
+function paint(el, text) {
+  el.innerHTML = esc(text)
+    .replace(/^(⚠.*)$/gm, '<span class="err">$1</span>')
+    .replace(/^(\s*✗.*)$/gm, '<span class="err">$1</span>')
+    .replace(/^(✓.*)$/gm, '<span class="pass">$1</span>');
+}
+
+let ready = false;
+async function runCode(test) {
+  if (!ready) { output.textContent = "The engine is still loading. It will run as soon as it's ready."; pending = test; return; }
+  output.textContent = test ? "Running tests…" : "Running…";
+  const t0 = performance.now();
+  const res = await (test ? laserTest(editor.value) : laserRun(editor.value));
+  paint(output, res.trim() === "" ? "(no output)" : res);
+  document.getElementById("playStatus").textContent = `finished in ${Math.max(1, Math.round(performance.now() - t0))} ms`;
+}
+let pending = null;
+document.getElementById("runBtn").addEventListener("click", () => runCode(false));
+document.getElementById("testBtn").addEventListener("click", () => runCode(true));
+
+const heroRun = document.getElementById("heroRun");
+heroRun.addEventListener("click", async () => {
+  const src = document.getElementById("heroCode").dataset.src;
+  const res = await laserRun(src);
+  paint(document.getElementById("heroOut"), res);
+});
+
+// Load the Laser Feet engine (the Go interpreter compiled to WebAssembly)
+(async () => {
+  const setStatus = t => { document.getElementById("playStatus").textContent = t; document.getElementById("heroStatus").textContent = t; };
+  try {
+    const go = new Go();
+    const resp = await fetch("laserfeet.wasm");
+    if (!resp.ok) throw new Error("download failed (" + resp.status + ")");
+    const { instance } = await WebAssembly.instantiate(await resp.arrayBuffer(), go.importObject);
+    go.run(instance);
+    ready = true;
+    setStatus("engine ready");
+    ["runBtn", "testBtn", "heroRun"].forEach(id => document.getElementById(id).disabled = false);
+    if (pending !== null) { const p = pending; pending = null; runCode(p); }
+  } catch (err) {
+    setStatus("engine couldn't load");
+    output.innerHTML = '<span class="err">The Laser Feet engine couldn\'t load here: ' + esc(String(err.message || err)) + '. You can still run everything on your computer with lf run.</span>';
+  }
+})();
+
+route();
+</script>

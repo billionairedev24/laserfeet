@@ -1,0 +1,955 @@
+package lang
+
+import (
+	"fmt"
+	"io"
+	"math"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
+)
+
+// RuntimeError is a problem that happens while the program runs.
+type RuntimeError struct {
+	Line  int
+	Msg   string
+	Value Value // what was passed to `fail`, if anything
+}
+
+func (e *RuntimeError) Error() string { return fmt.Sprintf("Problem on line %d: %s", e.Line, e.Msg) }
+
+type testFailure struct {
+	Line int
+	Msg  string
+}
+
+type binding struct {
+	v      Value
+	locked bool
+}
+
+// Env holds the names visible at one point in the program.
+type Env struct {
+	vars   map[string]*binding
+	parent *Env
+	obj    *Instance // fields of this object are visible by name
+	// the built-in names live here; your own names can reuse them
+	isBuiltins bool
+}
+
+func newEnv(parent *Env) *Env { return &Env{vars: map[string]*binding{}, parent: parent} }
+
+func (e *Env) define(name string, v Value, locked bool) {
+	e.vars[name] = &binding{v, locked}
+}
+
+func (e *Env) lookup(name string) (Value, bool) {
+	for s := e; s != nil; s = s.parent {
+		if b, ok := s.vars[name]; ok {
+			return b.v, true
+		}
+		if s.obj != nil {
+			if v, ok := s.obj.Fields[name]; ok {
+				return v, true
+			}
+			if m, ok := s.obj.Class.Methods[name]; ok {
+				return &Beam{Name: m.Name, Params: m.Params, Body: m.Body, Closure: s.obj.Class.Env, Self: s.obj}, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func (e *Env) names() []string {
+	var out []string
+	for s := e; s != nil; s = s.parent {
+		for k := range s.vars {
+			out = append(out, k)
+		}
+		if s.obj != nil {
+			for k := range s.obj.Fields {
+				out = append(out, k)
+			}
+		}
+	}
+	return out
+}
+
+type ctrl int
+
+const (
+	cNone ctrl = iota
+	cSend
+	cStop
+	cSkip
+)
+
+// Interp runs Laser Feet programs.
+type Interp struct {
+	Out      io.Writer
+	MaxSteps int64 // 0 = unlimited (used by the browser playground)
+	globals  *Env
+	gil      sync.Mutex
+	wg       sync.WaitGroup
+	fastLive int32
+	steps    int64
+	launch   *LaunchStmt
+	tests    []*TestStmt
+	outMu    sync.Mutex
+}
+
+func NewInterp(out io.Writer) *Interp {
+	builtins := newEnv(nil)
+	builtins.isBuiltins = true
+	in := &Interp{Out: out, globals: newEnv(builtins)}
+	installBuiltins(in, builtins)
+	return in
+}
+
+func (in *Interp) fail(line int, format string, args ...any) {
+	panic(&RuntimeError{Line: line, Msg: fmt.Sprintf(format, args...)})
+}
+
+func (in *Interp) print(s string) {
+	in.outMu.Lock()
+	fmt.Fprintln(in.Out, s)
+	in.outMu.Unlock()
+}
+
+// load declares everything at the top level and runs the plain top-level code.
+func (in *Interp) load(prog *Program) {
+	// First pass: objects, rules and beams can be used before they appear.
+	for _, s := range prog.Stmts {
+		switch d := s.(type) {
+		case *RuleDecl:
+			in.globals.define(d.Name, &RuleDef{d.Name, d.Methods}, true)
+		}
+	}
+	for _, s := range prog.Stmts {
+		switch d := s.(type) {
+		case *BeamDecl:
+			in.globals.define(d.Name, &Beam{Name: d.Name, Params: d.Params, Body: d.Body, Closure: in.globals}, true)
+		case *ObjectDecl:
+			in.declareObject(d)
+		case *LaunchStmt:
+			if in.launch != nil {
+				in.fail(d.Line, "a program can only have one launch block (the first is on line %d)", in.launch.Line)
+			}
+			in.launch = d
+		case *TestStmt:
+			in.tests = append(in.tests, d)
+		}
+	}
+	for _, s := range prog.Stmts {
+		switch s.(type) {
+		case *RuleDecl, *BeamDecl, *ObjectDecl, *LaunchStmt, *TestStmt:
+			continue
+		}
+		if c, _ := in.exec(s, in.globals); c != cNone {
+			in.fail(s.Ln(), "'send', 'stop' and 'skip' can't be used here")
+		}
+	}
+}
+
+func (in *Interp) declareObject(d *ObjectDecl) {
+	c := &Class{Name: d.Name, Fields: d.Fields, Methods: map[string]*BeamDecl{}, Follows: d.Follows, Env: in.globals}
+	for _, m := range d.Methods {
+		c.Methods[m.Name] = m
+	}
+	for _, rn := range d.Follows {
+		rv, ok := in.globals.lookup(rn)
+		r, isRule := rv.(*RuleDef)
+		if !ok || !isRule {
+			in.fail(d.Line, "object %s follows '%s', but there is no rule with that name", d.Name, rn)
+		}
+		for _, m := range r.Methods {
+			if _, ok := c.Methods[m]; !ok {
+				in.fail(d.Line, "object %s follows the rule %s, so it must have a beam called '%s'", d.Name, r.Name, m)
+			}
+		}
+	}
+	in.globals.define(d.Name, c, true)
+}
+
+func (in *Interp) catch(err *error) {
+	if r := recover(); r != nil {
+		switch e := r.(type) {
+		case *RuntimeError:
+			*err = e
+		case *SyntaxError:
+			*err = e
+		case *testFailure:
+			*err = &RuntimeError{Line: e.Line, Msg: e.Msg}
+		default:
+			panic(r)
+		}
+	}
+}
+
+// Run parses and runs a program.
+func (in *Interp) Run(src string) (err error) {
+	prog, perr := Parse(src)
+	if perr != nil {
+		return perr
+	}
+	in.gil.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			in.gil.Unlock()
+		}
+	}()
+	func() {
+		defer in.catch(&err)
+		in.load(prog)
+		if in.launch != nil {
+			in.execBlock(in.launch.Body, newEnv(in.globals))
+		}
+	}()
+	in.gil.Unlock()
+	locked = false
+	in.wg.Wait() // let fast work finish
+	return err
+}
+
+// TestResult is the outcome of one test block.
+type TestResult struct {
+	Name   string
+	Passed bool
+	Msg    string
+}
+
+// RunTests runs every `test` block and reports each result.
+func (in *Interp) RunTests(src string) (results []TestResult, err error) {
+	prog, perr := Parse(src)
+	if perr != nil {
+		return nil, perr
+	}
+	in.gil.Lock()
+	defer in.gil.Unlock()
+	func() {
+		defer in.catch(&err)
+		in.load(prog)
+	}()
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range in.tests {
+		var terr error
+		func() {
+			defer in.catch(&terr)
+			in.execBlock(t.Body, newEnv(in.globals))
+		}()
+		r := TestResult{Name: t.Name, Passed: terr == nil}
+		if terr != nil {
+			r.Msg = terr.Error()
+		}
+		results = append(results, r)
+	}
+	return results, nil
+}
+
+// ---- statements ----
+
+func (in *Interp) tick(line int) {
+	if in.MaxSteps > 0 {
+		if atomic.AddInt64(&in.steps, 1) > in.MaxSteps {
+			in.fail(line, "the program ran for too long and was stopped (is there a loop that never ends?)")
+		}
+	}
+	if atomic.LoadInt32(&in.fastLive) > 0 {
+		in.gil.Unlock()
+		runtime.Gosched()
+		in.gil.Lock()
+	}
+}
+
+func (in *Interp) execBlock(stmts []Stmt, env *Env) (ctrl, Value) {
+	for _, s := range stmts {
+		in.tick(s.Ln())
+		if c, v := in.exec(s, env); c != cNone {
+			return c, v
+		}
+	}
+	return cNone, nil
+}
+
+func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
+	switch s := s.(type) {
+	case *ShowStmt:
+		in.print(Text(in.eval(s.Value, env)))
+	case *ExprStmt:
+		in.eval(s.X, env)
+	case *AssignStmt:
+		in.assign(s, env)
+	case *SendStmt:
+		if s.Value == nil {
+			return cSend, nil
+		}
+		return cSend, in.eval(s.Value, env)
+	case *WhenStmt:
+		if in.truth(s.Cond, env, "when") {
+			return in.execBlock(s.Body, newEnv(env))
+		} else if s.Otherwise != nil {
+			return in.execBlock(s.Otherwise, newEnv(env))
+		}
+	case *EachStmt:
+		over := in.eval(s.Over, env)
+		var items []Value
+		switch x := over.(type) {
+		case *List:
+			items = append(items, x.Items...)
+		case string:
+			for _, r := range x {
+				items = append(items, string(r))
+			}
+		case *Map:
+			for _, k := range x.Keys {
+				items = append(items, k)
+			}
+		default:
+			in.fail(s.Line, "'each' needs a list to go through, but got %s", typeName(over))
+		}
+		for _, it := range items {
+			e := newEnv(env)
+			e.define(s.Var, it, false)
+			c, v := in.execBlock(s.Body, e)
+			if c == cStop {
+				break
+			}
+			if c == cSend {
+				return c, v
+			}
+		}
+	case *LoopStmt:
+		if s.Times != nil {
+			n, ok := in.eval(s.Times, env).(float64)
+			if !ok {
+				in.fail(s.Line, "'loop ... times' needs a number")
+			}
+			for i := 0; i < int(n); i++ {
+				c, v := in.execBlock(s.Body, newEnv(env))
+				if c == cStop {
+					break
+				}
+				if c == cSend {
+					return c, v
+				}
+			}
+			return cNone, nil
+		}
+		for in.truth(s.While, env, "loop while") {
+			in.tick(s.Line)
+			c, v := in.execBlock(s.Body, newEnv(env))
+			if c == cStop {
+				break
+			}
+			if c == cSend {
+				return c, v
+			}
+		}
+	case *StopStmt:
+		return cStop, nil
+	case *SkipStmt:
+		return cSkip, nil
+	case *FastStmt:
+		atomic.AddInt32(&in.fastLive, 1)
+		in.wg.Add(1)
+		go func() {
+			in.gil.Lock()
+			defer func() {
+				if r := recover(); r != nil {
+					if re, ok := r.(*RuntimeError); ok {
+						in.print("Problem in fast work: " + re.Error())
+					} else {
+						in.print(fmt.Sprint("Problem in fast work: ", r))
+					}
+				}
+				atomic.AddInt32(&in.fastLive, -1)
+				in.gil.Unlock()
+				in.wg.Done()
+			}()
+			in.execBlock(s.Body, newEnv(env))
+		}()
+		in.tick(s.Line) // let the fast work get started
+	case *AttemptStmt:
+		return in.attempt(s, env)
+	case *FailStmt:
+		v := in.eval(s.Value, env)
+		panic(&RuntimeError{Line: s.Line, Msg: Text(v), Value: v})
+	case *UseStmt:
+		m := loadModule(in, s.Name)
+		if m == nil {
+			in.fail(s.Line, "there is no library called '%s' (available: web)", s.Name)
+		}
+		env.define(s.Name, m, true)
+	case *ExpectStmt:
+		in.expect(s, env)
+	case *BeamDecl:
+		env.define(s.Name, &Beam{Name: s.Name, Params: s.Params, Body: s.Body, Closure: env}, true)
+	case *ObjectDecl, *RuleDecl:
+		in.fail(s.Ln(), "objects and rules must be created at the top of the file, not inside a block")
+	case *LaunchStmt:
+		in.fail(s.Line, "'launch' must be at the top of the file, not inside a block")
+	case *TestStmt:
+		in.fail(s.Line, "tests must be at the top of the file, not inside a block")
+	default:
+		in.fail(s.Ln(), "I don't know how to run this")
+	}
+	return cNone, nil
+}
+
+func (in *Interp) attempt(s *AttemptStmt, env *Env) (c ctrl, v Value) {
+	var caught *RuntimeError
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if re, ok := r.(*RuntimeError); ok {
+					caught = re
+					return
+				}
+				panic(r)
+			}
+		}()
+		c, v = in.execBlock(s.Body, newEnv(env))
+	}()
+	if caught == nil {
+		return c, v
+	}
+	e := newEnv(env)
+	if s.ErrName != "" {
+		var val Value = caught.Msg
+		if caught.Value != nil {
+			val = caught.Value
+		}
+		e.define(s.ErrName, val, false)
+	}
+	return in.execBlock(s.Handler, e)
+}
+
+func (in *Interp) expect(s *ExpectStmt, env *Env) {
+	if b, ok := s.Value.(*Binary); ok && (b.Op == "is" || b.Op == "is not") {
+		l, r := in.eval(b.Left, env), in.eval(b.Right, env)
+		same := equal(l, r)
+		if b.Op == "is" && !same {
+			panic(&testFailure{s.Line, fmt.Sprintf("expected %s, but got %s", toText(r, true), toText(l, true))})
+		}
+		if b.Op == "is not" && same {
+			panic(&testFailure{s.Line, fmt.Sprintf("expected something other than %s", toText(r, true))})
+		}
+		return
+	}
+	v := in.eval(s.Value, env)
+	if v != true {
+		panic(&testFailure{s.Line, fmt.Sprintf("expected yes, but got %s", toText(v, true))})
+	}
+}
+
+func (in *Interp) assign(s *AssignStmt, env *Env) {
+	v := in.eval(s.Value, env)
+	switch t := s.Target.(type) {
+	case *Ident:
+		if s.Lock {
+			if _, ok := env.vars[t.Name]; ok {
+				in.fail(s.Line, "'%s' already exists here, so it can't be locked again", t.Name)
+			}
+			env.define(t.Name, v, true)
+			return
+		}
+		for e := env; e != nil && !e.isBuiltins; e = e.parent {
+			if b, ok := e.vars[t.Name]; ok {
+				if b.locked {
+					in.fail(s.Line, "'%s' is locked, so it can't be changed", t.Name)
+				}
+				b.v = v
+				return
+			}
+			if e.obj != nil {
+				if _, ok := e.obj.Fields[t.Name]; ok {
+					e.obj.Fields[t.Name] = v
+					return
+				}
+			}
+		}
+		env.define(t.Name, v, false)
+	case *Get:
+		obj := in.eval(t.Object, env)
+		switch o := obj.(type) {
+		case *Instance:
+			if _, ok := o.Fields[t.Name]; !ok {
+				in.fail(s.Line, "%s has no field called '%s'", o.Class.Name, t.Name)
+			}
+			o.Fields[t.Name] = v
+		case *Map:
+			o.Set(t.Name, v)
+		default:
+			in.fail(s.Line, "I can't set '%s' on %s", t.Name, typeName(obj))
+		}
+	case *Index:
+		obj := in.eval(t.Object, env)
+		key := in.eval(t.Key, env)
+		switch o := obj.(type) {
+		case *List:
+			i := in.listIndex(s.Line, o, key)
+			o.Items[i] = v
+		case *Map:
+			o.Set(in.mapKey(s.Line, key), v)
+		default:
+			in.fail(s.Line, "I can't use [ ] on %s", typeName(obj))
+		}
+	}
+}
+
+func (in *Interp) truth(x Expr, env *Env, where string) bool {
+	v := in.eval(x, env)
+	b, ok := v.(bool)
+	if !ok {
+		in.fail(x.Ln(), "'%s' needs a yes/no question, but this gave %s", where, typeName(v))
+	}
+	return b
+}
+
+// ---- expressions ----
+
+func (in *Interp) eval(x Expr, env *Env) Value {
+	switch x := x.(type) {
+	case *NumberLit:
+		return x.Value
+	case *TextLit:
+		return x.Value
+	case *BoolLit:
+		return x.Value
+	case *NothingLit:
+		return nil
+	case *InterpText:
+		var sb strings.Builder
+		for _, p := range x.Parts {
+			sb.WriteString(Text(in.eval(p, env)))
+		}
+		return sb.String()
+	case *MeExpr:
+		for e := env; e != nil; e = e.parent {
+			if e.obj != nil {
+				return e.obj
+			}
+		}
+		in.fail(x.Line, "'me' only works inside an object's beam")
+	case *Ident:
+		v, ok := env.lookup(x.Name)
+		if !ok {
+			msg := fmt.Sprintf("I don't know what '%s' is", x.Name)
+			if s := suggest(x.Name, env.names()); s != "" {
+				msg += fmt.Sprintf(". Did you mean '%s'?", s)
+			} else if x.Name == "web" {
+				msg += ". Add 'use web' at the top of the file"
+			}
+			in.fail(x.Line, "%s", msg)
+		}
+		return v
+	case *ListLit:
+		l := &List{}
+		for _, it := range x.Items {
+			l.Items = append(l.Items, in.eval(it, env))
+		}
+		return l
+	case *MapLit:
+		m := NewMap()
+		for i, k := range x.Keys {
+			m.Set(k, in.eval(x.Values[i], env))
+		}
+		return m
+	case *Unary:
+		v := in.eval(x.Operand, env)
+		if x.Op == "not" {
+			b, ok := v.(bool)
+			if !ok {
+				in.fail(x.Line, "'not' needs yes or no, but got %s", typeName(v))
+			}
+			return !b
+		}
+		n, ok := v.(float64)
+		if !ok {
+			in.fail(x.Line, "'-' needs a number, but got %s", typeName(v))
+		}
+		return -n
+	case *Binary:
+		return in.binary(x, env)
+	case *Get:
+		return in.get(in.eval(x.Object, env), x.Name, x.Line)
+	case *Index:
+		obj := in.eval(x.Object, env)
+		key := in.eval(x.Key, env)
+		switch o := obj.(type) {
+		case *List:
+			return o.Items[in.listIndex(x.Line, o, key)]
+		case *Map:
+			return o.M[in.mapKey(x.Line, key)]
+		case string:
+			rs := []rune(o)
+			l := &List{Items: make([]Value, len(rs))}
+			for i, r := range rs {
+				l.Items[i] = string(r)
+			}
+			return l.Items[in.listIndex(x.Line, l, key)]
+		}
+		in.fail(x.Line, "I can't use [ ] on %s", typeName(obj))
+	case *Lambda:
+		return &Beam{Params: x.Params, Body: x.Body, Expr: x.Expr, Closure: env}
+	case *Call:
+		return in.callExpr(x, env, nil, false)
+	case *Then:
+		left := in.eval(x.Left, env)
+		switch r := x.Right.(type) {
+		case *Call:
+			return in.callExpr(r, env, left, true)
+		default:
+			fn := in.eval(r, env)
+			return in.call(fn, []Value{left}, nil, x.Line, nil)
+		}
+	}
+	in.fail(x.Ln(), "I don't know how to work this out")
+	return nil
+}
+
+func (in *Interp) listIndex(line int, l *List, key Value) int {
+	n, ok := key.(float64)
+	if !ok || n != math.Trunc(n) {
+		in.fail(line, "a list position must be a whole number")
+	}
+	i := int(n)
+	if i < 0 {
+		i += len(l.Items)
+	}
+	if i < 0 || i >= len(l.Items) {
+		in.fail(line, "position %d is outside the list (it has %d items, starting at 0)", int(n), len(l.Items))
+	}
+	return i
+}
+
+func (in *Interp) mapKey(line int, key Value) string {
+	s, ok := key.(string)
+	if !ok {
+		in.fail(line, "map entries are named with text, but got %s", typeName(key))
+	}
+	return s
+}
+
+func (in *Interp) binary(x *Binary, env *Env) Value {
+	if x.Op == "and" || x.Op == "or" {
+		l := in.truth(x.Left, env, x.Op)
+		if x.Op == "and" && !l {
+			return false
+		}
+		if x.Op == "or" && l {
+			return true
+		}
+		return in.truth(x.Right, env, x.Op)
+	}
+	l, r := in.eval(x.Left, env), in.eval(x.Right, env)
+	switch x.Op {
+	case "is":
+		return equal(l, r)
+	case "is not":
+		return !equal(l, r)
+	case "<":
+		return compareValues(in, x.Line, l, r) < 0
+	case ">":
+		return compareValues(in, x.Line, l, r) > 0
+	case "<=":
+		return compareValues(in, x.Line, l, r) <= 0
+	case ">=":
+		return compareValues(in, x.Line, l, r) >= 0
+	case "+":
+		if a, ok := l.(float64); ok {
+			if b, ok := r.(float64); ok {
+				return a + b
+			}
+		}
+		if a, ok := l.(*List); ok {
+			if b, ok := r.(*List); ok {
+				return &List{Items: append(append([]Value{}, a.Items...), b.Items...)}
+			}
+		}
+		_, ls := l.(string)
+		_, rs := r.(string)
+		if ls || rs {
+			return Text(l) + Text(r)
+		}
+		in.fail(x.Line, "I can't add %s and %s", typeName(l), typeName(r))
+	case "to":
+		a, ok1 := l.(float64)
+		b, ok2 := r.(float64)
+		if !ok1 || !ok2 {
+			in.fail(x.Line, "'to' makes a range of numbers, like 1 to 10")
+		}
+		list := &List{}
+		for i := a; i <= b; i++ {
+			list.Items = append(list.Items, i)
+		}
+		return list
+	}
+	a, ok1 := l.(float64)
+	b, ok2 := r.(float64)
+	if !ok1 || !ok2 {
+		in.fail(x.Line, "'%s' needs two numbers, but got %s and %s", x.Op, typeName(l), typeName(r))
+	}
+	switch x.Op {
+	case "-":
+		return a - b
+	case "*":
+		return a * b
+	case "/":
+		if b == 0 {
+			in.fail(x.Line, "you can't divide by zero")
+		}
+		return a / b
+	case "%":
+		if b == 0 {
+			in.fail(x.Line, "you can't divide by zero")
+		}
+		return math.Mod(a, b)
+	}
+	in.fail(x.Line, "unknown operator %s", x.Op)
+	return nil
+}
+
+func (in *Interp) callExpr(c *Call, env *Env, first Value, hasFirst bool) Value {
+	fn := in.eval(c.Callee, env)
+	if b, ok := fn.(*Builtin); ok && b.Lazy != nil {
+		rest := []Expr{}
+		args := c.Args
+		if !hasFirst {
+			if len(args) == 0 {
+				in.fail(c.Line, "%s needs a list", b.Name)
+			}
+			first = in.eval(args[0].Value, env)
+			args = args[1:]
+		}
+		for _, a := range args {
+			rest = append(rest, a.Value)
+		}
+		return b.Lazy(in, env, c.Line, first, rest)
+	}
+	var args []Value
+	var names []string
+	if hasFirst {
+		args = append(args, first)
+		names = append(names, "")
+	}
+	for _, a := range c.Args {
+		args = append(args, in.eval(a.Value, env))
+		names = append(names, a.Name)
+	}
+	return in.call(fn, args, names, c.Line, nil)
+}
+
+// call runs a beam, builtin, or creates an object.
+func (in *Interp) call(fn Value, args []Value, names []string, line int, extra map[string]Value) Value {
+	named := false
+	for _, n := range names {
+		if n != "" {
+			named = true
+		}
+	}
+	switch f := fn.(type) {
+	case *Builtin:
+		if named {
+			in.fail(line, "%s doesn't take named inputs", f.Name)
+		}
+		if f.Fn == nil {
+			in.fail(line, "%s can't be used this way", f.Name)
+		}
+		return f.Fn(in, line, args)
+	case *Beam:
+		label := "this beam"
+		if f.Name != "" {
+			label = "beam " + f.Name
+		}
+		vals := in.matchArgs(label, f.Params, args, names, line)
+		parent := f.Closure
+		if f.Self != nil {
+			parent = &Env{vars: map[string]*binding{"me": {f.Self, true}}, parent: f.Closure, obj: f.Self}
+		}
+		e := newEnv(parent)
+		for i, p := range f.Params {
+			e.define(p, vals[i], false)
+		}
+		for k, v := range extra {
+			e.define(k, v, false)
+		}
+		if f.Expr != nil {
+			return in.eval(f.Expr, e)
+		}
+		c, v := in.execBlock(f.Body, e)
+		if c == cStop || c == cSkip {
+			in.fail(line, "'stop' and 'skip' only work inside a loop")
+		}
+		return v
+	case *Class:
+		fieldNames := make([]string, len(f.Fields))
+		for i, fd := range f.Fields {
+			fieldNames[i] = fd.Name
+		}
+		inst := &Instance{Class: f, Fields: map[string]Value{}}
+		given := make([]bool, len(fieldNames))
+		pos := 0
+		for i, a := range args {
+			if names[i] == "" {
+				if pos >= len(fieldNames) {
+					in.fail(line, "%s only has %d fields, but got more values", f.Name, len(fieldNames))
+				}
+				inst.Fields[fieldNames[pos]] = a
+				given[pos] = true
+				pos++
+				continue
+			}
+			found := false
+			for j, fname := range fieldNames {
+				if fname == names[i] {
+					inst.Fields[fname] = a
+					given[j] = true
+					found = true
+				}
+			}
+			if !found {
+				in.fail(line, "%s has no field called '%s'", f.Name, names[i])
+			}
+		}
+		for j, fd := range f.Fields {
+			if given[j] {
+				continue
+			}
+			if fd.Default != nil {
+				inst.Fields[fd.Name] = in.eval(fd.Default, f.Env)
+			} else {
+				in.fail(line, "making a %s needs a value for '%s'", f.Name, fd.Name)
+			}
+		}
+		return inst
+	}
+	in.fail(line, "%s is not a beam, so it can't be called with ( )", typeName(fn))
+	return nil
+}
+
+func (in *Interp) matchArgs(label string, params []string, args []Value, names []string, line int) []Value {
+	vals := make([]Value, len(params))
+	set := make([]bool, len(params))
+	pos := 0
+	for i, a := range args {
+		n := ""
+		if i < len(names) {
+			n = names[i]
+		}
+		if n == "" {
+			if pos >= len(params) {
+				in.fail(line, "%s takes %d input(s), but got %d", label, len(params), len(args))
+			}
+			vals[pos], set[pos] = a, true
+			pos++
+			continue
+		}
+		ok := false
+		for j, p := range params {
+			if p == n {
+				vals[j], set[j], ok = a, true, true
+			}
+		}
+		if !ok {
+			in.fail(line, "%s has no input called '%s'", label, n)
+		}
+	}
+	for j := range params {
+		if !set[j] {
+			in.fail(line, "%s needs a value for '%s'", label, params[j])
+		}
+	}
+	return vals
+}
+
+func (in *Interp) get(obj Value, name string, line int) Value {
+	switch o := obj.(type) {
+	case *Instance:
+		if v, ok := o.Fields[name]; ok {
+			return v
+		}
+		if m, ok := o.Class.Methods[name]; ok {
+			return &Beam{Name: m.Name, Params: m.Params, Body: m.Body, Closure: o.Class.Env, Self: o}
+		}
+		in.fail(line, "%s has no field or beam called '%s'", o.Class.Name, name)
+	case *Module:
+		if v, ok := o.Members[name]; ok {
+			return v
+		}
+		in.fail(line, "the %s library has nothing called '%s'", o.Name, name)
+	case *Map:
+		if v, ok := o.M[name]; ok {
+			return v
+		}
+		if b := mapMethod(o, name); b != nil {
+			return b
+		}
+		return nil
+	case *List:
+		if b := listMethod(o, name); b != nil {
+			return b
+		}
+	case string:
+		if b := textMethod(o, name); b != nil {
+			return b
+		}
+	case *Server:
+		if b := serverMethod(in, o, name); b != nil {
+			return b
+		}
+	case *Response:
+		switch name {
+		case "status":
+			return float64(o.Status)
+		case "body":
+			return o.Body
+		}
+	}
+	in.fail(line, "%s has nothing called '%s'", typeName(obj), name)
+	return nil
+}
+
+// suggest finds a close spelling, for friendlier errors.
+func suggest(name string, options []string) string {
+	sort.Strings(options)
+	best, bestD := "", 3
+	for _, o := range options {
+		if o == name {
+			continue
+		}
+		if d := distance(strings.ToLower(name), strings.ToLower(o)); d < bestD {
+			best, bestD = o, d
+		}
+	}
+	if len(name) <= 2 && bestD > 1 {
+		return ""
+	}
+	return best
+}
+
+func distance(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	prev := make([]int, len(rb)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ra); i++ {
+		cur := make([]int, len(rb)+1)
+		cur[0] = i
+		for j := 1; j <= len(rb); j++ {
+			cost := 1
+			if ra[i-1] == rb[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(rb)]
+}
