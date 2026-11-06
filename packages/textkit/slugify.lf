@@ -1,0 +1,18 @@
+beam make(t: Text) gives Text {
+    allowed = "abcdefghijklmnopqrstuvwxyz0123456789"
+    out: List[Text] = []
+    dash = no
+    each letter in t.lower() {
+        when allowed.has(letter) {
+            out.add(letter)
+            dash = no
+        } otherwise when not dash and count(out) > 0 {
+            out.add("-")
+            dash = yes
+        }
+    }
+    when dash {
+        out.remove(count(out) - 1)
+    }
+    send join(out, "")
+}

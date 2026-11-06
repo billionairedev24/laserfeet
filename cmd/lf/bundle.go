@@ -34,12 +34,16 @@ type bundle struct {
 
 const mainName = "(main).lf"
 
-// collectFiles parses the program and every .lf file it uses, so they can all be
-// packed into the built program.
+// collectFiles parses the program and every file and package it uses, so they
+// can all be packed into the built program (under the same names the engine uses).
 func collectFiles(path, src string) (map[string]string, error) {
 	files := map[string]string{mainName: src}
 	dir := filepath.Dir(path)
-	queue := []struct{ name, src string }{{path, src}}
+	type item struct {
+		name, src string
+		ctx       lang.UseContext
+	}
+	queue := []item{{path, src, lang.UseContext{}}}
 	for len(queue) > 0 {
 		f := queue[0]
 		queue = queue[1:]
@@ -48,18 +52,22 @@ func collectFiles(path, src string) (map[string]string, error) {
 			return nil, fmt.Errorf("%s: %v", f.name, err)
 		}
 		for _, used := range lang.UsedFiles(prog) {
-			if _, done := files[used]; done {
-				continue
-			}
-			if filepath.IsAbs(used) || used == ".." || strings.HasPrefix(used, "../") {
-				return nil, fmt.Errorf("%s: use \"%s\": files must be inside your program's folder", f.name, used)
-			}
-			b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(used)))
+			key, _, next, err := lang.ResolveUse(f.ctx, used)
 			if err != nil {
 				return nil, fmt.Errorf("%s: use \"%s\": %v", f.name, used, err)
 			}
-			files[used] = string(b)
-			queue = append(queue, struct{ name, src string }{used, string(b)})
+			if _, done := files[key]; done {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(key)))
+			if err != nil {
+				if lang.IsPackagePath(used) {
+					return nil, fmt.Errorf("%s: package %s isn't installed. Run: lf get", f.name, used)
+				}
+				return nil, fmt.Errorf("%s: use \"%s\": %v", f.name, used, err)
+			}
+			files[key] = string(b)
+			queue = append(queue, item{key, string(b), next})
 		}
 	}
 	return files, nil

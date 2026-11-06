@@ -2,7 +2,6 @@ package lang
 
 import (
 	"fmt"
-	"path"
 	"sort"
 	"strings"
 )
@@ -103,6 +102,7 @@ type checker struct {
 	route    string   // the path of the route being checked, like /todos/:id
 	params   []string // its :names, which are always there when the route runs
 	info     *Analysis
+	useStack []UseContext
 }
 
 // note records the type of a name on a line, for hover and autocomplete in editors.
@@ -376,14 +376,13 @@ func (c *checker) use(u *UseStmt, top *cscope) {
 		top.vars[u.Name] = &cvar{t: m, locked: true}
 		return
 	}
-	clean := path.Clean(strings.ReplaceAll(u.Path, "\\", "/"))
-	name := strings.TrimSuffix(path.Base(clean), ".lf")
-	if path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
-		c.report(u.Line, "use \"%s\": files must be inside your program's folder", u.Path)
-		return
+	ctx := UseContext{}
+	if n := len(c.useStack); n > 0 {
+		ctx = c.useStack[n-1]
 	}
-	if !strings.HasSuffix(clean, ".lf") {
-		c.report(u.Line, "use \"%s\": only .lf files can be used", u.Path)
+	clean, name, next, err := ResolveUse(ctx, u.Path)
+	if err != nil {
+		c.report(u.Line, "use \"%s\": %v", u.Path, err)
 		return
 	}
 	if m := c.modules[clean]; m != nil {
@@ -400,7 +399,11 @@ func (c *checker) use(u *UseStmt, top *cscope) {
 	}
 	src, err := c.read(clean)
 	if err != nil {
-		c.report(u.Line, "use \"%s\": I couldn't read it (%v)", u.Path, err)
+		if IsPackagePath(u.Path) {
+			c.report(u.Line, "use \"%s\": this package isn't installed. Run: lf get %s", u.Path, u.Path)
+		} else {
+			c.report(u.Line, "use \"%s\": I couldn't read it (%v)", u.Path, err)
+		}
 		return
 	}
 	prog, perr := Parse(src)
@@ -413,7 +416,9 @@ func (c *checker) use(u *UseStmt, top *cscope) {
 	c.loading[clean] = true
 	savedFile, savedBeam := c.file, c.beam
 	c.file, c.beam = clean, nil
+	c.useStack = append(c.useStack, next)
 	scope := c.checkProgram(prog, false)
+	c.useStack = c.useStack[:len(c.useStack)-1]
 	c.file, c.beam = savedFile, savedBeam
 	delete(c.loading, clean)
 	m := &Type{Kind: KModule, Name: name, Members: map[string]*Type{}}

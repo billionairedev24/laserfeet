@@ -19,6 +19,9 @@ Usage:
   lf run <file.lf>     run a program
   lf test <file.lf>    run the test blocks in a file
   lf check <file.lf>   find type mistakes without running anything
+  lf get <package>     add a package, like: lf get github.com/someone/greetings@v1.2.0
+  lf get               install the packages in sole.list, checked against sole.lock
+  lf remove <package>  stop using a package
   lf lsp               start the language server for editors (VS Code uses this)
   lf build <file.lf>   make a standalone program (add -o name to pick its name)
   lf version           show the version
@@ -48,6 +51,10 @@ func main() {
 			os.Exit(2)
 		}
 		os.Exit(newProject(args[1]))
+	case "get":
+		os.Exit(soleGet(args[1:]))
+	case "remove":
+		os.Exit(soleRemove(args[1:]))
 	case "lsp":
 		os.Exit(runLSP(os.Stdin, os.Stdout))
 	case "check":
@@ -107,6 +114,10 @@ func newInterp(path string) *lang.Interp {
 
 // checkFile runs lf check and prints any problems. Run, test and build all check first.
 func checkFile(path string) bool {
+	if err := verifyPackages(path); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return false
+	}
 	dir := filepath.Dir(path)
 	problems := lang.Check(read(path), func(p string) (string, error) {
 		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p)))

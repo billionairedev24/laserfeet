@@ -88,7 +88,7 @@ func TestUseFiles(t *testing.T) {
 	for src, want := range map[string]string{
 		`use "../secret.lf"`:   "must be inside your program's folder",
 		`use "/etc/passwd.lf"`: "must be inside your program's folder",
-		`use "notes.txt"`:      "only .lf files",
+		`use "notes.txt"`:      "use a .lf file",
 		`use "loop_a.lf"`:      "in a loop",
 	} {
 		err := newIn(&bytes.Buffer{}).Run(src)

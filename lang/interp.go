@@ -154,6 +154,7 @@ type Interp struct {
 	builtins *Env
 	modules  map[string]*Module // loaded .lf files, by path
 	loading  map[string]bool    // files being loaded right now, to catch loops
+	useStack []UseContext       // where the file being loaded lives
 	// ReadSource reads another .lf file for 'use "file.lf"'. The path is already
 	// checked to stay inside the program's folder. Nil means files can't be used.
 	ReadSource func(path string) (string, error)

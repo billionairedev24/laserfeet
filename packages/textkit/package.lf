@@ -1,0 +1,45 @@
+-- textkit: small helpers for working with text.
+-- Use it with:  lf get github.com/billionairedev24/laserfeet/packages/textkit
+--               use "github.com/billionairedev24/laserfeet/packages/textkit"
+
+use "slugify.lf"
+
+-- "Hello World!" becomes "hello-world"
+beam slug(t: Text) gives Text {
+    send slugify.make(t)
+}
+
+-- shorten long text, adding … at the end
+beam shorten(t: Text, most: Int) gives Text {
+    when t.size() <= most {
+        send t
+    }
+    letters = t.split("")
+    kept: List[Text] = []
+    each i in 0 to most - 2 {
+        kept.add(letters[i])
+    }
+    send join(kept, "") + "…"
+}
+
+-- "ada lovelace" becomes "Ada Lovelace"
+beam title(t: Text) gives Text {
+    words = t.split(" ") then turn(capital(it))
+    send join(words, " ")
+}
+
+beam capital(word: Text) gives Text {
+    when word.size() is 0 {
+        send word
+    }
+    rest = word.split("") then dropFirst
+    send word[0].upper() + rest
+}
+
+beam dropFirst(letters: List[Text]) gives Text {
+    rest: List[Text] = []
+    each i in 1 to count(letters) - 1 {
+        rest.add(letters[i])
+    }
+    send join(rest, "")
+}

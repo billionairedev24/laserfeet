@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"path"
 	"sort"
 	"strings"
 	"time"
@@ -16,12 +15,13 @@ import (
 // loadFile runs another .lf file once and returns its beams, objects and values
 // as a module named after the file (use "helpers.lf" gives helpers.greet()).
 func (in *Interp) loadFile(p string, line int) *Module {
-	clean := path.Clean(strings.ReplaceAll(p, "\\", "/"))
-	if path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
-		in.fail(line, "use \"%s\": files must be inside your program's folder", p)
+	ctx := UseContext{}
+	if n := len(in.useStack); n > 0 {
+		ctx = in.useStack[n-1]
 	}
-	if !strings.HasSuffix(clean, ".lf") {
-		in.fail(line, "use \"%s\": only .lf files can be used", p)
+	clean, name, next, err := ResolveUse(ctx, p)
+	if err != nil {
+		in.fail(line, "use \"%s\": %v", p, err)
 	}
 	if m := in.modules[clean]; m != nil {
 		return m
@@ -34,6 +34,9 @@ func (in *Interp) loadFile(p string, line int) *Module {
 	}
 	src, err := in.ReadSource(clean)
 	if err != nil {
+		if IsPackagePath(p) {
+			in.fail(line, "use \"%s\": this package isn't installed. Run: lf get %s", p, p)
+		}
 		in.fail(line, "use \"%s\": I couldn't read it (%v)", p, err)
 	}
 	prog, perr := Parse(src)
@@ -47,11 +50,12 @@ func (in *Interp) loadFile(p string, line int) *Module {
 		in.loading, in.modules = map[string]bool{}, map[string]*Module{}
 	}
 	in.loading[clean] = true
+	in.useStack = append(in.useStack, next)
 	env := newScope(in.builtins)
 	in.loadInto(prog, env, false)
+	in.useStack = in.useStack[:len(in.useStack)-1]
 	delete(in.loading, clean)
 
-	name := strings.TrimSuffix(path.Base(clean), ".lf")
 	m := &Module{Name: name, Members: map[string]Value{}}
 	for i, n := range env.names {
 		m.Members[n] = env.binds[i].v
@@ -63,12 +67,12 @@ func (in *Interp) loadFile(p string, line int) *Module {
 	return m
 }
 
-// UsedFiles lists the .lf files a program uses directly, for lf build.
+// UsedFiles lists what a program uses directly (files and packages), as written.
 func UsedFiles(prog *Program) []string {
 	var out []string
-	for _, s := range prog.Stmts {
-		if u, ok := s.(*UseStmt); ok && u.Path != "" {
-			out = append(out, path.Clean(strings.ReplaceAll(u.Path, "\\", "/")))
+	for _, st := range prog.Stmts {
+		if u, ok := st.(*UseStmt); ok && u.Path != "" {
+			out = append(out, u.Path)
 		}
 	}
 	return out
