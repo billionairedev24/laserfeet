@@ -325,8 +325,24 @@ func (in *Interp) perItem(env *Env, x Expr, item Value) Value {
 	if lam, ok := x.(*Lambda); ok {
 		return in.call(in.eval(lam, env), []Value{item}, nil, x.Ln(), nil)
 	}
-	// one allocation per item: the item's scope with "it" in it
-	fr := new(frame1)
+	if in.NoCompile {
+		e := itemScope(new(frame1), env, item)
+		return in.eval(x, e)
+	}
+	rc := in.exprCode(x)
+	if !rc.reuse {
+		return rc.code(itemScope(new(frame1), env, item))
+	}
+	// the rule keeps nothing of its scope: one frame does for every item
+	fr := in.getFrame1()
+	v := rc.code(itemScope(fr, env, item))
+	in.putFrame1(fr)
+	return v
+}
+
+// itemScope fills fr as the scope of one item: "it", and an object's fields
+// or a map's keys by name.
+func itemScope(fr *frame1, env *Env, item Value) *Env {
 	e := &fr.Env
 	e.parent, e.names, e.binds, e.born = env, itName, fr.slots[:1], genNow.Load()
 	fr.slots[0].v = item
@@ -338,10 +354,7 @@ func (in *Interp) perItem(env *Env, x Expr, item Value) Value {
 			e.define(k, o.M[k], false)
 		}
 	}
-	if in.NoCompile {
-		return in.eval(x, e)
-	}
-	return in.exprCode(x)(e)
+	return e
 }
 
 func (in *Interp) perItemTruth(env *Env, x Expr, item Value, name string) bool {
@@ -454,10 +467,17 @@ var itName = []string{"it"}[:1:1] // shared; a scope that adds names copies it f
 
 // exprCode is the compiled form of an expression used for every item of a list
 // (keepIf(age > 18)), made once.
-func (in *Interp) exprCode(x Expr) cexpr {
+// ruleCode is a per-item rule, compiled once.
+type ruleCode struct {
+	code  cexpr
+	reuse bool // the rule keeps nothing of the item's scope
+}
+
+func (in *Interp) exprCode(x Expr) *ruleCode {
 	if c, ok := in.exprCodes.Load(x); ok {
-		return c.(cexpr)
+		return c.(*ruleCode)
 	}
-	c, _ := in.exprCodes.LoadOrStore(x, in.compileExpr(x))
-	return c.(cexpr)
+	rc := &ruleCode{code: in.compileExpr(x), reuse: !capturesNames([]Stmt{&ExprStmt{X: x}})}
+	c, _ := in.exprCodes.LoadOrStore(x, rc)
+	return c.(*ruleCode)
 }

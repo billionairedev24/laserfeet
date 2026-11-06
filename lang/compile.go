@@ -28,6 +28,54 @@ type beamCode struct {
 	once sync.Once
 	body cblock
 	expr cexpr
+	// reuse: nothing in the beam keeps its names after it finishes (no beam
+	// written inside, no work started), so its call frame can be used again.
+	reuse bool
+}
+
+// Reusable call frames. Only the code holding the engine's lock uses them,
+// and only while nothing runs in parallel (then frames are simply made new).
+type frames struct {
+	one   []*frame1
+	three []*frame3
+}
+
+const keepFrames = 256
+
+func (in *Interp) getFrame1() *frame1 {
+	if in.parallel.Load() == 0 {
+		if k := len(in.frames.one); k > 0 {
+			f := in.frames.one[k-1]
+			in.frames.one = in.frames.one[:k-1]
+			return f
+		}
+	}
+	return new(frame1)
+}
+
+func (in *Interp) putFrame1(f *frame1) {
+	*f = frame1{}
+	if in.parallel.Load() == 0 && len(in.frames.one) < keepFrames {
+		in.frames.one = append(in.frames.one, f)
+	}
+}
+
+func (in *Interp) getFrame3() *frame3 {
+	if in.parallel.Load() == 0 {
+		if k := len(in.frames.three); k > 0 {
+			f := in.frames.three[k-1]
+			in.frames.three = in.frames.three[:k-1]
+			return f
+		}
+	}
+	return new(frame3)
+}
+
+func (in *Interp) putFrame3(f *frame3) {
+	*f = frame3{}
+	if in.parallel.Load() == 0 && len(in.frames.three) < keepFrames {
+		in.frames.three = append(in.frames.three, f)
+	}
 }
 
 // codeFor finds the compiled form shared by every beam made from one
@@ -49,8 +97,10 @@ func (in *Interp) compiled(f *Beam) *beamCode {
 	c.once.Do(func() {
 		if f.Expr != nil {
 			c.expr = in.compileExpr(f.Expr)
+			c.reuse = !capturesNames([]Stmt{&ExprStmt{X: f.Expr}})
 		} else {
 			c.body = in.compileBlock(f.Body)
+			c.reuse = !capturesNames(f.Body)
 		}
 	})
 	return c
@@ -601,12 +651,7 @@ func (in *Interp) compileCall(c *Call, first cexpr) cexpr {
 	if hasFirst {
 		n++
 	}
-	return func(e *Env) Value {
-		var firstVal Value
-		if hasFirst { // x then f(...): x is worked out first, as in the engine
-			firstVal = first(e)
-		}
-		fn := callee(e)
+	dispatch := func(e *Env, fn Value, firstVal Value) Value {
 		switch f := fn.(type) {
 		case *Builtin:
 			if f.Lazy != nil || lazy {
@@ -623,6 +668,22 @@ func (in *Interp) compileCall(c *Call, first cexpr) cexpr {
 				in.fail(line, "%s can't be used this way", f.Name)
 			}
 			return f.Fn(in, line, vals)
+		case *Class:
+			if !lazy && n == len(f.Fields) { // every field given in order: fill the object directly
+				inst := newInstance(f)
+				k := 0
+				if hasFirst {
+					inst.Slots[0] = firstVal
+					k = 1
+				}
+				for i, a := range args {
+					inst.Slots[k+i] = a(e)
+				}
+				for i := range inst.Slots {
+					inst.Slots[i] = in.fieldValue(line, f, i, inst.Slots[i])
+				}
+				return inst
+			}
 		case *Beam:
 			if !lazy && f.Self == nil && f.code != nil && n == len(f.Params) && (f.Sig == nil || len(f.Sig.TypeParams) == 0) {
 				if code := in.compiled(f); code != nil {
@@ -641,6 +702,32 @@ func (in *Interp) compileCall(c *Call, first cexpr) cexpr {
 			vals = append(vals, a(e))
 		}
 		return in.call(fn, vals, nil, line, nil)
+	}
+	// list.add(x): the commonest change to a list, done without making the method
+	if g, ok := c.Callee.(*Get); ok && g.Name == "add" && !lazy && !hasFirst && n == 1 {
+		obj, arg, gline := in.compileExpr(g.Object), args[0], g.Line
+		return func(e *Env) Value {
+			o := obj(e)
+			if l, ok := o.(*List); ok {
+				v := arg(e)
+				in.mayChange(l.born, line, "a list")
+				l.Items = append(l.Items, v)
+				return l
+			}
+			if inst, ok := o.(*Instance); ok {
+				if i, ok := inst.Class.index["add"]; ok {
+					return dispatch(e, inst.Slots[i], nil)
+				}
+			}
+			return dispatch(e, in.get(o, "add", gline), nil)
+		}
+	}
+	return func(e *Env) Value {
+		var firstVal Value
+		if hasFirst { // x then f(...): x is worked out first, as in the engine
+			firstVal = first(e)
+		}
+		return dispatch(e, callee(e), firstVal)
 	}
 }
 
@@ -668,15 +755,25 @@ func (in *Interp) fastCall(f *Beam, code *beamCode, firstVal Value, hasFirst boo
 		n++
 	}
 	var e *Env
+	var f1 *frame1
+	var f3 *frame3
 	switch {
 	case n <= 1:
-		fr := new(frame1)
-		e = &fr.Env
-		e.binds = fr.slots[:n]
+		if code.reuse {
+			f1 = in.getFrame1()
+		} else {
+			f1 = new(frame1)
+		}
+		e = &f1.Env
+		e.binds = f1.slots[:n]
 	case n <= 3:
-		fr := new(frame3)
-		e = &fr.Env
-		e.binds = fr.slots[:n]
+		if code.reuse {
+			f3 = in.getFrame3()
+		} else {
+			f3 = new(frame3)
+		}
+		e = &f3.Env
+		e.binds = f3.slots[:n]
 	default:
 		e = new(Env)
 		e.binds = make([]binding, n)
@@ -712,6 +809,13 @@ func (in *Interp) fastCall(f *Beam, code *beamCode, firstVal Value, hasFirst boo
 		c, v = code.body(e)
 		if c == cStop || c == cSkip {
 			in.fail(line, "'stop' and 'skip' only work inside a loop")
+		}
+	}
+	if code.reuse { // a failure above leaves the frame to the collector
+		if f1 != nil {
+			in.putFrame1(f1)
+		} else if f3 != nil {
+			in.putFrame3(f3)
 		}
 	}
 	if rtype != nil {

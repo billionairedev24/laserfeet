@@ -175,6 +175,7 @@ type Interp struct {
 	turns       int64          // statements run while other work waits for a turn
 	typesMu     sync.Mutex     // fills the type caches of signatures and objects
 	parallel    atomic.Int32   // parallel regions running (fast each)
+	frames      frames         // call frames to use again
 	regionStart atomic.Int64   // when the outermost one began
 	regionJobs  sync.WaitGroup // fast work started inside a region
 	codes       sync.Map       // compiled beams, by declaration

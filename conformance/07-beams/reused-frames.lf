@@ -1,0 +1,59 @@
+-- Calls whose names nothing keeps share frames; calls that make beams don't.
+object Point {
+    x: Int
+    y: Int = 0
+}
+
+object Bag {
+    items: List[Int]
+}
+
+beam depth(n: Int) gives Int {
+    when n is 0 {
+        send 0
+    }
+    inner = depth(n - 1)
+    send inner + n
+}
+
+beam adder(by: Int) gives Beam(Int) gives Int {
+    send beam(x: Int) gives Int { send x + by }
+}
+
+beam pair(a: Int, b: Int) gives Text {
+    first = a * 2
+    send "{first}-{b}"
+}
+
+beam noisy(n: Int) gives Int {
+    show "made {n}"
+    send n
+}
+
+launch {
+    show depth(200)
+    add2 = adder(2)
+    add5 = adder(5)
+    show add2(1)
+    show add5(1)
+    show add2(10)
+    show pair(1, 2)
+    show pair(pair(3, 4).size(), 9)
+    p = Point(noisy(1), noisy(2))
+    show p.x + p.y
+    q = Point(noisy(7))
+    show q.y
+    bag = Bag([])
+    bag.items.add(4)
+    bag.items.add(5)
+    show bag.items
+    rows = [{"name": "a", "n": 1}, {"name": "b", "n": 2}, {"name": "c", "n": 3}]
+    show rows then keepIf(n > 1) then turn(name)
+    nested = [[1, 2], [3], [4, 5, 6]]
+    show nested then turn(it then keepIf(it > 1) then turn(it * 10))
+    total = 0
+    each i in 1 to 5 {
+        total = total + depth(i)
+    }
+    show total
+}
