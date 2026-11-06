@@ -33,6 +33,7 @@ On a Mac, use `shasum -a 256 --check --ignore-missing SHA256SUMS`. On Windows, c
 | `govulncheck` on every push | Shipping with a known vulnerability in Go or the code |
 | Dependabot updates for the pinned actions | Pins going stale |
 | Tests with the race detector on every push | Concurrency bugs |
+| Nightly fuzzing of the parser, checker, formatter, JSON, web requests and the PostgreSQL protocol | Crashes or hangs on unexpected input, including from a hostile database server |
 
 ## How the website is protected
 
@@ -74,6 +75,6 @@ The playground page has the SHA-256 checksum of the Laser Feet engine (`laserfee
 | Values are sent separately from SQL, and one call runs one statement | SQL injection through values |
 | Remote databases: TLS with certificate and hostname checks (`verify-full`); `prefer` is refused | Eavesdropping and fake servers |
 | SCRAM-SHA-256 login with the server's proof checked; plain passwords only over TLS | Password theft and impersonation |
-| 10 s connection timeout, 64 MB message limit | Hanging or flooding a program |
+| 10 s connection timeout, 64 MB message limit, at most 1,000,000 SCRAM rounds | Hanging or flooding a program |
 
 These are checked by `lang/security_test.go`, `lang/stdlib_test.go` and `cmd/lf/bundle_test.go` on every push.

@@ -369,7 +369,8 @@ lf test app.lf</lf-code></div></li>
         <li style="--wl: var(--l589)"><span class="ver">0.2</span><strong>Standalone programs</strong><p><code>lf build</code> makes one file that runs with nothing installed, on an engine twice as fast.</p></li>
         <li style="--wl: var(--l532)"><span class="ver">0.3</span><strong>Standard library</strong><p>A built-in store, JSON, files, time, settings, and code split across files.</p></li>
         <li style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Types</strong><p>Required types, exact Decimal money, <code>lf check</code> before every run, objects 3.7x smaller.</p></li>
-        <li class="now" style="--wl: var(--l405)"><span class="ver">0.5 – 0.6</span><strong>Editors, jobs, data, packages</strong><p>Live errors in VS Code, <code>fast</code> jobs, Docker, Laser Feet's own PostgreSQL driver, and <code>sole</code> packages from git. Next: multi-core, then a native compiler.</p></li>
+        <li style="--wl: var(--l405)"><span class="ver">0.5 – 0.6</span><strong>Editors, jobs, data, packages</strong><p>Live errors in VS Code, <code>fast</code> jobs, Docker, Laser Feet's own PostgreSQL driver, and <code>sole</code> packages from git.</p></li>
+        <li class="now" style="--wl: var(--l405)"><span class="ver">0.7</span><strong>Foundations</strong><p>A written <a href="https://github.com/billionairedev24/laserfeet/blob/main/docs/spec.md">language specification</a> with a conformance suite, <code>lf fmt</code>, <code>lf fix</code>, named blocks and nightly fuzzing. Next: enums, generics and typed database rows.</p></li>
       </ul>
     </div>
   </div>
@@ -381,7 +382,7 @@ lf test app.lf</lf-code></div></li>
     <div class="pagehead">
       <span class="lambda">Learn</span>
       <h2>The Laser Feet guide</h2>
-      <p class="lede">Ten short chapters. Every example has a Try it button that runs it in the playground.</p>
+      <p class="lede">Seventeen short chapters. Every example has a Try it button that runs it in the playground.</p>
     </div>
     <div class="docs">
       <nav class="toc" aria-label="Guide chapters">
@@ -584,6 +585,7 @@ launch {
 
         <h2 id="g6"><span class="num">07</span>Chaining with then</h2>
         <p><code>then</code> hands the result on its left to the beam on its right as the first input. Inside <code>keepIf</code>, <code>turn</code> and <code>sortBy</code>, use the item's fields by name, or <code>it</code> for the item itself.</p>
+        <p>When the left side is a calculation, add brackets to show what <code>then</code> takes: <code>(price * quantity) then round</code> passes the whole result, and <code>"Team: " + (names then join(", "))</code> passes only <code>names</code>. Without them, Laser Feet asks you to choose, because either reading is possible.</p>
 <lf-code data-try>object User {
     name: Text
     age: Int
@@ -645,7 +647,7 @@ launch {
         <p class="note"><b>How it runs today:</b> fast work takes turns on the engine, and switches whenever one piece is waiting on the network, a file or <code>pause</code>, which is where most web apps spend their time. Running Laser Feet code on several cores at once is planned; programs written with these rules won't need to change.</p>
 
         <h2 id="g9"><span class="num">10</span>Web apps</h2>
-        <p><code>use web</code> brings in the web library. Add routes with <code>server.get</code>, <code>server.post</code> or <code>server.on</code> (any method), then <code>start</code> the server. Inside a route, <code>request</code> holds the details, and path parts written as <code>:name</code> arrive in <code>request.params</code>.</p>
+        <p><code>use web</code> brings in the web library. Add routes with <code>server.get</code>, <code>server.post</code> or <code>server.on</code> (any method), then <code>start</code> the server. To use the request in a route, name it: write <code>as request</code> before the route's <code>{</code>. Path parts written as <code>:name</code> then arrive in <code>request.params</code>. A route that doesn't need the request leaves the name out.</p>
 <lf-code data-try>use web
 
 server = web.open(8080)
@@ -654,7 +656,7 @@ server.get("/hello") {
     send "Hello from Laser Feet"
 }
 
-server.get("/square/:n") {
+server.get("/square/:n") as request {
     n = int(request.params.n)
     send {number: n, square: n * n}
 }
@@ -781,17 +783,18 @@ db.run("insert into products values ($1, $2, $3)", ["LAMP-1", "Desk lamp", 19.99
 cheap = db.query("select name, price from products where price < $1", [50])
 lamp = db.first("select * from products where sku = $1", ["LAMP-1"])   -- Json? (nothing if not found)
 
-db.transaction() {
+transaction with db as tx {
     tx.run("update products set price = price * 0.9 where price > $1", [100])
     tx.run("insert into price_log (note) values ($1)", ["10% off"])
 }   -- both happen, or, if anything fails, neither does</lf-code>
+        <p><b>How a transaction reads:</b> <code>transaction with db as tx</code> starts a transaction on <code>db</code> and calls it <code>tx</code> inside the block. Everything done through <code>tx</code> is kept only if the whole block finishes; if anything fails, all of it is undone. <code>tx</code> has the same beams as <code>db</code>, and you can pick another name.</p>
         <div class="tablewrap"><table>
           <tr><th>Beam</th><th>What it does</th></tr>
           <tr><td><code>postgres.open(url)</code></td><td>Connect, like <code>postgres://user:password@host:5432/shop</code>; keeps a pool of up to 10 connections</td></tr>
           <tr><td><code>db.query(sql, values)</code></td><td>Every row, as a list of maps</td></tr>
           <tr><td><code>db.first(sql, values)</code></td><td>The first row, or nothing</td></tr>
           <tr><td><code>db.run(sql, values)</code></td><td>Change data; gives how many rows changed</td></tr>
-          <tr><td><code>db.transaction() { tx… }</code></td><td>All or nothing; any problem undoes the whole block</td></tr>
+          <tr><td><code>transaction with db as tx { }</code></td><td>All or nothing; any problem undoes the whole block</td></tr>
         </table></div>
         <p class="note"><b>Secure by default:</b> a remote database is reached over TLS with its certificate checked (<code>sslmode=verify-full</code>); a database on the same machine doesn't need TLS. Login uses SCRAM-SHA-256, which also proves the server is real. <code>sslmode=prefer</code> is refused because it can quietly drop encryption. Turn rows into typed objects with <code>Product.from(row)</code>. A complete API is in <a href="https://github.com/billionairedev24/laserfeet/tree/main/examples/inventory">examples/inventory</a>.</p>
 
@@ -928,10 +931,10 @@ launch {
         <div class="tablewrap"><table>
           <tr><th>Call</th><th>What it does</th></tr>
           <tr><td><code>web.open(port)</code></td><td>Make a server (port 8080 if left out)</td></tr>
-          <tr><td><code>server.get(path) { }</code></td><td>Answer GET requests; also <code>post</code>, and <code>on</code> for any method</td></tr>
+          <tr><td><code>server.get(path) as request { }</code></td><td>Answer GET requests; also <code>post</code>, and <code>on</code> for any method. Leave out <code>as request</code> if the route doesn't use it</td></tr>
           <tr><td><code>server.start()</code></td><td>Start serving; usually <code>fast server.start()</code></td></tr>
           <tr><td><code>server.visit(path, method, body)</code></td><td>Try a route without a browser; gives back <code>.status</code>, <code>.body</code> and <code>.json</code></td></tr>
-          <tr><td><code>request</code></td><td>Inside a route: <code>method</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>body</code>, <code>json</code></td></tr>
+          <tr><td><code>request</code></td><td>The named request: <code>method</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>body</code>, <code>json</code></td></tr>
           <tr><td><code>web.status(code, reply)</code></td><td>Reply with a status code; a map or list reply is sent as JSON</td></tr>
           <tr><td><code>web.json(x)</code> / <code>web.page(html)</code></td><td>Reply as JSON / as a web page</td></tr>
           <tr><td><code>web.escape(x)</code></td><td>Make visitor input safe to put inside a web page</td></tr>
@@ -960,6 +963,8 @@ launch {
           <tr><td><code>lf test app.lf</code></td><td>Run its test blocks</td></tr>
           <tr><td><code>lf check app.lf</code></td><td>Find type mistakes without running anything (<code>run</code>, <code>test</code> and <code>build</code> check first too)</td></tr>
           <tr><td><code>lf build app.lf</code></td><td>Make a standalone program file (<code>-o name</code> picks its name)</td></tr>
+          <tr><td><code>lf fmt</code></td><td>Lay out every <code>.lf</code> file in the folder the standard way (<code>--check</code> only reports, for CI). VS Code does this on save</td></tr>
+          <tr><td><code>lf fix</code></td><td>Update code written for an older Laser Feet, without changing what it does</td></tr>
           <tr><td><code>lf get</code> / <code>lf remove</code></td><td>Add, install or remove packages (see the Packages chapter)</td></tr>
           <tr><td><code>lf lsp</code></td><td>The language server that gives editors live errors, autocomplete and hover</td></tr>
           <tr><td><code>lf version</code></td><td>Show the version</td></tr>

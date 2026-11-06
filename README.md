@@ -2,7 +2,7 @@
 
 A programming language with plain English keywords, objects and functions side by side, and a web server built in.
 
-Version 0.1 is a prototype: an interpreter written in Go.
+The engine is an interpreter written in Go. The language is defined by [docs/spec.md](docs/spec.md), and the programs in `conformance/` check that the engine follows it. Until 1.0 the language may still change; when it does, `lf fix` updates your code.
 
 ## Install
 
@@ -30,7 +30,7 @@ lf run app.lf
 
 | use | What it gives you |
 |---|---|
-| `use web` | Web servers and replies (`request.json` reads JSON bodies) |
+| `use web` | Web servers and replies (`server.post("/x") as request { }`; `request.json` reads JSON bodies) |
 | `use store` | A built-in database saved safely to a JSON file |
 | `use json` | `json.read`, `json.write`, `json.pretty` |
 | `use files` | `files.read`, `files.write`, `files.exists`, `files.list` |
@@ -46,12 +46,22 @@ lf run app.lf
 ```
 db = postgres.open(env("DATABASE_URL"))
 rows = db.query("select name, price from products where price < $1", [50])
-db.transaction() {
+transaction with db as tx {
     tx.run("update products set stock = stock - $1 where sku = $2", [1, "LAMP-1"])
 }
 ```
 
 Values are always sent separately from SQL; logins use SCRAM-SHA-256 with the server's proof checked; remote databases use TLS with certificate checks by default. See `examples/inventory`.
+
+## Formatting and updating code
+
+```
+lf fmt               # lay out every .lf file in this folder the standard way
+lf fmt --check       # change nothing; fail if a file isn't laid out (for CI)
+lf fix               # update code written for an older Laser Feet
+```
+
+`lf fmt` only changes spaces and blank lines, and checks that the code reads exactly the same afterwards. The VS Code extension formats on save. `lf fix` makes the changes a new version needs without changing what the code does: in 0.7 it names route requests (`as request`), writes transactions as `transaction with db as tx { }`, and adds brackets where `then` was unclear.
 
 ## Packages
 
@@ -131,7 +141,7 @@ On Windows the Go installer adds `%USERPROFILE%\go\bin` to PATH; open a new term
 go test ./...
 ```
 
-This runs every example and compares its output with the matching `.out` file, checks that each program in `examples/mistakes` fails with the expected friendly message, and runs every `*_test.lf` file's test blocks.
+This runs the conformance suite (`conformance/`, one folder per section of the spec), runs every example and compares its output with the matching `.out` file, checks that each program in `examples/mistakes` fails with the expected friendly message, and runs every `*_test.lf` file's test blocks.
 
 ## Build everything
 
@@ -168,6 +178,9 @@ Changing the `VERSION` file on `main` runs the release workflow, which tags the 
 | `cmd/lf/lsp.go` | The language server behind live errors and autocomplete |
 | `docker` | The official image |
 | `pg` | The PostgreSQL driver |
+| `docs/spec.md` | The language specification |
+| `conformance` | Programs that check the engine follows the spec |
+| `lang/format.go` | `lf fmt` |
 | `cmd/lf/sole.go` | The package manager |
 | `packages/textkit` | An example package |
 | `install.sh`, `install.ps1` | One-line installers that verify checksums |
