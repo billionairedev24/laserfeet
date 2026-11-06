@@ -1,0 +1,45 @@
+name: Fuzz
+
+# Every night, throw random input at the parts that read outside data: the
+# parser, checker and formatter (code), JSON, web requests, and the PostgreSQL
+# protocol (a hostile or broken database server). Any crash fails the run and
+# the input that caused it is saved, so it can become a regular test.
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { pkg: ./lang, name: FuzzParse }
+          - { pkg: ./lang, name: FuzzCheck }
+          - { pkg: ./lang, name: FuzzFormat }
+          - { pkg: ./lang, name: FuzzJSON }
+          - { pkg: ./lang, name: FuzzWebRequests }
+          - { pkg: ./pg, name: FuzzServerReplies }
+          - { pkg: ./pg, name: FuzzLogin }
+          - { pkg: ./pg, name: FuzzParseURL }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+      - name: Fuzz ${{ matrix.target.name }} for 5 minutes
+        run: go test ${{ matrix.target.pkg }} -run '^$' -fuzz '^${{ matrix.target.name }}$' -fuzztime 5m
+      - name: Save the input that failed
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: crash-${{ matrix.target.name }}
+          path: "**/testdata/fuzz/**"

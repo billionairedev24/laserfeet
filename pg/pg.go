@@ -368,7 +368,8 @@ func (s *scramState) clientFinal(serverFirst string) (string, error) {
 			iter, _ = strconv.Atoi(v)
 		}
 	}
-	if !strings.HasPrefix(nonce, s.nonce) || salt == "" || iter < 4096 {
+	// PostgreSQL uses 4096; far more would only let a hostile server stall the login
+	if !strings.HasPrefix(nonce, s.nonce) || salt == "" || iter < 4096 || iter > 1_000_000 {
 		return "", errors.New("the database sent an unsafe or invalid SCRAM challenge; refusing")
 	}
 	saltBytes, err := base64.StdEncoding.DecodeString(salt)

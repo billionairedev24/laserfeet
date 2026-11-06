@@ -44,6 +44,8 @@ jobs:
           node-version: "22"
       - name: Build everything
         run: ./scripts/build.sh
+      - name: Check Laser Feet code is laid out with lf fmt
+        run: dist/lf-linux-amd64 fmt --check examples packages bench conformance
       - name: Test the VS Code extension against the language server
         run: LF=dist/lf-linux-amd64 node editors/vscode/test/extension.test.js
       - name: Build the Docker image and run a new app in a container

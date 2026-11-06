@@ -132,6 +132,12 @@ func TestSCRAMProofsMatchTheStandard(t *testing.T) {
 	if s.verifyServer("v=AAAA") {
 		t.Error("a wrong server signature must be refused")
 	}
+	// too few rounds is weak; too many lets a hostile server stall the login
+	for _, i := range []string{"1", "999999999"} {
+		if _, err := s.clientFinal("r=rOprNGfwEbeRWgbNEkqOxyz,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=" + i); err == nil {
+			t.Errorf("i=%s must be refused", i)
+		}
+	}
 }
 
 func TestTLS(t *testing.T) {
