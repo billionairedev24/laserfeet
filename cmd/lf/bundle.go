@@ -72,6 +72,9 @@ func buildProgram(path, out string) int {
 		fmt.Fprintf(os.Stderr, "I couldn't open %s: %v\n", path, err)
 		return 2
 	}
+	if !checkFile(path) {
+		return 1
+	}
 	files, err := collectFiles(path, string(src))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\nFix this before building.\n", err)

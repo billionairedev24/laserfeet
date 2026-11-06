@@ -18,6 +18,7 @@ Usage:
   lf new <name>        create a starter project
   lf run <file.lf>     run a program
   lf test <file.lf>    run the test blocks in a file
+  lf check <file.lf>   find type mistakes without running anything
   lf build <file.lf>   make a standalone program (add -o name to pick its name)
   lf version           show the version
   lf help              show this help
@@ -46,6 +47,12 @@ func main() {
 			os.Exit(2)
 		}
 		os.Exit(newProject(args[1]))
+	case "check":
+		need(args)
+		if !checkFile(args[1]) {
+			os.Exit(1)
+		}
+		fmt.Println("No problems found.")
 	case "build":
 		need(args)
 		out := ""
@@ -95,7 +102,34 @@ func newInterp(path string) *lang.Interp {
 	return in
 }
 
+// checkFile runs lf check and prints any problems. Run, test and build all check first.
+func checkFile(path string) bool {
+	dir := filepath.Dir(path)
+	problems := lang.Check(read(path), func(p string) (string, error) {
+		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p)))
+		return string(b), err
+	})
+	for _, p := range problems {
+		if p.File == "" {
+			p.File = path
+		}
+		fmt.Fprintln(os.Stderr, p.Error())
+	}
+	if len(problems) > 0 {
+		s := "s"
+		if len(problems) == 1 {
+			s = ""
+		}
+		fmt.Fprintf(os.Stderr, "\n%d problem%s found. Nothing was run.\n", len(problems), s)
+		return false
+	}
+	return true
+}
+
 func run(path string) int {
+	if !checkFile(path) {
+		return 1
+	}
 	in := newInterp(path)
 	if err := in.Run(read(path)); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", path, err)
@@ -105,6 +139,9 @@ func run(path string) int {
 }
 
 func test(path string) int {
+	if !checkFile(path) {
+		return 1
+	}
 	in := newInterp(path)
 	results, err := in.RunTests(read(path))
 	if err != nil {

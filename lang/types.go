@@ -63,6 +63,11 @@ const (
 	KRule
 	KBeam
 	KLibrary // Server, Response, Store, Request
+	// used only by lf check:
+	KUnknown  // not known yet (an untyped one-line beam input); accepted anywhere
+	KClassRef // an object's name used as a value: Item(...) or Item.from(json)
+	KModule   // a library or a file brought in with use
+	KBuiltin  // a built-in beam, checked by its own rule
 )
 
 // Type is a resolved type.
@@ -73,8 +78,12 @@ type Type struct {
 	Rule     *RuleDef
 	Params   []*Type
 	Result   *Type
-	Name     string // library types
+	Name     string // library types; built-in beam names
 	Optional bool
+	Lit      bool             // a decimal written in the code: also fits a Float
+	PNames   []string         // beam input names, for named inputs
+	Members  map[string]*Type // modules
+	Sends    bool             // lf check: this beam type was inferred from a body that sends a value
 }
 
 var (
@@ -127,8 +136,14 @@ func (t *Type) name() string {
 		s = t.Class.Name
 	case KRule:
 		s = t.Rule.Name
-	case KLibrary:
+	case KLibrary, KModule:
 		s = t.Name
+	case KUnknown:
+		s = "a value"
+	case KClassRef:
+		s = "the object " + t.Class.Name
+	case KBuiltin:
+		s = "the beam " + t.Name
 	case KBeam:
 		parts := make([]string, len(t.Params))
 		for i, p := range t.Params {

@@ -42,7 +42,29 @@ func filesArg(args []js.Value) map[string]string {
 	return files
 }
 
+// checked runs lf check first, like lf run does on a computer.
+func checked(src string, files map[string]string) string {
+	problems := lang.Check(src, func(p string) (string, error) {
+		if s, ok := files[p]; ok {
+			return s, nil
+		}
+		return "", fmt.Errorf("the playground only has the files that come with this example")
+	})
+	if len(problems) == 0 {
+		return ""
+	}
+	var b bytes.Buffer
+	for _, p := range problems {
+		b.WriteString("⚠ " + p.Error() + "\n")
+	}
+	fmt.Fprintf(&b, "\n%d problem(s) found. Nothing was run.\n", len(problems))
+	return b.String()
+}
+
 func run(src string, files map[string]string) string {
+	if msg := checked(src, files); msg != "" {
+		return msg
+	}
 	var out bytes.Buffer
 	in := lang.NewInterp(&out)
 	withFiles(in, files)
@@ -54,6 +76,9 @@ func run(src string, files map[string]string) string {
 }
 
 func test(src string, files map[string]string) string {
+	if msg := checked(src, files); msg != "" {
+		return msg
+	}
 	var out bytes.Buffer
 	in := lang.NewInterp(&out)
 	withFiles(in, files)

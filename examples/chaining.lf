@@ -25,5 +25,7 @@ launch {
     show "Total of numbers over 10: {total}"
 
     youngest = users then sortBy(age) then first
-    show "Youngest is {youngest.name}"
+    when youngest is not nothing {
+        show "Youngest is {youngest.name}"
+    }
 }

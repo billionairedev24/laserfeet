@@ -11,7 +11,7 @@ use time
 use "checks.lf"
 
 db = store.open(env("TODO_DB", "todos.json"))
-port = number(env("PORT", "8080"))
+port = int(env("PORT", "8080"))
 server = web.open(port)
 
 -- list every to-do, or only open ones with /todos?open=yes
@@ -24,7 +24,7 @@ server.get("/todos") {
 }
 
 server.get("/todos/:id") {
-    todo = db.find("todos", number(request.params.id))
+    todo = db.find("todos", int(request.params.id))
     when todo is nothing {
         send web.status(404, {error: "no to-do with that id"})
     }
@@ -45,7 +45,7 @@ server.post("/todos") {
 }
 
 server.post("/todos/:id/done") {
-    todo = db.update("todos", number(request.params.id), {done: yes})
+    todo = db.update("todos", int(request.params.id), {done: yes})
     when todo is nothing {
         send web.status(404, {error: "no to-do with that id"})
     }
@@ -56,7 +56,7 @@ server.on("/todos/:id") {
     when request.method is not "DELETE" {
         send web.status(405, {error: "use GET, or DELETE to remove a to-do"})
     }
-    when not db.remove("todos", number(request.params.id)) {
+    when not db.remove("todos", int(request.params.id)) {
         send web.status(404, {error: "no to-do with that id"})
     }
     send web.status(204)
