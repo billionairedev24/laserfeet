@@ -9,7 +9,7 @@ import (
 	"laserfeet/lang"
 )
 
-var version = "0.1.0" // set by scripts/build.sh for releases
+var version = "dev" // set from the VERSION file by scripts/build.sh
 
 var help = `Laser Feet ` + version + `
 

@@ -4,10 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ldflags="-s -w -buildid="
-if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-  ldflags+=" -X main.version=${GITHUB_REF_NAME#v}"
-fi
+version="$(tr -d '[:space:]' < VERSION)"
+ldflags="-s -w -buildid= -X main.version=$version"
 flags=(-trimpath -buildvcs=false "-ldflags=$ldflags")
 export CGO_ENABLED=0
 

@@ -1,43 +1,73 @@
 name: Release
 
-# Runs when a version tag such as v0.1.0 is pushed.
+# Publishes a release whenever the VERSION file changes on main.
+# To release: change VERSION (for example 0.2.0), commit, and push or merge to main.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # create the GitHub release
+      contents: write      # create the tag and the GitHub release
       id-token: write      # sign the build provenance
-      attestations: write # store the provenance on GitHub
+      attestations: write  # store the provenance on GitHub
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Read the version and make sure it is new
+        id: v
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "VERSION must look like 1.2.3, got '$version'"; exit 1; }
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already released; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.v.outputs.skip != 'true'
         with:
-          # newest supported Go, so builds get the latest security fixes
           go-version: "1.26.x"
           check-latest: true
       - name: Test before releasing
+        if: steps.v.outputs.skip != 'true'
         run: go test -race ./...
-      - name: Build binaries, website and SHA256SUMS
+      - name: Build binaries, website, editor extension and SHA256SUMS
+        if: steps.v.outputs.skip != 'true'
         run: ./scripts/build.sh
       - name: Sign build provenance for every file
+        if: steps.v.outputs.skip != 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: "dist/*"
       - name: Publish the release
+        if: steps.v.outputs.skip != 'true'
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Laser Feet ${{ steps.v.outputs.tag }}
           files: dist/*
           body: |
-            Verify your download before running it:
+            Install with one line (the installer checks the SHA-256 checksum for you):
+
+                curl -fsSL https://billionairedev24.github.io/laserfeet/install.sh | sh        # Mac / Linux
+                irm https://billionairedev24.github.io/laserfeet/install.ps1 | iex             # Windows
+
+            Or verify a manual download yourself:
 
                 sha256sum --check --ignore-missing SHA256SUMS
                 gh attestation verify <file> --repo ${{ github.repository }}

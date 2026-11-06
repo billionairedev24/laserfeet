@@ -67,7 +67,7 @@ The website source is `site/template.html`. `scripts/build.sh` turns it into `si
 
 ## Releases and security
 
-Pushing a tag such as `v0.1.0` runs the release workflow, which publishes the binaries with checksums and signed build provenance. See [SECURITY.md](SECURITY.md) for how to verify a download and how to report a problem.
+Changing the `VERSION` file on `main` runs the release workflow, which tags the version and publishes the binaries with checksums and signed build provenance. See [SECURITY.md](SECURITY.md) for how to verify a download and how to report a problem.
 
 ## Layout
 
