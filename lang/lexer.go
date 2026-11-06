@@ -32,7 +32,7 @@ var keywords = map[string]bool{
 	"then": true, "fast": true, "attempt": true, "fails": true, "fail": true,
 	"use": true, "test": true, "expect": true, "is": true, "not": true,
 	"and": true, "or": true, "yes": true, "no": true, "nothing": true,
-	"me": true, "stop": true, "skip": true, "to": true, "gives": true,
+	"me": true, "stop": true, "skip": true, "to": true, "gives": true, "wait": true,
 }
 
 // Placeholders for escaped braces inside text, so they are not treated as {interpolation}.

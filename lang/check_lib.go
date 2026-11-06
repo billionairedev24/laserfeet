@@ -20,7 +20,7 @@ func builtinType(name string) *Type {
 
 func libraryModule(name string) *Type {
 	members := map[string][]string{
-		"web":   {"open", "json", "status", "page", "escape"},
+		"web":   {"open", "json", "status", "page", "escape", "fetch"},
 		"json":  {"read", "write", "pretty"},
 		"files": {"read", "write", "exists", "list"},
 		"time":  {"now", "today", "seconds"},
@@ -273,6 +273,14 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 	case "web.status":
 		if c.argCount(line, n, a, 1, 2) {
 			c.need(line, a[0], tInt, "the status code")
+		}
+		return lib("Response")
+	case "web.fetch":
+		if c.argCount(line, n, a, 1, 3) {
+			c.need(line, a[0], tText, "the address")
+			if len(a) >= 2 {
+				c.need(line, a[1], tText, "the method")
+			}
 		}
 		return lib("Response")
 	case "web.escape":

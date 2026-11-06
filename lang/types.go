@@ -138,6 +138,9 @@ func (t *Type) name() string {
 		s = t.Rule.Name
 	case KLibrary, KModule:
 		s = t.Name
+		if t.Name == "Job" && t.Elem != nil {
+			s = "Job[" + t.Elem.name() + "]"
+		}
 	case KUnknown:
 		s = "a value"
 	case KClassRef:

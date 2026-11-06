@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -121,3 +122,35 @@ func startServer(in *Interp, s *Server, line int) {
 
 // filesAvailable says whether this platform can save files.
 const filesAvailable = true
+
+// fetchClient has firm limits so a slow or huge reply can't hang or flood a program.
+var fetchClient = &http.Client{Timeout: 30 * time.Second}
+
+const maxFetchBytes = 10 << 20 // 10 MB
+
+func fetchURL(method, rawURL, body string) (*Response, error) {
+	if !strings.HasPrefix(rawURL, "https://") && !strings.HasPrefix(rawURL, "http://") {
+		return nil, errors.New("only http:// and https:// addresses can be fetched")
+	}
+	req, err := http.NewRequest(method, rawURL, strings.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "LaserFeet/1 (+https://github.com/billionairedev24/laserfeet)")
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := fetchClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxFetchBytes {
+		return nil, errors.New("the reply is bigger than 10 MB")
+	}
+	return &Response{Status: resp.StatusCode, Body: string(data), ContentType: resp.Header.Get("Content-Type")}, nil
+}

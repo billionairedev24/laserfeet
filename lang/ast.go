@@ -90,6 +90,30 @@ type Sig struct {
 	result   *Type
 }
 
+// FastExpr starts work at the same time as the rest of the program: job = fast f()
+type FastExpr struct {
+	Line int
+	X    Expr
+}
+
+// FastEach runs its block for every item at the same time and collects what each sends.
+type FastEach struct {
+	Line int
+	Var  string
+	Over Expr
+	Body []Stmt
+}
+
+// WaitExpr waits for a job's result: wait job, or wait job for 5 seconds.
+type WaitExpr struct {
+	Line    int
+	X       Expr
+	Timeout Expr
+}
+
+func (e *FastExpr) Ln() int   { return e.Line }
+func (e *FastEach) Ln() int   { return e.Line }
+func (e *WaitExpr) Ln() int   { return e.Line }
 func (e *NumberLit) Ln() int  { return e.Line }
 func (e *TextLit) Ln() int    { return e.Line }
 func (e *InterpText) Ln() int { return e.Line }

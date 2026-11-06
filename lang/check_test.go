@@ -57,6 +57,14 @@ func TestCheckCatchesMistakes(t *testing.T) {
 			"Add 'use web' at the top of the file"},
 		{"misspelled route parameter", "use web\nserver = web.open(8080)\nserver.get(\"/u/:id\") {\n    send request.params.ids\n}",
 			"line 4: the path /u/:id has no :ids, so request.params.ids is never set. Did you mean 'id'?"},
+		{"fast work changing an outside value", "total = 0\nresults = fast each n in [1, 2] {\n    total = total + n\n}",
+			"line 3: fast work can't change 'total'"},
+		{"fast work adding to an outside list", "seen: List[Int] = []\nr = fast each n in [1, 2] {\n    seen.add(n)\n}",
+			"line 3: fast work can't change 'seen'"},
+		{"waiting on something that isn't a job", "x = 5\nshow wait x",
+			"line 2: 'wait' needs a job started with fast, but this is Int"},
+		{"job result has the right type", "beam f() gives Int {\n    send 1\n}\nj = fast f()\nt: Text = wait j",
+			"line 5: 't' must be Text, but this is Int"},
 		{"findFirst may find nothing", "object U {\n    name: Text\n}\nus = [U(\"a\")]\nshow (us then findFirst(name is \"b\")).name",
 			"line 5: this might be nothing here, so it has no 'name'"},
 	}
@@ -80,6 +88,8 @@ func TestCheckAcceptsGoodCode(t *testing.T) {
 		"every path sends":               "beam sign(n: Int) gives Text {\n    when n > 0 {\n        send \"+\"\n    } otherwise {\n        send \"-\"\n    }\n}",
 		"decimal division":               "beam avg(a: Int, b: Int) gives Decimal {\n    send (a + b) / 2\n}",
 		"optional field nothing default": "object P {\n    nick: Text? = nothing\n}\nshow P()",
+		"fast each collects results": "beam sq(n: Int) gives Int {\n    send n * n\n}\nsquares = fast each n in [1, 2, 3] {\n    send sq(n)\n}\ntotal: Int = sum(squares)",
+		"fast work reads outside values": "rate = 2\nr = fast each n in [1, 2] {\n    local = n * rate\n    send local\n}",
 		"web routes":                     "use web\nserver = web.open(8080)\nserver.get(\"/u/:id\") {\n    id = int(request.params.id)\n    send {id: id}\n}",
 	}
 	for name, src := range cases {

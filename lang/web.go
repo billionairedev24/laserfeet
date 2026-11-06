@@ -78,6 +78,30 @@ func webModule() *Module {
 			}
 			return r
 		}),
+		"fetch": builtin("fetch", func(in *Interp, line int, a []Value) Value {
+			if len(a) < 1 || len(a) > 3 {
+				in.fail(line, "web.fetch needs an address, and optionally a method and a body, like web.fetch(\"https://example.com\")")
+			}
+			method, body := "GET", ""
+			if len(a) >= 2 {
+				method = strings.ToUpper(Text(a[1]))
+			}
+			if len(a) == 3 {
+				if t, ok := a[2].(string); ok {
+					body = t
+				} else {
+					body = toJSON(a[2])
+				}
+			}
+			// waiting for the network lets other fast work run meanwhile
+			in.gil.Unlock()
+			r, err := fetchURL(method, Text(a[0]), body)
+			in.gil.Lock()
+			if err != nil {
+				in.fail(line, "web.fetch %s: %v", Text(a[0]), err)
+			}
+			return r
+		}),
 		"escape": builtin("escape", func(in *Interp, line int, a []Value) Value {
 			wantArgs(in, line, "web.escape", a, 1)
 			return html.EscapeString(Text(a[0]))

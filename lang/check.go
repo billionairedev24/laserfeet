@@ -41,6 +41,27 @@ type cscope struct {
 	obj    *Class // inside an object's beam: its fields and beams are visible
 	scope  bool   // a beam, launch, test or file: new names land here
 	open   bool   // a rule about Json items: any field name may be used
+	fast   bool   // the edge of fast work: outside values can be read here, never changed
+}
+
+// fromFastWork reports whether name lives outside the fast work that sc is inside.
+func (s *cscope) fromFastWork(name string) bool {
+	crossed := false
+	for c := s; c != nil; c = c.parent {
+		if _, ok := c.vars[name]; ok {
+			return crossed
+		}
+		if c.fast {
+			crossed = true
+		}
+	}
+	return false
+}
+
+func (c *checker) noChange(line int, sc *cscope, name string) {
+	if sc.fromFastWork(name) {
+		c.report(line, "fast work can't change '%s', because other work may be using it at the same time. Send a result instead, and collect it with wait or fast each", name)
+	}
 }
 
 func (s *cscope) find(name string) (*cvar, *cscope) {
@@ -536,7 +557,7 @@ func (c *checker) stmt(s Stmt, sc *cscope) {
 		c.merge(inner, sc)
 	case *StopStmt, *SkipStmt:
 	case *FastStmt:
-		inner := &cscope{vars: map[string]*cvar{}, parent: sc}
+		inner := &cscope{vars: map[string]*cvar{}, parent: sc, fast: true, scope: true}
 		c.block(s.Body, inner)
 	case *AttemptStmt:
 		inner := &cscope{vars: map[string]*cvar{}, parent: sc}
@@ -618,13 +639,20 @@ func (c *checker) assign(s *AssignStmt, sc *cscope) {
 			c.report(s.Line, "'%s' is locked, so it can't be changed", t.Name)
 			return
 		}
+		c.noChange(s.Line, sc, t.Name)
 		c.assignable(s.Line, vt, existing.t, "'"+t.Name+"'")
 	case *Get:
+		if id, ok := t.Object.(*Ident); ok {
+			c.noChange(s.Line, sc, id.Name)
+		}
 		obj := c.expr(t.Object, sc, nil)
 		ft := c.member(t.Line, obj, t.Name, true)
 		vt := c.expr(s.Value, sc, ft)
 		c.assignable(s.Line, vt, ft, t.Name)
 	case *Index:
+		if id, ok := t.Object.(*Ident); ok {
+			c.noChange(s.Line, sc, id.Name)
+		}
 		obj := c.expr(t.Object, sc, nil)
 		key := c.expr(t.Key, sc, nil)
 		vt := c.expr(s.Value, sc, nil)
@@ -862,6 +890,52 @@ func (c *checker) expr1(e Expr, sc *cscope, want *Type) *Type {
 		}
 		c.report(x.Line, "I can't use [ ] on %s", obj.name())
 		return tUnknown
+	case *FastExpr:
+		inner := &cscope{vars: map[string]*cvar{}, parent: sc, fast: true}
+		t := c.expr(x.X, inner, nil)
+		return &Type{Kind: KLibrary, Name: "Job", Elem: c.settleLit(t)}
+	case *WaitExpr:
+		j := c.expr(x.X, sc, nil)
+		if x.Timeout != nil {
+			c.numberArg(x.Line, c.expr(x.Timeout, sc, nil), "the time limit")
+		}
+		if j.Kind == KJson || j.Kind == KUnknown {
+			return tJson
+		}
+		if j.Kind != KLibrary || j.Name != "Job" {
+			c.report(x.Line, "'wait' needs a job started with fast, but this is %s", j.name())
+			return tUnknown
+		}
+		if j.Elem == nil {
+			return tNothing
+		}
+		return j.Elem
+	case *FastEach:
+		over := c.expr(x.Over, sc, nil)
+		item := tUnknown
+		switch {
+		case over.Kind == KList:
+			item = over.Elem
+		case over.Kind == KJson || over.Kind == KUnknown:
+			item = tJson
+		default:
+			c.report(x.Line, "'fast each' needs a list, but this is %s", over.name())
+		}
+		inner := &cscope{vars: map[string]*cvar{x.Var: {t: item}}, parent: sc, fast: true, scope: true}
+		c.note(x.Line, x.Var, item)
+		saved := c.beam
+		ctx := &beamCtx{name: "fast each", infer: true}
+		c.beam = ctx
+		c.block(x.Body, inner)
+		c.beam = saved
+		if ctx.sent == nil {
+			return listOf(tNothing)
+		}
+		if alwaysExits(x.Body) {
+			return listOf(c.settleLit(ctx.sent))
+		}
+		// an item that doesn't send gives nothing in its place
+		return listOf(opt(c.settleLit(ctx.sent)))
 	case *Lambda:
 		return c.lambda(x, sc, want, nil)
 	case *Call:
@@ -1202,6 +1276,11 @@ func (c *checker) lambda(x *Lambda, sc *cscope, want *Type, implicit map[string]
 }
 
 func (c *checker) call(x *Call, sc *cscope, first *Type, hasFirst bool) *Type {
+	if g, ok := x.Callee.(*Get); ok && (g.Name == "add" || g.Name == "remove") {
+		if id, ok := g.Object.(*Ident); ok {
+			c.noChange(x.Line, sc, id.Name)
+		}
+	}
 	if hasFirst {
 		return c.callWith(x, sc, first)
 	}

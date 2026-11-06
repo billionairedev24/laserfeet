@@ -229,12 +229,11 @@ func (p *parser) statement() Stmt {
 			p.next()
 			return &SkipStmt{t.Line}
 		case "fast":
-			p.next()
-			if p.isSym("{") {
+			if p.toks[p.pos+1].Type == SYMBOL && p.toks[p.pos+1].Text == "{" {
+				p.next()
 				return &FastStmt{t.Line, p.block("the fast block")}
 			}
-			x := p.expr()
-			return &FastStmt{t.Line, []Stmt{&ExprStmt{x.Ln(), x}}}
+			// fast work() and fast each ... are expressions; used alone they just run
 		case "attempt":
 			p.next()
 			body := p.block("the attempt block")
@@ -546,6 +545,37 @@ func (p *parser) unary() Expr {
 	if p.isSym("-") {
 		t := p.next()
 		return &Unary{t.Line, "-", p.unary()}
+	}
+	if p.isKw("fast") {
+		t := p.next()
+		if p.acceptKw("each") {
+			v := p.expectIdent("a name for each item, like 'fast each url in urls'")
+			if !p.acceptKw("in") {
+				p.fail(v.Line, "I expected 'in' after 'fast each %s'", v.Text)
+			}
+			p.noTrail++
+			over := p.or()
+			p.noTrail--
+			saved := p.noTrail
+			p.noTrail = 0
+			body := p.block("the fast each block")
+			p.noTrail = saved
+			return &FastEach{Line: t.Line, Var: v.Text, Over: over, Body: body}
+		}
+		return &FastExpr{Line: t.Line, X: p.unary()}
+	}
+	if p.isKw("wait") {
+		t := p.next()
+		w := &WaitExpr{Line: t.Line, X: p.postfix()}
+		if p.peek().Type == IDENT && p.peek().Text == "for" {
+			p.next()
+			w.Timeout = p.additive()
+			if !(p.peek().Type == IDENT && (p.peek().Text == "seconds" || p.peek().Text == "second")) {
+				p.fail(t.Line, "write the time limit in seconds, like: wait job for 5 seconds")
+			}
+			p.next()
+		}
+		return w
 	}
 	return p.postfix()
 }

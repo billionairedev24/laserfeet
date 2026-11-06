@@ -31,3 +31,7 @@ func startServer(in *Interp, s *Server, line int) {
 
 // filesAvailable is false in the browser: stores keep their data in memory.
 const filesAvailable = false
+
+func fetchURL(method, rawURL, body string) (*Response, error) {
+	return nil, errors.New("web.fetch can't be used in the browser playground (try it with lf run on your computer)")
+}

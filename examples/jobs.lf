@@ -1,0 +1,41 @@
+-- Doing several things at the same time with fast, wait and fast each
+
+beam slowSquare(n: Int) gives Int {
+    pause(0.1)
+    send n * n
+}
+
+beam brew(drink: Text) gives Text {
+    pause(0.2)
+    send "{drink} is ready"
+}
+
+launch {
+    -- start two jobs, then wait for their results
+    tea = fast brew("Tea")
+    coffee = fast brew("Coffee")
+    show wait tea
+    show wait coffee
+
+    -- run one piece of work per item and collect the results, in order
+    squares = fast each n in 1 to 8 {
+        send slowSquare(n)
+    }
+    show squares
+
+    -- problems in fast work show up at wait, where attempt can catch them
+    risky = fast slowSquare(int("not a number"))
+    attempt {
+        show wait risky
+    } fails problem {
+        show "Caught: {problem}"
+    }
+
+    -- a time limit, so nothing waits forever
+    slow = fast brew("Soup")
+    attempt {
+        show wait slow for 0.05 seconds
+    } fails problem {
+        show "Gave up: {problem}"
+    }
+}

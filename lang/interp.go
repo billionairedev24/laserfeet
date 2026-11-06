@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // RuntimeError is a problem that happens while the program runs.
@@ -686,6 +687,25 @@ func (in *Interp) eval(x Expr, env *Env) Value {
 			return l.Items[in.listIndex(x.Line, l, key)]
 		}
 		in.fail(x.Line, "I can't use [ ] on %s", typeName(obj))
+	case *FastExpr:
+		return in.startJob(x.Line, func() Value { return in.eval(x.X, env) })
+	case *FastEach:
+		return in.fastEach(x, env)
+	case *WaitExpr:
+		v := in.eval(x.X, env)
+		j, ok := v.(*Job)
+		if !ok {
+			in.fail(x.Line, "'wait' needs a job started with fast, but got %s", typeName(v))
+		}
+		var limit time.Duration
+		if x.Timeout != nil {
+			secs := floatOf(in, x.Line, "the time limit", in.eval(x.Timeout, env))
+			if secs <= 0 {
+				in.fail(x.Line, "the time limit must be more than 0 seconds")
+			}
+			limit = time.Duration(secs * float64(time.Second))
+		}
+		return in.waitJob(x.Line, j, limit)
 	case *Lambda:
 		return &Beam{Params: x.Params, Sig: x.Sig, Body: x.Body, Expr: x.Expr, Closure: env}
 	case *Call:
