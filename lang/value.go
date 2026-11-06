@@ -120,6 +120,8 @@ func typeName(v Value) string {
 		return "a store"
 	case *Job:
 		return "a job"
+	case *Database:
+		return "a database"
 	}
 	return "a value"
 }
@@ -184,6 +186,8 @@ func toText(v Value, quote bool) string {
 		return fmt.Sprintf("<web server on port %d>", x.Port)
 	case *Job:
 		return "<job>"
+	case *Database:
+		return "<database>"
 	case *Store:
 		if x.path == "" {
 			return "<store in memory>"

@@ -100,7 +100,7 @@ var simpleTypes = map[string]*Type{
 	"Int": tInt, "Float": tFloat, "Decimal": tDecimal, "Text": tText, "Flag": tFlag, "Json": tJson, "Nothing": tNothing,
 }
 
-var libraryTypes = map[string]bool{"Server": true, "Response": true, "Store": true, "Request": true}
+var libraryTypes = map[string]bool{"Server": true, "Response": true, "Store": true, "Request": true, "Database": true}
 
 // Describe is how a type reads in messages.
 func (t *Type) Describe() string {
@@ -313,6 +313,9 @@ func conform(v Value, t *Type) (Value, bool) {
 			return v, ok
 		case "Request":
 			_, ok := v.(*Map)
+			return v, ok
+		case "Database":
+			_, ok := v.(*Database)
 			return v, ok
 		}
 	case KNothing:

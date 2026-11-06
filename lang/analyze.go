@@ -153,6 +153,11 @@ func MembersOf(t *Type) []Member {
 			for _, n := range []string{"add", "all", "find", "update", "remove", "count"} {
 				add(n, "", true)
 			}
+		case "Database":
+			add("query", "(sql: Text, values: List) gives List[Json]", true)
+			add("first", "(sql: Text, values: List) gives Json?", true)
+			add("run", "(sql: Text, values: List) gives Int", true)
+			add("transaction", "() { ... } with tx", true)
 		case "Response":
 			add("status", "Int", false)
 			add("body", "Text", false)

@@ -708,7 +708,7 @@ func (p *parser) primary() Expr {
 					break
 				}
 				k := p.next()
-				if k.Type != STRING && k.Type != IDENT {
+				if k.Type != STRING && k.Type != IDENT && k.Type != KEYWORD { // keywords are fine as names in a map
 					p.fail(k.Line, "each entry in a { } map needs a name, like {name: \"Ada\"}")
 				}
 				p.expectSym(":", "after the entry name")

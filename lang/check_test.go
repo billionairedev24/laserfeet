@@ -90,6 +90,7 @@ func TestCheckAcceptsGoodCode(t *testing.T) {
 		"optional field nothing default": "object P {\n    nick: Text? = nothing\n}\nshow P()",
 		"fast each collects results":     "beam sq(n: Int) gives Int {\n    send n * n\n}\nsquares = fast each n in [1, 2, 3] {\n    send sq(n)\n}\ntotal: Int = sum(squares)",
 		"fast work reads outside values": "rate = 2\nr = fast each n in [1, 2] {\n    local = n * rate\n    send local\n}",
+		"multi-line text":                "sql = \"\"\"\n    select *\n    from things\n\"\"\"\nshow sql.size()",
 		"web routes":                     "use web\nserver = web.open(8080)\nserver.get(\"/u/:id\") {\n    id = int(request.params.id)\n    send {id: id}\n}",
 	}
 	for name, src := range cases {

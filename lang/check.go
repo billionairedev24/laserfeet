@@ -370,7 +370,7 @@ func (c *checker) use(u *UseStmt, top *cscope) {
 	if u.Path == "" {
 		m := libraryModule(u.Name)
 		if m == nil {
-			c.report(u.Line, "there is no library called '%s' (available: web, json, files, time, store)", u.Name)
+			c.report(u.Line, "there is no library called '%s' (available: web, json, files, time, store, postgres)", u.Name)
 			return
 		}
 		top.vars[u.Name] = &cvar{t: m, locked: true}
@@ -810,6 +810,12 @@ func (c *checker) expr1(e Expr, sc *cscope, want *Type) *Type {
 		c.note(x.Line, x.Name, t)
 		return t
 	case *ListLit:
+		if want != nil && want.Kind == KJson {
+			for _, it := range x.Items {
+				c.expr(it, sc, tJson)
+			}
+			return tJson
+		}
 		if len(x.Items) == 0 {
 			if want != nil && want.Kind == KList {
 				return want
@@ -1297,8 +1303,13 @@ func (c *checker) call(x *Call, sc *cscope, first *Type, hasFirst bool) *Type {
 		var want *Type
 		if fn.Kind == KBeam && i < len(fn.Params) {
 			want = fn.Params[i]
+		} else if fn.Kind == KBuiltin {
+			want = builtinWant(fn.Name, i)
 		}
-		if lam, ok := a.Value.(*Lambda); ok && c.isRouteCall(x) {
+		if lam, ok := a.Value.(*Lambda); ok && isTransactionCall(x.Callee) && len(lam.Params) == 0 {
+			// db.transaction() { ... } runs its block with tx, the transaction
+			args = append(args, c.lambda(lam, sc, nil, map[string]*Type{"tx": lib("Database")}))
+		} else if lam, ok := a.Value.(*Lambda); ok && c.isRouteCall(x) {
 			saved, savedRoute, savedParams := c.inRoute, c.route, c.params
 			c.inRoute, c.route, c.params = true, "", nil
 			if len(x.Args) > 0 {
@@ -1347,6 +1358,8 @@ func (c *checker) callWith(x *Call, sc *cscope, first *Type) *Type {
 			var want *Type
 			if fn.Kind == KBeam && i+1 < len(fn.Params) {
 				want = fn.Params[i+1]
+			} else if fn.Kind == KBuiltin {
+				want = builtinWant(fn.Name, i+1)
 			}
 			args = append(args, c.expr(a.Value, sc, want))
 		}

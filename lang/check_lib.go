@@ -20,11 +20,12 @@ func builtinType(name string) *Type {
 
 func libraryModule(name string) *Type {
 	members := map[string][]string{
-		"web":   {"open", "json", "status", "page", "escape", "fetch"},
-		"json":  {"read", "write", "pretty"},
-		"files": {"read", "write", "exists", "list"},
-		"time":  {"now", "today", "seconds"},
-		"store": {"open", "memory"},
+		"web":      {"open", "json", "status", "page", "escape", "fetch"},
+		"json":     {"read", "write", "pretty"},
+		"files":    {"read", "write", "exists", "list"},
+		"time":     {"now", "today", "seconds"},
+		"store":    {"open", "memory"},
+		"postgres": {"open"},
 	}[name]
 	if members == nil {
 		return nil
@@ -41,6 +42,7 @@ var libraryMembers = map[string]bool{
 	"text.upper": true, "text.lower": true, "text.trim": true, "text.size": true, "text.has": true,
 	"text.startsWith": true, "text.split": true, "text.replace": true,
 	"server.get": true, "server.post": true, "server.on": true, "server.start": true, "server.visit": true, "server.routes": true,
+	"database.query": true, "database.first": true, "database.run": true, "database.transaction": true,
 	"store.add": true, "store.all": true, "store.find": true, "store.update": true, "store.remove": true, "store.count": true,
 }
 
@@ -326,6 +328,32 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 			c.need(line, a[0], tText, "the store's file name")
 		}
 		return lib("Store")
+	case "postgres.open":
+		if c.argCount(line, n, a, 1, 1) {
+			c.need(line, a[0], tText, "the database address")
+		}
+		return lib("Database")
+	case "database.query", "database.first", "database.run":
+		what := n[9:]
+		if c.argCount(line, what, a, 1, 2) {
+			c.need(line, a[0], tText, "the SQL")
+			if len(a) == 2 && a[1] != nil && a[1].Kind != KList && a[1].Kind != KJson && a[1].Kind != KUnknown {
+				c.report(line, "the values for db.%s must be a list, like [id, name]", what)
+			}
+		}
+		switch what {
+		case "query":
+			return listOf(tJson)
+		case "first":
+			return opt(tJson)
+		}
+		return tInt
+	case "database.transaction":
+		c.argCount(line, "transaction", a, 1, 1)
+		if len(a) == 1 && a[0] != nil && a[0].Kind == KBeam {
+			return resultOf(a[0])
+		}
+		return tNothing
 	case "store.memory":
 		c.argCount(line, n, a, 0, 0)
 		return lib("Store")
@@ -431,4 +459,20 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 		return &Type{Kind: KObject, Class: fn.Class}
 	}
 	return tUnknown
+}
+
+// builtinWant is the type a built-in expects for an input, where it matters for
+// checking what's written there (like a list of mixed SQL values).
+func builtinWant(name string, i int) *Type {
+	switch {
+	case i == 1 && (name == "database.query" || name == "database.first" || name == "database.run"):
+		return listOf(tJson)
+	case i == 1 && (name == "store.add" || name == "web.status"):
+		return tJson
+	case i == 2 && (name == "store.update" || name == "server.visit" || name == "web.fetch"):
+		return tJson
+	case i == 0 && (name == "web.json" || name == "json.write" || name == "json.pretty" || name == "text"):
+		return tJson
+	}
+	return nil
 }

@@ -465,7 +465,7 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 		}
 		m := loadModule(in, s.Name)
 		if m == nil {
-			in.fail(s.Line, "there is no library called '%s' (available: web, json, files, time, store)", s.Name)
+			in.fail(s.Line, "there is no library called '%s' (available: web, json, files, time, store, postgres)", s.Name)
 		}
 		env.define(s.Name, m, true)
 	case *ExpectStmt:
@@ -1043,6 +1043,10 @@ func (in *Interp) get(obj Value, name string, line int) Value {
 		}
 	case *Store:
 		if b := storeMethod(in, o, name); b != nil {
+			return b
+		}
+	case *Database:
+		if b := databaseMethod(in, o, name); b != nil {
 			return b
 		}
 	case *Response:

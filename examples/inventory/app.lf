@@ -1,0 +1,125 @@
+-- An inventory web API backed by PostgreSQL.
+--
+--   DATABASE_URL=postgres://user:password@localhost/shop lf run app.lf
+--   DATABASE_URL=... lf test app.lf
+
+use web
+use postgres
+
+object Product {
+    sku: Text
+    name: Text
+    price: Decimal
+    stock: Int = 0
+}
+
+db = postgres.open(env("DATABASE_URL", "postgres://postgres@localhost/postgres"))
+
+db.run("""
+    create table if not exists products (
+        sku   text primary key,
+        name  text not null,
+        price numeric(12, 2) not null check (price >= 0),
+        stock integer not null default 0 check (stock >= 0)
+    )
+""")
+
+server = web.open(int(env("PORT", "8080")))
+
+server.get("/products") {
+    send db.query("select sku, name, price, stock from products order by name")
+}
+
+server.get("/products/:sku") {
+    found = db.first("select sku, name, price, stock from products where sku = $1", [request.params.sku])
+    when found is nothing {
+        send web.status(404, {error: "no product with that sku"})
+    }
+    send found
+}
+
+server.post("/products") {
+    p = Product.from(request.json)     -- checks every field; a mismatch becomes a 400
+    db.run("insert into products (sku, name, price, stock) values ($1, $2, $3, $4)",
+        [p.sku, p.name, p.price, p.stock])
+    send web.status(201, p)
+}
+
+-- move stock between two products: both changes happen, or neither does
+beam transfer(source: Text, target: Text, amount: Int) {
+    db.transaction() {
+        taken = tx.run("update products set stock = stock - $1 where sku = $2", [amount, source])
+        when taken is 0 {
+            fail "no product {source}"
+        }
+        tx.run("update products set stock = stock + $1 where sku = $2", [amount, target])
+    }
+}
+
+server.post("/transfer") {
+    t = request.json
+    transfer(t.from, t.to, int(text(t.amount)))
+    send {ok: yes}
+}
+
+beam stockValue() gives Decimal {
+    row = db.first("select coalesce(sum(price * stock), 0) as total from products")
+    when row is nothing {
+        send 0
+    }
+    send decimal(text(row.total))
+}
+
+launch {
+    fast server.start()
+}
+
+-- ---------- tests (they use a fresh table) ----------
+
+beam fresh() {
+    db.run("truncate products")
+}
+
+test "adding and reading products" {
+    fresh()
+    added = server.visit("/products", "POST", {sku: "LAMP-1", name: "Desk lamp", price: 19.99, stock: 3})
+    expect added.status is 201
+    lamp = server.visit("/products/LAMP-1").json
+    expect lamp.name is "Desk lamp"
+    expect lamp.price is 19.99
+    expect server.visit("/products/NOPE").status is 404
+}
+
+test "bad input is refused with a clear message" {
+    fresh()
+    bad = server.visit("/products", "POST", {sku: "X", name: "Thing", price: "free"})
+    expect bad.status is 400
+    expect bad.json.error is "price must be Decimal, but got text"
+}
+
+test "SQL in values is just text" {
+    fresh()
+    server.visit("/products", "POST", {sku: "Z'; drop table products; --", name: "Sneaky", price: 1})
+    expect count(server.visit("/products").json) is 1
+}
+
+test "money stays exact" {
+    fresh()
+    server.visit("/products", "POST", {sku: "A", name: "A", price: 0.10, stock: 3})
+    server.visit("/products", "POST", {sku: "B", name: "B", price: 0.20, stock: 3})
+    expect stockValue() is 0.90
+}
+
+test "a failed transfer changes nothing" {
+    fresh()
+    server.visit("/products", "POST", {sku: "A", name: "A", price: 1, stock: 5})
+    server.visit("/products", "POST", {sku: "B", name: "B", price: 1, stock: 0})
+    transfer("A", "B", 2)
+    expect db.first("select stock from products where sku = 'B'").stock is 2
+    attempt {
+        transfer("A", "B", 10)      -- more than A has: the database refuses
+    } fails problem {
+    }
+    expect db.first("select stock from products where sku = 'A'").stock is 3
+    expect db.first("select stock from products where sku = 'B'").stock is 2
+}

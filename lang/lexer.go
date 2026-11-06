@@ -95,6 +95,37 @@ func Lex(src string, startLine int) ([]Token, error) {
 			} else {
 				emit(IDENT, word)
 			}
+		case c == '"' && i+2 < len(rs) && rs[i+1] == '"' && rs[i+2] == '"':
+			// multi-line text: """ ... """ (handy for SQL and longer messages)
+			startLine := line
+			i += 3
+			var sb strings.Builder
+			closed := false
+			for i < len(rs) {
+				if rs[i] == '"' && i+2 < len(rs) && rs[i+1] == '"' && rs[i+2] == '"' {
+					closed = true
+					i += 3
+					break
+				}
+				if rs[i] == '\n' {
+					line++
+				}
+				if rs[i] == '\\' && i+1 < len(rs) && (rs[i+1] == '{' || rs[i+1] == '}') {
+					if rs[i+1] == '{' {
+						sb.WriteRune(litOpen)
+					} else {
+						sb.WriteRune(litClose)
+					}
+					i += 2
+					continue
+				}
+				sb.WriteRune(rs[i])
+				i++
+			}
+			if !closed {
+				return nil, &SyntaxError{startLine, "this text starting with \"\"\" is missing its closing \"\"\""}
+			}
+			toks = append(toks, Token{STRING, sb.String(), startLine})
 		case c == '"':
 			startLine := line
 			i++

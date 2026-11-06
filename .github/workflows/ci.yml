@@ -25,7 +25,15 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - name: Vet
         run: go vet ./...
-      - name: Run all tests, including security tests, with the race detector
+      - name: Start PostgreSQL (installed on GitHub's runners) with a password login
+        run: |
+          sudo systemctl start postgresql.service
+          until pg_isready -h localhost; do sleep 1; done
+          sudo -u postgres psql -qc "create user laser with superuser password 'ci-only-password'"
+      - name: Run all tests, including security and PostgreSQL tests, with the race detector
+        env:
+          LF_TEST_DATABASE: postgres://laser:ci-only-password@127.0.0.1:5432/postgres
+          LF_TEST_DATABASE_TLS: postgres://laser:ci-only-password@localhost:5432/postgres
         run: go test -race ./...
       - name: Check memory budgets
         run: go test ./lang -run TestMemoryBudgets -v

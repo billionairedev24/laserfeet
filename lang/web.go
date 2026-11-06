@@ -40,6 +40,8 @@ func loadModule(in *Interp, name string) *Module {
 		return timeModule()
 	case "store":
 		return storeModule()
+	case "postgres":
+		return postgresModule()
 	}
 	return nil
 }
