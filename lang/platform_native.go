@@ -105,9 +105,7 @@ func newHandler(in *Interp, s *Server) http.Handler {
 		}
 		req.header["cookie"] = strings.Join(r.Header.Values("Cookie"), "; ")
 		req.header["host"] = r.Host
-		in.gil.Lock()
-		resp := s.handle(in, req)
-		in.gil.Unlock()
+		resp := s.serve(in, req)
 		secure := secureHost(req)
 		for _, h := range resp.Headers {
 			v := h[1]

@@ -41,24 +41,30 @@ type cscope struct {
 	scope  bool   // a beam, launch, test or file: new names land here
 	open   bool   // a rule about Json items: any field name may be used
 	fast   bool   // the edge of fast work: outside values can be read here, never changed
+	route  bool   // with fast: the edge is a web route, whose requests run at the same time
 }
 
-// fromFastWork reports whether name lives outside the fast work that sc is inside.
-func (s *cscope) fromFastWork(name string) bool {
-	crossed := false
+// fromFastWork reports whether name lives outside the fast work (or web
+// route) that sc is inside, and the edge it crosses.
+func (s *cscope) fromFastWork(name string) (bool, *cscope) {
+	var edge *cscope
 	for c := s; c != nil; c = c.parent {
 		if _, ok := c.vars[name]; ok {
-			return crossed
+			return edge != nil, edge
 		}
-		if c.fast {
-			crossed = true
+		if c.fast && edge == nil {
+			edge = c
 		}
 	}
-	return false
+	return false, nil
 }
 
 func (c *checker) noChange(line int, sc *cscope, name string) {
-	if sc.fromFastWork(name) {
+	if crossed, edge := sc.fromFastWork(name); crossed {
+		if edge.route {
+			c.report(line, "a web route can't change '%s', because requests run at the same time as each other. Keep data that requests share in a store or a database", name)
+			return
+		}
 		c.report(line, "fast work can't change '%s', because other work may be using it at the same time. Send a result instead, and collect it with wait or fast each", name)
 	}
 }
@@ -1502,7 +1508,9 @@ func (c *checker) lambda(x *Lambda, sc *cscope, want *Type, implicit map[string]
 func (c *checker) call(x *Call, sc *cscope, first *Type, hasFirst bool) *Type {
 	if g, ok := x.Callee.(*Get); ok && (g.Name == "add" || g.Name == "remove") {
 		if id, ok := g.Object.(*Ident); ok {
-			c.noChange(x.Line, sc, id.Name)
+			if v, _ := sc.find(id.Name); v != nil && v.t != nil && v.t.Kind == KList { // a store's add is safe
+				c.noChange(x.Line, sc, id.Name)
+			}
 		}
 	}
 	if hasFirst {
@@ -1546,7 +1554,8 @@ func (c *checker) call(x *Call, sc *cscope, first *Type, hasFirst bool) *Type {
 			}
 			savedBeam := c.beam
 			c.beam = nil
-			args = append(args, c.lambda(lam, sc, &Type{Kind: KBeam, Params: []*Type{lib("Request")}}, nil))
+			edge := &cscope{vars: map[string]*cvar{}, parent: sc, fast: true, route: true}
+			args = append(args, c.lambda(lam, edge, &Type{Kind: KBeam, Params: []*Type{lib("Request")}}, nil))
 			c.beam, c.inRoute, c.route, c.params, c.reqNamed, c.routeOpen = savedBeam, saved, savedRoute, savedParams, savedNamed, savedOpen
 		} else if fn.Kind == KBuiltin && lazyBuiltins[fn.Name] && i > 0 {
 			args = append(args, nil) // checked by the built-in itself, once per item

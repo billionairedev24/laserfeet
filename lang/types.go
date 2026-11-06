@@ -456,7 +456,7 @@ func (in *Interp) convertDeep(v Value, t *Type, where string) (Value, string) {
 // objectFrom builds an object from a map (usually JSON), checking every field.
 func (in *Interp) objectFrom(c *Class, m *Map, where string) (Value, string) {
 	in.classTypes(c)
-	inst := stampInstance(&Instance{Class: c, Slots: make([]Value, len(c.Fields))})
+	inst := in.newInstance(c)
 	for i, f := range c.Fields {
 		name := f.Name
 		if where != "" {

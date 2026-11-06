@@ -22,7 +22,7 @@ func (in *Interp) startJob(line int, work func() Value) *Job {
 	j := &Job{done: make(chan struct{})}
 	inRegion := in.parallel.Load() > 0
 	if inRegion {
-		in.regionJobs.Add(1)
+		in.regionJobStarted()
 	} else {
 		atomic.AddInt32(&in.fastLive, 1)
 	}
@@ -41,7 +41,7 @@ func (in *Interp) startJob(line int, work func() Value) *Job {
 			}
 			close(j.done)
 			if inRegion {
-				in.regionJobs.Done()
+				in.regionJobDone()
 			} else {
 				atomic.AddInt32(&in.fastLive, -1)
 				in.gil.Unlock()

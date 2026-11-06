@@ -279,7 +279,7 @@ func serverMethod(in *Interp, s *Server, name string) *Builtin {
 	case "visit":
 		// visit pretends to be a browser: handy for tests and the playground.
 		return builtin("visit", func(in *Interp, line int, a []Value) Value {
-			return s.handle(in, visitRequest(in, line, a))
+			return s.inRequest(in, visitRequest(in, line, a), false) // as a real request runs
 		})
 	case "routes":
 		return builtin("routes", func(in *Interp, line int, a []Value) Value {

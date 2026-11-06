@@ -1,0 +1,13 @@
+use web
+
+visits = 0
+server = web.open(8080)
+
+server.get("/") {
+    visits = visits + 1
+    send "hello"
+}
+
+launch {
+    show server.visit("/").body
+}

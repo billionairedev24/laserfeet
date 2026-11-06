@@ -71,6 +71,26 @@ func unsafeMethod(m string) bool {
 }
 
 // handle answers one request. The caller must hold the interpreter lock.
+// serve answers a real request. Requests run at the same time as each other,
+// on every core: each holds the engine's lock shared, inside a parallel
+// region, so like 'fast each' items they can't change values made before
+// they started (shared data lives in a store or a database). Code outside
+// requests (launch, fast work) takes the lock whole, so it runs between them.
+func (s *Server) serve(in *Interp, req *incoming) *Response {
+	in.gil.RLock()
+	defer in.gil.RUnlock()
+	return s.inRequest(in, req, true)
+}
+
+// inRequest runs one request inside a parallel region.
+func (s *Server) inRequest(in *Interp, req *incoming, wait bool) *Response {
+	in.serving.Add(1)
+	defer in.serving.Add(-1)
+	started := in.enterRegion()
+	defer in.leaveRegion(wait || started)
+	return s.handle(in, req)
+}
+
 func (s *Server) handle(in *Interp, req *incoming) *Response {
 	u, err := url.Parse(req.uri)
 	if err != nil {

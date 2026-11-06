@@ -79,14 +79,6 @@ type Instance struct {
 	Slots []Value
 }
 
-// stampInstance notes an object made inside a parallel region (see parallel.go).
-func stampInstance(o *Instance) *Instance {
-	if regionsActive.Load() > 0 {
-		regionMade.Store(o, struct{}{})
-	}
-	return o
-}
-
 func (o *Instance) field(name string) (Value, bool) {
 	if i, ok := o.Class.index[name]; ok {
 		return o.Slots[i], true

@@ -147,7 +147,7 @@ type Interp struct {
 	Out      io.Writer
 	MaxSteps int64 // 0 = unlimited (used by the browser playground)
 	globals  *Env
-	gil      sync.Mutex
+	gil      sync.RWMutex // code holds it to run; web requests share it (see parallel.go)
 	wg       sync.WaitGroup
 	fastLive int32
 	steps    int64
@@ -172,14 +172,15 @@ type Interp struct {
 	tests      []*TestStmt
 	// NoCompile runs everything on the tree-walking engine (for differential tests).
 	NoCompile   bool
-	turns       int64          // statements run while other work waits for a turn
-	typesMu     sync.Mutex     // fills the type caches of signatures and objects
-	parallel    atomic.Int32   // parallel regions running (fast each)
-	frames      frames         // call frames to use again
-	regionStart atomic.Int64   // when the outermost one began
-	regionJobs  sync.WaitGroup // fast work started inside a region
-	codes       sync.Map       // compiled beams, by declaration
-	exprCodes   sync.Map       // compiled per-item rules, by expression
+	turns       int64        // statements run while other work waits for a turn
+	typesMu     sync.Mutex   // fills the type caches of signatures and objects
+	parallel    atomic.Int32 // parallel regions running (fast each)
+	frames      frames       // call frames to use again
+	regionStart atomic.Int64 // when the outermost one began
+	region      regions      // bookkeeping for parallel regions
+	serving     atomic.Int32 // web requests being answered right now
+	codes       sync.Map     // compiled beams, by declaration
+	exprCodes   sync.Map     // compiled per-item rules, by expression
 	outMu       sync.Mutex
 }
 
@@ -990,7 +991,7 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		}
 		return v
 	case *Class:
-		inst := newInstance(f)
+		inst := in.newInstance(f)
 		var givenBuf [8]bool
 		given := givenBuf[:0]
 		if len(f.Fields) <= len(givenBuf) {
@@ -1250,17 +1251,38 @@ type instance4 struct {
 	slots [4]Value
 }
 
-func newInstance(c *Class) *Instance {
+func (in *Interp) newInstance(c *Class) *Instance {
 	n := len(c.Fields)
+	if st := in.region.stamp.Load(); st != nil {
+		// made inside a parallel region: one spare slot carries the region's stamp
+		var s []Value
+		switch {
+		case n < 2:
+			x := new(instance2)
+			x.Class, s = c, x.slots[:]
+			x.Instance.Slots = s[: n : n+1]
+			s[n] = st
+			return &x.Instance
+		case n < 4:
+			x := new(instance4)
+			x.Class, s = c, x.slots[:]
+			x.Instance.Slots = s[: n : n+1]
+			s[n] = st
+			return &x.Instance
+		}
+		s = make([]Value, n+1)
+		s[n] = st
+		return &Instance{Class: c, Slots: s[: n : n+1]}
+	}
 	switch {
 	case n <= 2:
 		x := new(instance2)
-		x.Class, x.Slots = c, x.slots[:n]
-		return stampInstance(&x.Instance)
+		x.Class, x.Slots = c, x.slots[:n:n]
+		return &x.Instance
 	case n <= 4:
 		x := new(instance4)
-		x.Class, x.Slots = c, x.slots[:n]
-		return stampInstance(&x.Instance)
+		x.Class, x.Slots = c, x.slots[:n:n]
+		return &x.Instance
 	}
-	return stampInstance(&Instance{Class: c, Slots: make([]Value, n)})
+	return &Instance{Class: c, Slots: make([]Value, n)}
 }

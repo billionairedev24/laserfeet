@@ -1,0 +1,60 @@
+-- Requests run at the same time as each other, so a request can't change
+-- values made outside it, even through a beam it calls (lf check catches
+-- direct changes). It can make and change its own, and keep shared data in a
+-- store.
+use web
+use store
+
+object Counter {
+    n: Int
+}
+
+seen: List[Text] = []
+hits = Counter(0)
+db = store.memory()
+server = web.open(8080)
+
+server.get("/own") {
+    mine: List[Int] = []
+    each i in 1 to 3 {
+        mine.add(i * i)
+    }
+    c = Counter(1)
+    c.n = c.n + 1
+    send {squares: mine, counted: c.n}
+}
+
+beam note(what: Text) {
+    seen.add(what)
+}
+
+beam hit() {
+    hits.n = hits.n + 1
+}
+
+server.get("/note/:what") as request {
+    note(request.params.what)
+    send "noted"
+}
+
+server.get("/hit") {
+    hit()
+    send "hit"
+}
+
+server.get("/shared/:what") as request {
+    db.add("notes", {what: request.params.what})
+    send db.count("notes")
+}
+
+launch {
+    show server.visit("/own").body
+    show server.visit("/note/a").status
+    show server.visit("/hit").status
+    show server.visit("/shared/a").body
+    show server.visit("/shared/b").body
+    seen.add("outside a request, launch may change it")
+    show seen
+    hits.n = 5
+    show hits.n
+}

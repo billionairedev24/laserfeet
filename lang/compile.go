@@ -670,7 +670,7 @@ func (in *Interp) compileCall(c *Call, first cexpr) cexpr {
 			return f.Fn(in, line, vals)
 		case *Class:
 			if !lazy && n == len(f.Fields) { // every field given in order: fill the object directly
-				inst := newInstance(f)
+				inst := in.newInstance(f)
 				k := 0
 				if hasFirst {
 					inst.Slots[0] = firstVal
