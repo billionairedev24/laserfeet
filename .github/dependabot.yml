@@ -1,0 +1,11 @@
+# Keeps the pinned action commits up to date with reviewed pull requests.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly

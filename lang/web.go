@@ -3,6 +3,7 @@ package lang
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/url"
 	"sort"
 	"strings"
@@ -53,6 +54,10 @@ func loadModule(in *Interp, name string) *Module {
 				r.Body = Text(a[1])
 			}
 			return r
+		}),
+		"escape": builtin("escape", func(in *Interp, line int, a []Value) Value {
+			wantArgs(in, line, "web.escape", a, 1)
+			return html.EscapeString(Text(a[0]))
 		}),
 		"page": builtin("page", func(in *Interp, line int, a []Value) Value {
 			wantArgs(in, line, "web.page", a, 1)
@@ -177,7 +182,8 @@ func (s *Server) run(in *Interp, r *route, req *Map) (resp *Response) {
 		if x := recover(); x != nil {
 			if re, ok := x.(*RuntimeError); ok {
 				in.print("Problem while handling " + r.pattern + ": " + re.Error())
-				resp = &Response{Status: 500, Body: "Something went wrong: " + re.Msg, ContentType: "text/plain; charset=utf-8"}
+				// details go to the server log only, never to the visitor
+				resp = &Response{Status: 500, Body: "Something went wrong", ContentType: "text/plain; charset=utf-8"}
 				return
 			}
 			panic(x)
@@ -193,11 +199,9 @@ func (s *Server) run(in *Interp, r *route, req *Map) (resp *Response) {
 	case *Response:
 		return v
 	case string:
-		ct := "text/plain; charset=utf-8"
-		if strings.HasPrefix(strings.TrimSpace(v), "<") {
-			ct = "text/html; charset=utf-8"
-		}
-		return &Response{Status: 200, Body: v, ContentType: ct}
+		// plain text is never treated as a web page, so visitor input can't inject HTML;
+		// use web.page(...) to send HTML on purpose.
+		return &Response{Status: 200, Body: v, ContentType: "text/plain; charset=utf-8"}
 	case nil:
 		return &Response{Status: 204}
 	default:

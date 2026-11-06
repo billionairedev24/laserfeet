@@ -522,7 +522,7 @@ launch {
     show server.visit("/missing").status
     fast server.start()
 }</lf-code>
-      <p>What a route sends decides the reply: text is sent as text (or as a web page if it starts with <code>&lt;</code>), lists, maps and objects become JSON, and <code>web.status(404, "Not found")</code> sends an error code. <code>server.visit</code> tries a route without a browser, which is useful in tests.</p>
+      <p>What a route sends decides the reply: text is always sent as plain text, so nothing a visitor types can turn into a web page; lists, maps and objects become JSON; <code>web.page(html)</code> sends HTML on purpose, with visitor input cleaned by <code>web.escape(x)</code>, and <code>web.status(404, "Not found")</code> sends an error code. <code>server.visit</code> tries a route without a browser, which is useful in tests.</p>
       <p class="note"><b>In the playground</b>, <code>start</code> lists your routes instead of opening a port. On your computer, <code>lf run app.lf</code> serves real pages at <code>http://localhost:8080</code>.</p>
 
       <h2 id="g10"><span class="num">Chapter 10</span>Testing</h2>
@@ -634,6 +634,8 @@ test "small orders pay full price" {
         <tr><td><code>request</code></td><td>Inside a route: <code>method</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>body</code></td></tr>
         <tr><td><code>web.status(code, text)</code></td><td>Reply with a status code</td></tr>
         <tr><td><code>web.json(x)</code> / <code>web.page(html)</code></td><td>Reply as JSON / as a web page</td></tr>
+        <tr><td><code>web.escape(x)</code></td><td>Make visitor input safe to put inside a web page</td></tr>
+        <tr><td>Built-in protection</td><td>Security headers, 1 MB body limit, timeouts, and errors that hide internal details from visitors</td></tr>
       </table></div>
 
       <h2 id="r6">The lf command</h2>
@@ -687,6 +689,7 @@ test "small orders pay full price" {
 <footer>
   <div class="wrap">
     <span>Laser Feet 0.1 · prototype interpreter written in Go</span>
+    <span>Engine SHA-256 <code id="engineHash"></code> · checked before every load</span>
     <span>Files end in <code>.lf</code></span>
   </div>
 </footer>
@@ -694,6 +697,7 @@ test "small orders pay full price" {
 <script>/*WASM_EXEC*/</script>
 <script>
 const EXAMPLES = /*EXAMPLES*/;
+const WASM_SHA256 = /*WASM_SHA256*/;
 const KW = new Set("launch show beam send lock object rule follows when otherwise each in loop while times then fast attempt fails fail use test expect is not and or yes no nothing me stop skip to".split(" "));
 const BI = new Set("text number count sum biggest smallest round first last reverse sort join keepIf dropIf turn sortBy findFirst pause readFile".split(" "));
 const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -822,9 +826,14 @@ heroRun.addEventListener("click", async () => {
   const setStatus = t => { document.getElementById("playStatus").textContent = t; document.getElementById("heroStatus").textContent = t; };
   try {
     const go = new Go();
-    const resp = await fetch("laserfeet.wasm");
+    const resp = await fetch("laserfeet.wasm", { cache: "no-cache" });
     if (!resp.ok) throw new Error("download failed (" + resp.status + ")");
-    const { instance } = await WebAssembly.instantiate(await resp.arrayBuffer(), go.importObject);
+    const bytes = await resp.arrayBuffer();
+    // Integrity check: only run the engine if its checksum matches the one this page was built with.
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    const got = btoa(String.fromCharCode(...digest));
+    if (got !== WASM_SHA256) throw new Error("the engine file failed its checksum check, so it was not run");
+    const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
     go.run(instance);
     ready = true;
     setStatus("engine ready");
@@ -836,5 +845,6 @@ heroRun.addEventListener("click", async () => {
   }
 })();
 
+document.getElementById("engineHash").textContent = WASM_SHA256.slice(0, 12) + "…";
 route();
 </script>

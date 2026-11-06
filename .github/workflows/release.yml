@@ -1,0 +1,43 @@
+name: Release
+
+# Runs when a version tag such as v0.1.0 is pushed.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the GitHub release
+      id-token: write      # sign the build provenance
+      attestations: write # store the provenance on GitHub
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Test before releasing
+        run: go test -race ./...
+      - name: Build binaries, website and SHA256SUMS
+        run: ./scripts/build.sh
+      - name: Sign build provenance for every file
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: "dist/*"
+      - name: Publish the release
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          files: dist/*
+          body: |
+            Verify your download before running it:
+
+                sha256sum --check --ignore-missing SHA256SUMS
+                gh attestation verify <file> --repo ${{ github.repository }}
+
+            See SECURITY.md for details.

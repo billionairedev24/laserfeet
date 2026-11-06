@@ -1,5 +1,5 @@
 """Builds index.html for the Laser Feet website from template.html and the examples folder."""
-import html, json, re, pathlib
+import base64, hashlib, html, json, re, pathlib
 
 here = pathlib.Path(__file__).parent
 ex = here.parent / "examples"
@@ -23,6 +23,9 @@ page = re.sub(r"<lf-code([^>]*)>(.*?)</lf-code>",
               lambda m: f'<pre class="lf"{m.group(1)}>{html.escape(m.group(2), quote=False)}</pre>',
               page, flags=re.S)
 page = page.replace("/*EXAMPLES*/", json.dumps(examples).replace("</", "<\\/"))
+# The page refuses to run the engine unless its SHA-256 matches this build.
+wasm_hash = base64.b64encode(hashlib.sha256((here / "laserfeet.wasm").read_bytes()).digest()).decode()
+page = page.replace("/*WASM_SHA256*/", json.dumps(wasm_hash))
 page = page.replace("/*WASM_EXEC*/", (here / "wasm_exec.js").read_text())
 (here / "index.html").write_text(page)
 print("built index.html", len(page), "bytes")

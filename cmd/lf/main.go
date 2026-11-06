@@ -9,9 +9,9 @@ import (
 	"laserfeet/lang"
 )
 
-const version = "0.1.0"
+var version = "0.1.0" // set by scripts/build.sh for releases
 
-const help = `Laser Feet ` + version + `
+var help = `Laser Feet ` + version + `
 
 Usage:
   lf run <file.lf>     run a program
