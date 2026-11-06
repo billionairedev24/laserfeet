@@ -1,7 +1,7 @@
 {
   "name": "laserfeet",
   "displayName": "Laser Feet",
-  "description": "Syntax highlighting, snippets and editing support for the Laser Feet programming language (.lf files).",
+  "description": "Live errors, autocomplete, hover types, syntax highlighting and snippets for the Laser Feet programming language (.lf files).",
   "version": "0.1.0",
   "publisher": "laserfeet",
   "license": "SEE LICENSE IN README.md",
@@ -14,14 +14,28 @@
   "engines": {
     "vscode": "^1.80.0"
   },
-  "categories": ["Programming Languages", "Snippets"],
-  "keywords": ["laserfeet", "laser feet", "lf"],
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Linters"
+  ],
+  "keywords": [
+    "laserfeet",
+    "laser feet",
+    "lf"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "laserfeet",
-        "aliases": ["Laser Feet", "laserfeet", "lf"],
-        "extensions": [".lf"],
+        "aliases": [
+          "Laser Feet",
+          "laserfeet",
+          "lf"
+        ],
+        "extensions": [
+          ".lf"
+        ],
         "configuration": "./language-configuration.json",
         "icon": {
           "light": "./icons/lf-file.svg",
@@ -41,6 +55,21 @@
         "language": "laserfeet",
         "path": "./snippets/laserfeet.json"
       }
-    ]
-  }
+    ],
+    "configuration": {
+      "title": "Laser Feet",
+      "properties": {
+        "laserfeet.path": {
+          "type": "string",
+          "default": "lf",
+          "scope": "machine",
+          "description": "The lf program used for live errors and autocomplete. Set this only if lf isn't on your PATH. For safety, only your user settings can change it, never a project's settings."
+        }
+      }
+    }
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:laserfeet"
+  ]
 }

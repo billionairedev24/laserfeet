@@ -19,6 +19,7 @@ Usage:
   lf run <file.lf>     run a program
   lf test <file.lf>    run the test blocks in a file
   lf check <file.lf>   find type mistakes without running anything
+  lf lsp               start the language server for editors (VS Code uses this)
   lf build <file.lf>   make a standalone program (add -o name to pick its name)
   lf version           show the version
   lf help              show this help
@@ -47,6 +48,8 @@ func main() {
 			os.Exit(2)
 		}
 		os.Exit(newProject(args[1]))
+	case "lsp":
+		os.Exit(runLSP(os.Stdin, os.Stdout))
 	case "check":
 		need(args)
 		if !checkFile(args[1]) {

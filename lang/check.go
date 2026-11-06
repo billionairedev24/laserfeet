@@ -81,6 +81,22 @@ type checker struct {
 	inRoute  bool
 	route    string   // the path of the route being checked, like /todos/:id
 	params   []string // its :names, which are always there when the route runs
+	info     *Analysis
+}
+
+// note records the type of a name on a line, for hover and autocomplete in editors.
+func (c *checker) note(line int, name string, t *Type) {
+	if c.info == nil || c.file != "" || t == nil {
+		return
+	}
+	m := c.info.Facts[line]
+	if m == nil {
+		m = map[string]*Type{}
+		c.info.Facts[line] = m
+	}
+	if _, ok := m[name]; !ok || t.Kind != KUnknown {
+		m[name] = t
+	}
 }
 
 // Check finds type mistakes in a program without running it. read loads other
@@ -394,7 +410,9 @@ func (c *checker) beamBody(name string, params []string, sig *Sig, body []Stmt, 
 	sc := &cscope{vars: map[string]*cvar{}, parent: parent, scope: true}
 	for i, p := range params {
 		sc.vars[p] = &cvar{t: bt.Params[i], declared: true}
+		c.note(line, p, bt.Params[i])
 	}
+	c.note(line, name, bt)
 	saved := c.beam
 	c.beam = &beamCtx{name: "beam " + name, result: bt.Result}
 	c.block(body, sc)
@@ -462,6 +480,11 @@ func (c *checker) stmt(s Stmt, sc *cscope) {
 		c.expr(s.X, sc, nil)
 	case *AssignStmt:
 		c.assign(s, sc)
+		if id, ok := s.Target.(*Ident); ok {
+			if v, _ := sc.find(id.Name); v != nil {
+				c.note(s.Line, id.Name, v.t)
+			}
+		}
 	case *SendStmt:
 		c.send(s, sc)
 	case *WhenStmt:
@@ -499,6 +522,7 @@ func (c *checker) stmt(s Stmt, sc *cscope) {
 			c.report(s.Line, "this list might be nothing here. Check it first with: when ... is nothing { ... }")
 		}
 		inner := &cscope{vars: map[string]*cvar{s.Var: {t: item}}, parent: sc}
+		c.note(s.Line, s.Var, item)
 		c.block(s.Body, inner)
 		c.merge(inner, sc)
 	case *LoopStmt:
@@ -749,7 +773,9 @@ func (c *checker) expr1(e Expr, sc *cscope, want *Type) *Type {
 		c.report(x.Line, "'me' only works inside an object's beam")
 		return tUnknown
 	case *Ident:
-		return c.ident(x, sc)
+		t := c.ident(x, sc)
+		c.note(x.Line, x.Name, t)
+		return t
 	case *ListLit:
 		if len(x.Items) == 0 {
 			if want != nil && want.Kind == KList {
@@ -812,7 +838,9 @@ func (c *checker) expr1(e Expr, sc *cscope, want *Type) *Type {
 		return c.binary(x, sc)
 	case *Get:
 		obj := c.expr(x.Object, sc, nil)
-		return c.member(x.Line, obj, x.Name, false)
+		t := c.member(x.Line, obj, x.Name, false)
+		c.note(x.Line, x.Name, t)
+		return t
 	case *Index:
 		obj := c.expr(x.Object, sc, nil)
 		key := c.expr(x.Key, sc, nil)

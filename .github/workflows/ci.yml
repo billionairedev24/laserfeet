@@ -36,6 +36,8 @@ jobs:
           node-version: "22"
       - name: Build everything
         run: ./scripts/build.sh
+      - name: Test the VS Code extension against the language server
+        run: LF=dist/lf-linux-amd64 node editors/vscode/test/extension.test.js
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: laserfeet-build
