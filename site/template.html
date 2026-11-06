@@ -1,182 +1,224 @@
 <title>Laser Feet</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Laser Feet is a programming language with plain English keywords, objects and beams side by side, and a secure web server built in.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=Martian+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: an optics bench. One laser line runs through the site; docs sit beside a sticky index, the playground is a two-pane instrument. */
+/* Layout: a darkened optics lab. A single 650 nm beam runs from an emitter along the hero rail into the code bench;
+   real laser wavelengths double as the syntax palette; safety-label yellow marks prototype status. */
 :root {
-  --bg: #f2f4f7;
-  --surface: #ffffff;
-  --ink: #131722;
-  --muted: #586172;
-  --line: #d8dde6;
-  --laser: #d92d20;
-  --laser-soft: #fde4e1;
-  --code-bg: #121723;
-  --code-fg: #e4e8f0;
-  --code-dim: #7f8aa0;
-  --code-key: #ff7b6e;
-  --code-str: #9fd8b1;
-  --code-num: #f2c46d;
-  --code-call: #8ec5ff;
-  --ok: #1d7a46;
-  --bad: #b42318;
-  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
-  --body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0f131c; --surface: #171c27; --ink: #e8ebf1; --muted: #9aa3b4; --line: #2a3140;
-    --laser: #ff5b4d; --laser-soft: #3a1c1c; --code-bg: #0a0e16; --ok: #5fd08f; --bad: #ff7b6e;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0f131c; --surface: #171c27; --ink: #e8ebf1; --muted: #9aa3b4; --line: #2a3140;
-  --laser: #ff5b4d; --laser-soft: #3a1c1c; --code-bg: #0a0e16; --ok: #5fd08f; --bad: #ff7b6e;
   color-scheme: dark;
+  --void: #05060a;
+  --panel: #0b0e15;
+  --panel-2: #10141e;
+  --line: #1b2130;
+  --line-bright: #2a3246;
+  --text: #e7eaf3;
+  --dim: #8d95a8;
+  --faint: #5b6377;
+  --l405: #9b7bff;   /* violet diode */
+  --l450: #4f8dff;   /* blue diode */
+  --l532: #44e46b;   /* green DPSS */
+  --l589: #ffb72e;   /* sodium amber */
+  --l650: #ff2e43;   /* red diode: the brand beam */
+  --beam-glow: rgba(255, 46, 67, .55);
+  --hazard: #ffc928;
+  --hazard-ink: #111111;
+  --display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --body: "Hanken Grotesk", "Segoe UI", system-ui, sans-serif;
+  --mono: "Martian Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
-body {
-  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-}
-body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
-a { color: var(--laser); }
-:focus-visible { outline: 2px solid var(--laser); outline-offset: 2px; }
-.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { background: var(--void); color: var(--text); font-family: var(--body); font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: rgba(5, 6, 10, .92); }
+a { color: var(--l650); text-underline-offset: 3px; }
+::selection { background: var(--l650); color: #fff; }
+:focus-visible { outline: 2px solid var(--l650); outline-offset: 2px; }
+.wrap { max-width: 1160px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 
-/* top bar */
-header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
-header.top .wrap { display: flex; align-items: center; gap: 20px; min-height: 58px; flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font-family: var(--display); font-weight: 900; font-size: 26px; letter-spacing: .02em; text-transform: uppercase; }
-.brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--laser); box-shadow: 0 0 0 4px var(--laser-soft); }
-nav.main { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
-nav.main a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: 15px; padding: 6px 10px; border-radius: 6px; }
-nav.main a:hover { color: var(--ink); }
-nav.main a[aria-current="page"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--laser); border-radius: 0; }
-@media (max-width: 640px) {
-  header.top .wrap { gap: 4px; padding-block: 8px; }
-  nav.main { margin-left: 0; width: 100%; overflow-x: auto; flex-wrap: nowrap; }
-  nav.main a { padding: 6px 8px; white-space: nowrap; }
+/* ---------- header ---------- */
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: rgba(5, 6, 10, .86); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+header.top::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: linear-gradient(90deg, transparent, var(--l650) 30%, var(--l650) 70%, transparent); opacity: .5; }
+header.top .wrap { display: flex; align-items: center; gap: 24px; min-height: 60px; }
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text); font-family: var(--display); font-weight: 700; font-size: 20px; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+.brand svg { flex: none; }
+nav.main { display: flex; gap: 2px; margin-left: auto; }
+nav.main a { color: var(--dim); text-decoration: none; font: 500 14px var(--mono); letter-spacing: .02em; padding: 8px 12px; position: relative; white-space: nowrap; }
+nav.main a:hover { color: var(--text); }
+nav.main a[aria-current="page"] { color: var(--text); }
+nav.main a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -11px; height: 2px; background: var(--l650); box-shadow: 0 0 10px var(--l650), 0 0 2px #fff; }
+.gh { color: var(--dim); display: inline-flex; padding: 6px; }
+.gh:hover { color: var(--text); }
+@media (max-width: 760px) {
+  header.top .wrap { flex-wrap: wrap; gap: 0; padding-block: 10px 0; min-height: 0; }
+  .gh { margin-left: auto; }
+  nav.main { order: 3; width: 100%; margin: 6px 0 0; overflow-x: auto; scrollbar-width: none; }
+  nav.main::-webkit-scrollbar { display: none; }
+  nav.main a { padding: 10px 10px 12px; font-size: 13px; }
+  nav.main a[aria-current="page"]::after { bottom: 0; left: 10px; right: 10px; }
 }
 
-/* type */
-h1, h2, h3 { font-family: var(--display); text-transform: uppercase; letter-spacing: .01em; line-height: 1.02; text-wrap: balance; margin: 0; }
-h1 { font-size: clamp(48px, 9vw, 104px); font-weight: 900; }
-h2 { font-size: clamp(32px, 5vw, 46px); font-weight: 800; }
-h3 { font-size: 24px; font-weight: 800; }
+/* ---------- type ---------- */
+h1, h2, h3 { font-family: var(--display); line-height: 1.04; text-wrap: balance; margin: 0; font-weight: 700; }
+h1 { font-size: clamp(46px, 7.4vw, 92px); letter-spacing: -.01em; text-transform: uppercase; }
+h2 { font-size: clamp(30px, 4.4vw, 46px); text-transform: uppercase; letter-spacing: .01em; }
+h3 { font-size: 21px; font-weight: 600; letter-spacing: .01em; }
 p { margin: 0; max-width: 66ch; }
-.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--laser); }
-.lede { font-size: 19px; color: var(--muted); max-width: 52ch; }
-code { font-family: var(--mono); font-size: .9em; background: var(--laser-soft); color: var(--ink); padding: 1px 5px; border-radius: 4px; }
+.lambda { font: 500 12px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--l650); display: inline-flex; gap: 10px; align-items: center; }
+.lambda::before { content: ""; width: 22px; height: 2px; background: currentColor; box-shadow: 0 0 8px currentColor; }
+.lede { font-size: 19px; color: var(--dim); max-width: 50ch; }
+code { font-family: var(--mono); font-size: .84em; background: var(--panel-2); border: 1px solid var(--line); color: var(--text); padding: 1px 6px; border-radius: 4px; }
 
-/* code blocks */
-pre.lf { position: relative; margin: 0; background: var(--code-bg); color: var(--code-fg); font-family: var(--mono); font-size: 14px; line-height: 1.65; padding: 16px 18px; border-radius: 10px; overflow-x: auto; min-width: 0; }
-pre.lf .k { color: var(--code-key); font-weight: 500; }
-pre.lf .s { color: var(--code-str); }
-pre.lf .n { color: var(--code-num); }
-pre.lf .c { color: var(--code-dim); font-style: italic; }
-pre.lf .b { color: var(--code-call); }
-pre.lf .t { color: #f7a8ff; }
-.try { position: absolute; top: 10px; right: 10px; font: 500 12px var(--mono); color: var(--code-fg); background: transparent; border: 1px solid #3a4458; border-radius: 6px; padding: 3px 9px; cursor: pointer; }
-.try:hover { border-color: var(--code-key); color: var(--code-key); }
-.out { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; font-family: var(--mono); font-size: 13.5px; white-space: pre-wrap; color: var(--ink); margin: 0; overflow-x: auto; }
-.out .err { color: var(--bad); }
-.out .pass { color: var(--ok); }
+/* hazard label: the real laser warning sticker, used for prototype status */
+.hazard { display: inline-flex; align-items: stretch; background: var(--hazard); color: var(--hazard-ink); font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; border: 2px solid var(--hazard-ink); box-shadow: 0 0 0 2px var(--hazard); border-radius: 3px; }
+.hazard span { padding: 4px 9px; display: flex; align-items: center; gap: 7px; }
+.hazard span + span { border-left: 2px solid var(--hazard-ink); }
 
-.btn { font: 600 15px var(--body); border-radius: 8px; padding: 10px 18px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
-.btn.primary { background: var(--laser); border-color: var(--laser); color: #fff; }
-.btn:disabled { opacity: .55; cursor: wait; }
+/* ---------- code ---------- */
+pre.lf { position: relative; margin: 0; background: var(--panel); border: 1px solid var(--line); color: var(--text); font-family: var(--mono); font-size: 13px; line-height: 1.75; padding: 16px 18px; border-radius: 8px; overflow-x: auto; min-width: 0; tab-size: 4; }
+.k { color: var(--l650); }
+.s { color: var(--l532); }
+.n { color: var(--l589); }
+.b { color: var(--l450); }
+.t { color: var(--l405); }
+.c { color: var(--faint); font-style: italic; }
+.try { position: absolute; top: 10px; right: 10px; font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); background: var(--panel-2); border: 1px solid var(--line-bright); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+.try:hover { color: #fff; border-color: var(--l650); box-shadow: 0 0 12px var(--beam-glow); }
+.out { background: #030407; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.75; white-space: pre-wrap; color: #c9cfdc; margin: 0; overflow-x: auto; }
+.out .err { color: #ff7a87; }
+.out .pass { color: var(--l532); }
 
-/* views */
-main > section[data-view] { padding-block: 40px 80px; }
+.btn { font: 600 14px var(--mono); letter-spacing: .04em; text-transform: uppercase; border-radius: 6px; padding: 12px 20px; cursor: pointer; border: 1px solid var(--line-bright); background: var(--panel-2); color: var(--text); text-decoration: none; display: inline-flex; align-items: center; gap: 10px; transition: box-shadow .2s, border-color .2s; }
+.btn:hover { border-color: var(--dim); }
+.btn.fire { background: var(--l650); border-color: var(--l650); color: #fff; box-shadow: 0 0 0 1px rgba(255,255,255,.08) inset, 0 0 24px var(--beam-glow); }
+.btn.fire:hover { box-shadow: 0 0 0 1px rgba(255,255,255,.2) inset, 0 0 36px var(--l650); }
+.btn:disabled { opacity: .5; cursor: wait; box-shadow: none; }
 
-/* home */
-.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding-block: 40px 24px; }
-.hero > * { min-width: 0; }
-.hero h1 span { color: var(--laser); }
-.hero .lede { margin-top: 20px; }
-.hero .actions { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
-.beam { position: relative; height: 2px; margin-block: 8px 40px; background: linear-gradient(90deg, var(--laser), var(--laser) 60%, transparent); box-shadow: 0 0 12px var(--laser); transform-origin: left; animation: fire 1.1s cubic-bezier(.2,.8,.2,1) both; }
-.beam::after { content: "650 nm · 299,792 km/s"; position: absolute; right: 0; top: 8px; font: 11px var(--mono); color: var(--muted); letter-spacing: .08em; }
-@keyframes fire { from { transform: scaleX(0.02); opacity: .6; } to { transform: scaleX(1); opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .beam { animation: none; } }
-.bench { display: grid; gap: 10px; }
-.bench .bar { display: flex; justify-content: space-between; align-items: center; font: 12px var(--mono); color: var(--muted); }
-@media (max-width: 860px) { .hero { grid-template-columns: 1fr; gap: 28px; } }
+main > section[data-view] { padding-block: 40px 96px; }
 
-.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 24px; }
-.features > div { background: var(--surface); padding: 24px; display: grid; gap: 10px; align-content: start; min-width: 0; }
-.features h3 { font-size: 22px; }
-.features p { color: var(--muted); font-size: 15px; }
-.features pre.lf { font-size: 13px; padding: 12px 14px; }
-@media (max-width: 860px) { .features { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 560px) { .features { grid-template-columns: 1fr; } }
+/* ---------- hero ---------- */
+.hero { position: relative; padding-block: 56px 72px; overflow: hidden; border-bottom: 1px solid var(--line); }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.hero .grid { position: relative; display: grid; grid-template-columns: 1.1fr 1fr; gap: 56px; align-items: center; }
+.hero .grid > * { min-width: 0; }
+.hero h1 { margin-top: 22px; }
+.hero h1 em { font-style: normal; color: var(--l650); text-shadow: 0 0 18px var(--beam-glow), 0 0 2px rgba(255,255,255,.6); }
+.hero .lede { margin-top: 22px; }
+.hero .actions { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+.specs { display: flex; gap: 28px; margin-top: 36px; flex-wrap: wrap; font: 12px var(--mono); color: var(--faint); letter-spacing: .04em; }
+.specs b { display: block; color: var(--text); font-weight: 500; font-size: 13px; }
+.bench { position: relative; background: rgba(11, 14, 21, .92); border: 1px solid var(--line-bright); border-radius: 10px; padding: 14px; display: grid; gap: 12px; transition: box-shadow .6s, border-color .6s; }
+.bench.lit { border-color: rgba(255, 46, 67, .55); box-shadow: 0 0 0 1px rgba(255,46,67,.15), 0 18px 60px -20px var(--beam-glow); }
+.bench .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; font: 11px var(--mono); color: var(--faint); letter-spacing: .06em; text-transform: uppercase; }
+.bench .bar .dots { display: flex; gap: 6px; }
+.bench .bar .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line-bright); }
+.bench .bar .dots i:first-child { background: var(--l650); box-shadow: 0 0 8px var(--l650); }
+.bench pre.lf { background: transparent; border: 0; padding: 4px 6px; }
+.bench .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.status { font: 11px var(--mono); color: var(--faint); letter-spacing: .04em; }
+.status.ready { color: var(--l532); }
+@media (max-width: 900px) { .hero .grid { grid-template-columns: 1fr; gap: 36px; } .hero { padding-block: 36px 64px; } }
 
-.split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; margin-top: 72px; }
-.split > * { min-width: 0; }
+/* ---------- sections ---------- */
+.sect { padding-block: 88px 0; display: grid; gap: 14px; }
+.sect > h2 + p { margin-top: 4px; }
+.beamline { height: 1px; margin-top: 88px; background: linear-gradient(90deg, transparent, var(--l650) 20%, var(--l650) 80%, transparent); box-shadow: 0 0 10px var(--l650); opacity: .7; }
+
+.modules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 28px; }
+.module { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px; display: grid; gap: 12px; align-content: start; position: relative; overflow: hidden; }
+.module::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; height: 1px; background: var(--wl, var(--l650)); box-shadow: 0 0 10px var(--wl, var(--l650)); opacity: .9; }
+.module .tag { font: 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--wl, var(--l650)); }
+.module p { color: var(--dim); font-size: 15px; }
+.module pre.lf { font-size: 12px; padding: 12px 14px; background: #07090e; }
+@media (max-width: 900px) { .modules { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .modules { grid-template-columns: 1fr; } }
+
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: start; }
 .split .text { display: grid; gap: 16px; }
-@media (max-width: 860px) { .split { grid-template-columns: 1fr; gap: 20px; } }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; gap: 24px; } }
 
-.road { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 0; border-left: 2px solid var(--line); }
-.road li { position: relative; padding: 0 0 26px 26px; display: grid; gap: 4px; }
-.road li::before { content: ""; position: absolute; left: -7px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 2px solid var(--line); }
-.road li.now::before { background: var(--laser); border-color: var(--laser); box-shadow: 0 0 0 4px var(--laser-soft); }
-.road .ver { font: 500 13px var(--mono); color: var(--muted); }
-.road li.now .ver { color: var(--laser); }
-.road strong { font-size: 17px; }
-.road p { color: var(--muted); font-size: 15px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: s; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 14px; align-items: start; }
+.steps li::before { content: counter(s); font: 600 14px var(--mono); color: var(--l650); border: 1px solid var(--line-bright); border-radius: 50%; width: 32px; height: 32px; display: grid; place-items: center; }
+.steps li > div { display: grid; gap: 8px; min-width: 0; padding-top: 4px; }
 
-/* docs */
-.docs { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
-.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 80px); align-self: start; display: grid; gap: 2px; font-size: 14px; }
-.toc a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-left: 2px solid var(--line); }
-.toc a:hover { color: var(--ink); border-left-color: var(--laser); }
-.toc .label { font: 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 0 10px 8px; }
+.spectrum { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 28px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.spectrum li { list-style: none; padding: 20px 18px 22px; background: var(--panel); border-left: 1px solid var(--line); display: grid; gap: 6px; align-content: start; position: relative; }
+.spectrum li:first-child { border-left: 0; }
+.spectrum li::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--wl); box-shadow: 0 0 14px var(--wl); }
+.spectrum .ver { font: 500 12px var(--mono); color: var(--wl); letter-spacing: .06em; }
+.spectrum strong { font-family: var(--display); font-size: 19px; font-weight: 600; }
+.spectrum p { color: var(--dim); font-size: 14px; }
+.spectrum li.now { background: var(--panel-2); }
+.spectrum li.now .ver::after { content: " · now"; color: var(--text); }
+@media (max-width: 900px) { .spectrum { grid-template-columns: 1fr; } .spectrum li { border-left: 0; border-top: 1px solid var(--line); } .spectrum li:first-child { border-top: 0; } }
+
+/* ---------- docs ---------- */
+.pagehead { display: grid; gap: 14px; padding-block: 24px 40px; border-bottom: 1px solid var(--line); margin-bottom: 40px; }
+.docs { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 56px; }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 84px); align-self: start; display: grid; gap: 1px; }
+.toc a { color: var(--dim); text-decoration: none; font-size: 14px; padding: 5px 12px; border-left: 1px solid var(--line-bright); }
+.toc a:hover { color: var(--text); border-left-color: var(--l650); box-shadow: -1px 0 8px -2px var(--l650); }
+.toc .label { font: 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); padding: 0 12px 10px; }
 article { display: grid; gap: 18px; min-width: 0; }
-article > h2 { margin-top: 36px; padding-top: 12px; scroll-margin-top: 90px; }
-article > h2:first-of-type { margin-top: 0; }
-article > h3 { margin-top: 12px; scroll-margin-top: 90px; }
-article .num { font: 500 14px var(--mono); color: var(--laser); display: block; margin-bottom: 6px; letter-spacing: .06em; }
-.note { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 14px 16px; font-size: 15px; color: var(--muted); max-width: 70ch; }
-.note b { color: var(--ink); }
-@media (max-width: 860px) { .docs { grid-template-columns: 1fr; gap: 20px; } .toc { position: static; display: flex; flex-wrap: wrap; gap: 6px; } .toc .label { width: 100%; padding: 0; } .toc a { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; } }
+article > h2 { font-size: clamp(26px, 3.4vw, 34px); margin-top: 40px; scroll-margin-top: 96px; }
+article > h2:first-child { margin-top: 0; }
+article .num { display: block; font: 500 12px var(--mono); color: var(--l650); letter-spacing: .1em; margin-bottom: 8px; }
+.note { border: 1px solid var(--line); border-left: 2px solid var(--l589); background: var(--panel); border-radius: 6px; padding: 14px 16px; font-size: 15px; color: var(--dim); max-width: 70ch; }
+.note b { color: var(--text); }
+@media (max-width: 900px) {
+  .docs { grid-template-columns: 1fr; gap: 24px; }
+  .toc { position: static; display: flex; flex-wrap: wrap; gap: 6px; }
+  .toc .label { width: 100%; padding: 0; }
+  .toc a { border: 1px solid var(--line-bright); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+}
 
-.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 table { border-collapse: collapse; width: 100%; font-size: 15px; }
-th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
 tr:last-child td { border-bottom: 0; }
-th { font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
-td:first-child { white-space: nowrap; }
-td code { white-space: nowrap; }
+th { font: 500 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); background: var(--panel-2); }
+td { color: var(--dim); }
+td:first-child { white-space: nowrap; color: var(--text); }
 
-/* examples */
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 28px; }
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 10px; grid-template-rows: auto auto 1fr auto; min-width: 0; }
-.card .file { font: 500 13px var(--mono); color: var(--laser); }
-.card p { color: var(--muted); font-size: 15px; }
-.card button { justify-self: start; }
+/* ---------- examples ---------- */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px; display: grid; gap: 10px; grid-template-rows: auto auto 1fr auto; min-width: 0; transition: border-color .2s, box-shadow .2s; }
+.card:hover { border-color: var(--line-bright); box-shadow: 0 0 0 1px rgba(255,46,67,.12), 0 10px 40px -24px var(--beam-glow); }
+.card .file { font: 12px var(--mono); color: var(--l650); }
+.card p { color: var(--dim); font-size: 15px; }
+.card .btn { justify-self: start; padding: 9px 14px; font-size: 12px; }
+.card.test .file { color: var(--l532); }
 
-/* playground */
-.play { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; margin-top: 24px; }
-.play .pane { display: grid; gap: 10px; align-content: start; min-width: 0; }
-.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-select { font: 15px var(--body); padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); max-width: 100%; }
-#editor { width: 100%; min-height: 460px; resize: vertical; font-family: var(--mono); font-size: 14px; line-height: 1.65; tab-size: 4; background: var(--code-bg); color: var(--code-fg); border: 0; border-radius: 10px; padding: 16px 18px; caret-color: var(--code-key); }
-#output { min-height: 460px; }
-.status { font: 12px var(--mono); color: var(--muted); }
-@media (max-width: 860px) { .play { grid-template-columns: 1fr; } #editor { min-height: 320px; } #output { min-height: 160px; } }
+/* ---------- playground ---------- */
+.play { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
+.pane { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; min-height: 44px; }
+select { font: 13px var(--mono); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--line-bright); background: var(--panel-2); color: var(--text); max-width: 100%; }
+.editor { display: grid; grid-template-columns: auto minmax(0, 1fr); background: var(--panel); border: 1px solid var(--line-bright); border-radius: 8px; height: 520px; overflow: hidden; font-family: var(--mono); font-size: 13px; line-height: 1.75; }
+.editor:focus-within { border-color: rgba(255, 46, 67, .6); box-shadow: 0 0 0 1px rgba(255,46,67,.2), 0 0 30px -12px var(--beam-glow); }
+.gutter { padding: 14px 10px 14px 14px; color: var(--faint); text-align: right; user-select: none; overflow: hidden; border-right: 1px solid var(--line); white-space: pre; font-variant-numeric: tabular-nums; }
+.code-area { position: relative; min-width: 0; }
+.code-area pre, .code-area textarea { position: absolute; inset: 0; margin: 0; padding: 14px 16px; font: inherit; line-height: inherit; white-space: pre; tab-size: 4; border: 0; letter-spacing: 0; word-spacing: 0; }
+.code-area pre { overflow: hidden; color: var(--text); pointer-events: none; }
+.code-area textarea { width: 100%; height: 100%; resize: none; background: transparent; color: transparent; caret-color: var(--l650); outline: none; overflow: auto; }
+.code-area textarea::selection { background: rgba(255, 46, 67, .35); color: transparent; }
+#output { height: 520px; overflow: auto; }
+@media (max-width: 900px) { .play { grid-template-columns: 1fr; } .editor { height: 360px; } #output { height: auto; min-height: 180px; } }
 
-footer { border-top: 1px solid var(--line); padding-block: 28px; color: var(--muted); font-size: 14px; }
-footer .wrap { display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
+footer { border-top: 1px solid var(--line); padding-block: 32px; color: var(--faint); font-size: 13px; }
+footer .wrap { display: flex; gap: 12px 28px; justify-content: space-between; flex-wrap: wrap; font-family: var(--mono); }
 </style>
 
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="#home"><span class="dot" aria-hidden="true"></span>Laser Feet</a>
+    <a class="brand" href="#home" aria-label="Laser Feet home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="9" width="9" height="8" rx="1.5" fill="none" stroke="#8d95a8" stroke-width="1.5"/><line x1="10" y1="13" x2="25" y2="13" stroke="#ff2e43" stroke-width="2" stroke-linecap="round"/><circle cx="25" cy="13" r="1.4" fill="#fff"/></svg>
+      Laser Feet
+    </a>
     <nav class="main" aria-label="Main">
       <a href="#home">Home</a>
       <a href="#learn">Learn</a>
@@ -184,25 +226,37 @@ footer .wrap { display: flex; gap: 16px; justify-content: space-between; flex-wr
       <a href="#examples">Examples</a>
       <a href="#playground">Playground</a>
     </nav>
+    <a class="gh" href="https://github.com/billionairedev24/laserfeet" aria-label="Laser Feet on GitHub">
+      <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    </a>
   </div>
 </header>
 
 <main>
-<!-- ================= HOME ================= -->
-<section data-view="home">
-  <div class="wrap">
-    <div class="hero">
+<!-- ======================= HOME ======================= -->
+<section data-view="home" style="padding-top:0">
+  <div class="hero">
+    <canvas id="beam" aria-hidden="true"></canvas>
+    <div class="wrap grid">
       <div>
-        <div class="eyebrow">Version 0.1 · prototype</div>
-        <h1 style="margin-top:14px">Code at the <span>speed of light</span></h1>
-        <p class="lede">Laser Feet is a programming language with plain English keywords, objects and functions working side by side, and a web server built in.</p>
+        <div class="hazard" aria-label="Prototype, version 0.1">
+          <span><svg width="14" height="13" viewBox="0 0 14 13" aria-hidden="true"><path d="M7 .8 13.3 12H.7z" fill="none" stroke="#111" stroke-width="1.4"/><circle cx="7" cy="8.4" r="1.2" fill="#111"/><path d="M7 8.4 9.6 5.2M7 8.4 4.4 5.2M7 8.4V4.6" stroke="#111" stroke-width=".8"/></svg>Prototype</span>
+          <span>v0.1 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
+        </div>
+        <h1>Code at the <em>speed of light</em></h1>
+        <p class="lede">Laser Feet is a programming language that reads like plain English, mixes objects and functions freely, and comes with a secure web server built in.</p>
         <div class="actions">
-          <a class="btn primary" href="#learn">Start learning</a>
-          <a class="btn" href="#playground">Open the playground</a>
+          <a class="btn fire" href="#learn">Start learning</a>
+          <a class="btn" href="#playground">Open playground</a>
+        </div>
+        <div class="specs">
+          <div><b>.lf</b>file type</div>
+          <div><b>0</b>dependencies</div>
+          <div><b>SHA-256</b>signed releases</div>
         </div>
       </div>
-      <div class="bench">
-        <div class="bar"><span>hello.lf</span><span id="heroStatus">loading engine…</span></div>
+      <div class="bench" id="bench">
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span>hello.lf</span><span class="status" id="heroStatus">charging…</span></div>
 <lf-code id="heroCode">launch {
     name = "world"
     show "Hello, {name}!"
@@ -211,133 +265,150 @@ footer .wrap { display: flex; gap: 16px; justify-content: space-between; flex-wr
         show "Beam {n} fired"
     }
 }</lf-code>
-        <div style="display:flex;gap:10px;align-items:center">
-          <button class="btn primary" id="heroRun" disabled>Run</button>
-          <span class="status">runs right here in your browser</span>
+        <div class="row">
+          <button class="btn fire" id="heroRun" type="button" disabled>Fire ▸</button>
+          <span class="status">runs in your browser</span>
         </div>
-        <pre class="out" id="heroOut" aria-live="polite">Press Run to see the output.</pre>
+        <pre class="out" id="heroOut" aria-live="polite">Press Fire to run it.</pre>
       </div>
     </div>
-    <div class="beam" aria-hidden="true"></div>
+  </div>
 
-    <div class="eyebrow">Why Laser Feet</div>
-    <h2 style="margin-top:10px">Simple to read. Built for the web.</h2>
-    <div class="features">
-      <div>
-        <h3>Plain English</h3>
-        <p>Keywords say what they do: <code>when</code>, <code>otherwise</code>, <code>each</code>, <code>send</code>. Types are worked out for you.</p>
+  <div class="wrap">
+    <div class="sect">
+      <span class="lambda">Why Laser Feet</span>
+      <h2>Simple to read. Built for the web.</h2>
+      <div class="modules">
+        <div class="module" style="--wl: var(--l650)">
+          <span class="tag">Plain English</span>
+          <h3>Keywords that say what they do</h3>
+          <p><code>when</code>, <code>otherwise</code>, <code>each</code>, <code>send</code>. Types are worked out for you.</p>
 <lf-code>when age >= 18 {
     show "Adult"
 } otherwise {
     show "Minor"
 }</lf-code>
-      </div>
-      <div>
-        <h3>Objects and beams</h3>
-        <p>Build with objects and rules, or with small functions called beams. Use whichever fits.</p>
+        </div>
+        <div class="module" style="--wl: var(--l405)">
+          <span class="tag">Objects and beams</span>
+          <h3>Two styles, one language</h3>
+          <p>Build with objects and rules, or with small functions called beams.</p>
 <lf-code>object User follows Greeter {
     name
     beam greet() {
         send "Hi, I am {name}"
     }
 }</lf-code>
-      </div>
-      <div>
-        <h3>Chain with then</h3>
-        <p>Pass a result through steps like light through lenses.</p>
+        </div>
+        <div class="module" style="--wl: var(--l450)">
+          <span class="tag">Chaining</span>
+          <h3>Pass results like light through lenses</h3>
+          <p><code>then</code> hands each result to the next step.</p>
 <lf-code>users then keepIf(age >= 18)
       then sortBy(name)</lf-code>
-      </div>
-      <div>
-        <h3>Web built in</h3>
-        <p>A real web server in a few lines. Lists and objects come back as JSON automatically.</p>
+        </div>
+        <div class="module" style="--wl: var(--l532)">
+          <span class="tag">Web built in</span>
+          <h3>A server in five lines</h3>
+          <p>Lists and objects come back as JSON. Security headers, limits and timeouts are on by default.</p>
 <lf-code>use web
 server = web.open(8080)
 server.get("/hello") {
     send "Hello from Laser Feet"
 }</lf-code>
-      </div>
-      <div>
-        <h3>Tests built in</h3>
-        <p>Write tests next to your code and run them with <code>lf test</code>.</p>
+        </div>
+        <div class="module" style="--wl: var(--l589)">
+          <span class="tag">Tests built in</span>
+          <h3>Check your work as you go</h3>
+          <p>Write tests beside your code and run them with <code>lf test</code>.</p>
 <lf-code>test "adds up" {
     expect 2 + 2 is 4
 }</lf-code>
-      </div>
-      <div>
-        <h3>Friendly problems</h3>
-        <p>When something goes wrong, Laser Feet tells you where and suggests a fix.</p>
-        <pre class="out"><span class="err">Problem on line 3: I don't know what 'nmae' is. Did you mean 'name'?</span></pre>
+        </div>
+        <div class="module" style="--wl: var(--l650)">
+          <span class="tag">Friendly problems</span>
+          <h3>Errors that point at the fix</h3>
+          <p>Every problem names the line and, where it can, suggests what you meant.</p>
+          <pre class="out"><span class="err">Problem on line 3: I don't know what 'nmae' is. Did you mean 'name'?</span></pre>
+        </div>
       </div>
     </div>
 
-    <div class="split">
+    <div class="beamline" aria-hidden="true"></div>
+
+    <div class="sect split">
       <div class="text">
-        <div class="eyebrow">Install</div>
+        <span class="lambda">Install</span>
         <h2>Run it on your computer</h2>
-        <p>Laser Feet comes as one command, <code>lf</code>. Build it once from the source code, then run any <code>.lf</code> file.</p>
-        <p class="note"><b>You need Go 1.22 or newer</b> to build <code>lf</code> today. People who run your finished apps won't need it once native builds arrive in version 0.2.</p>
+        <p>Laser Feet is one command, <code>lf</code>. Install it from the source code once, then run any <code>.lf</code> file from any folder.</p>
+        <p class="note"><b>You need Go 1.24 or newer</b> to build <code>lf</code> today. Ready-made downloads with SHA-256 checksums and signed build provenance come with the first release.</p>
       </div>
-<lf-code>-- 1. inside the laserfeet folder, build the tool
-go build -o lf ./cmd/lf
-
--- 2. run a program
-./lf run examples/hello.lf
-
--- 3. run the tests in a file
-./lf test examples/shop_test.lf
-
--- 4. start a web app on port 8080
-./lf run examples/web.lf</lf-code>
+      <ol class="steps">
+        <li><div><span>Get the source and install <code>lf</code></span>
+<lf-code>git clone https://github.com/billionairedev24/laserfeet
+cd laserfeet
+go install ./cmd/lf</lf-code></div></li>
+        <li><div><span>Make <code>lf</code> work from any folder (Mac and Linux; on Windows the Go installer does this)</span>
+<lf-code>echo 'export PATH="$PATH:$(go env GOPATH)/bin"' >> ~/.zshrc
+source ~/.zshrc
+lf version</lf-code></div></li>
+        <li><div><span>Write <code>hello.lf</code> in any editor, then run it, test it, or serve it</span>
+<lf-code>lf run hello.lf
+lf test hello.lf
+lf run app.lf</lf-code></div></li>
+      </ol>
     </div>
 
-    <div class="split">
-      <div class="text">
-        <div class="eyebrow">Roadmap</div>
-        <h2>Where we're headed</h2>
-        <p>Version 0.1 runs your code with an interpreter written in Go, so the language can be tried and shaped quickly. Each step after that makes it faster and more independent.</p>
-      </div>
-      <ol class="road">
-        <li class="now"><span class="ver">0.1 · now</span><strong>Prototype</strong><p>Interpreter, playground, web server, tests, friendly errors.</p></li>
-        <li><span class="ver">0.2</span><strong>Native programs</strong><p><code>lf build</code> turns an app into one fast file that runs with nothing else installed.</p></li>
-        <li><span class="ver">0.3</span><strong>Standard library</strong><p>Databases, JSON reading, files, dates, and the <code>sole</code> package manager.</p></li>
-        <li><span class="ver">0.4</span><strong>Editor support</strong><p>Syntax colors and autocomplete in VS Code.</p></li>
-        <li><span class="ver">1.0</span><strong>Independent</strong><p>Laser Feet's own code generator, with the compiler rewritten in Laser Feet.</p></li>
-      </ol>
+    <div class="beamline" aria-hidden="true"></div>
+
+    <div class="sect">
+      <span class="lambda">Roadmap</span>
+      <h2>Across the spectrum</h2>
+      <p class="lede">Version 0.1 runs your code with an interpreter written in Go. Each step after that makes Laser Feet faster and more independent.</p>
+      <ul class="spectrum">
+        <li class="now" style="--wl: var(--l650)"><span class="ver">0.1</span><strong>Prototype</strong><p>Interpreter, playground, web server, tests, friendly errors, signed builds.</p></li>
+        <li style="--wl: var(--l589)"><span class="ver">0.2</span><strong>Native programs</strong><p><code>lf build</code> makes one fast file that runs with nothing installed.</p></li>
+        <li style="--wl: var(--l532)"><span class="ver">0.3</span><strong>Standard library</strong><p>Databases, JSON, files, dates and the <code>sole</code> package manager.</p></li>
+        <li style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Editor support</strong><p>Syntax colors and autocomplete in VS Code.</p></li>
+        <li style="--wl: var(--l405)"><span class="ver">1.0</span><strong>Independent</strong><p>Its own code generator, with the compiler written in Laser Feet.</p></li>
+      </ul>
     </div>
   </div>
 </section>
 
-<!-- ================= LEARN ================= -->
+<!-- ======================= LEARN ======================= -->
 <section data-view="learn" hidden>
-  <div class="wrap docs">
-    <nav class="toc" aria-label="Guide chapters">
-      <div class="label">The guide</div>
-      <a href="#learn" data-jump="g1">First program</a>
-      <a href="#learn" data-jump="g2">Values</a>
-      <a href="#learn" data-jump="g3">Beams</a>
-      <a href="#learn" data-jump="g4">Objects and rules</a>
-      <a href="#learn" data-jump="g5">Decisions and loops</a>
-      <a href="#learn" data-jump="g6">Chaining with then</a>
-      <a href="#learn" data-jump="g7">Handling problems</a>
-      <a href="#learn" data-jump="g8">Fast work</a>
-      <a href="#learn" data-jump="g9">Web apps</a>
-      <a href="#learn" data-jump="g10">Testing</a>
-    </nav>
-    <article>
-      <div class="eyebrow">Learn Laser Feet</div>
-      <p class="lede">Ten short chapters. Every example has a <b>Try it</b> button that opens it in the playground.</p>
-
-      <h2 id="g1"><span class="num">Chapter 1</span>Your first program</h2>
-      <p>A program starts in its <code>launch</code> block. <code>show</code> prints a line. Notes start with <code>--</code> and are ignored.</p>
+  <div class="wrap">
+    <div class="pagehead">
+      <span class="lambda">Learn</span>
+      <h2>The Laser Feet guide</h2>
+      <p class="lede">Ten short chapters. Every example has a Try it button that runs it in the playground.</p>
+    </div>
+    <div class="docs">
+      <nav class="toc" aria-label="Guide chapters">
+        <div class="label">Chapters</div>
+        <a href="#learn" data-jump="g1">First program</a>
+        <a href="#learn" data-jump="g2">Values</a>
+        <a href="#learn" data-jump="g3">Beams</a>
+        <a href="#learn" data-jump="g4">Objects and rules</a>
+        <a href="#learn" data-jump="g5">Decisions and loops</a>
+        <a href="#learn" data-jump="g6">Chaining with then</a>
+        <a href="#learn" data-jump="g7">Handling problems</a>
+        <a href="#learn" data-jump="g8">Fast work</a>
+        <a href="#learn" data-jump="g9">Web apps</a>
+        <a href="#learn" data-jump="g10">Testing</a>
+      </nav>
+      <article>
+        <h2 id="g1"><span class="num">01</span>Your first program</h2>
+        <p>A program starts in its <code>launch</code> block. <code>show</code> prints a line. Notes start with <code>--</code> and are ignored.</p>
 <lf-code data-try>-- my first program
 launch {
     show "Hello, world"
 }</lf-code>
-      <p>Save it as <code>hello.lf</code> and run <code>lf run hello.lf</code>. You can also leave out <code>launch</code> for quick scripts; the lines then run from top to bottom.</p>
+        <p>Save it as <code>hello.lf</code> and run <code>lf run hello.lf</code>. For quick scripts you can leave out <code>launch</code>; the lines then run from top to bottom.</p>
 
-      <h2 id="g2"><span class="num">Chapter 2</span>Values</h2>
-      <p>Give a value a name with <code>=</code>. You don't write types; Laser Feet works them out. Use <code>lock</code> for a value that must never change. Put any value inside text with <code>{ }</code>.</p>
+        <h2 id="g2"><span class="num">02</span>Values</h2>
+        <p>Give a value a name with <code>=</code>. You don't write types; Laser Feet works them out. Use <code>lock</code> for a value that must never change, and put any value inside text with <code>{ }</code>.</p>
 <lf-code data-try>launch {
     name = "Ada"
     age = 36
@@ -355,19 +426,19 @@ launch {
     city = {name: "Austin", state: "TX"}
     show city.name
 }</lf-code>
-      <div class="tablewrap"><table>
-        <tr><th>Kind</th><th>Looks like</th></tr>
-        <tr><td>Number</td><td><code>42</code>, <code>19.99</code>, <code>1_000_000</code></td></tr>
-        <tr><td>Text</td><td><code>"Hello {name}"</code></td></tr>
-        <tr><td>Yes / no</td><td><code>yes</code>, <code>no</code></td></tr>
-        <tr><td>Nothing</td><td><code>nothing</code></td></tr>
-        <tr><td>List</td><td><code>[1, 2, 3]</code>, positions start at 0</td></tr>
-        <tr><td>Map</td><td><code>{name: "Ada", age: 36}</code></td></tr>
-        <tr><td>Range</td><td><code>1 to 10</code> makes the list 1, 2 … 10</td></tr>
-      </table></div>
+        <div class="tablewrap"><table>
+          <tr><th>Kind</th><th>Looks like</th></tr>
+          <tr><td>Number</td><td><code>42</code>, <code>19.99</code>, <code>1_000_000</code></td></tr>
+          <tr><td>Text</td><td><code>"Hello {name}"</code></td></tr>
+          <tr><td>Yes / no</td><td><code>yes</code>, <code>no</code></td></tr>
+          <tr><td>Nothing</td><td><code>nothing</code></td></tr>
+          <tr><td>List</td><td><code>[1, 2, 3]</code>, positions start at 0</td></tr>
+          <tr><td>Map</td><td><code>{name: "Ada", age: 36}</code></td></tr>
+          <tr><td>Range</td><td><code>1 to 10</code> makes the list 1, 2 … 10</td></tr>
+        </table></div>
 
-      <h2 id="g3"><span class="num">Chapter 3</span>Beams</h2>
-      <p>A <code>beam</code> is a function: inputs go in, and <code>send</code> shoots the result out. Inputs can be named when you call it.</p>
+        <h2 id="g3"><span class="num">03</span>Beams</h2>
+        <p>A <code>beam</code> is a function: inputs go in and <code>send</code> shoots the result out. Inputs can be named when you call it.</p>
 <lf-code data-try>beam add(a, b) {
     send a + b
 }
@@ -387,10 +458,10 @@ launch {
     double = x => x * 2
     show double(21)
 }</lf-code>
-      <p><code>x => x * 2</code> is a quick one-line beam, handy for passing to other beams.</p>
+        <p><code>x => x * 2</code> is a one-line beam, handy for passing to other beams.</p>
 
-      <h2 id="g4"><span class="num">Chapter 4</span>Objects and rules</h2>
-      <p>An <code>object</code> is a blueprint: it lists fields and the beams that work on them. Inside its beams, fields are used by name, and <code>me</code> means the object itself. A <code>rule</code> lists beams an object promises to have; <code>follows</code> makes the promise, and Laser Feet checks it.</p>
+        <h2 id="g4"><span class="num">04</span>Objects and rules</h2>
+        <p>An <code>object</code> is a blueprint listing fields and the beams that work on them. Inside its beams, fields are used by name and <code>me</code> means the object itself. A <code>rule</code> lists beams an object promises to have; <code>follows</code> makes the promise and Laser Feet checks it.</p>
 <lf-code data-try>rule Greeter {
     beam greet()
 }
@@ -418,10 +489,10 @@ launch {
     tobi = User("Tobi", 12)
     show tobi
 }</lf-code>
-      <p>Make an object by calling its name. Fields can be filled in order or by name. Fields with a default, like <code>visits = 0</code>, can be left out.</p>
+        <p>Make an object by calling its name, filling fields in order or by name. Fields with a default, like <code>visits = 0</code>, can be left out.</p>
 
-      <h2 id="g5"><span class="num">Chapter 5</span>Decisions and loops</h2>
-      <p><code>when</code> runs a block if the answer is <code>yes</code>. Chain more checks with <code>otherwise when</code>. Compare with <code>is</code>, <code>is not</code>, <code>&lt;</code>, <code>&gt;</code>, and combine with <code>and</code>, <code>or</code>, <code>not</code>.</p>
+        <h2 id="g5"><span class="num">05</span>Decisions and loops</h2>
+        <p><code>when</code> runs a block if the answer is <code>yes</code>; chain more checks with <code>otherwise when</code>. Compare with <code>is</code>, <code>is not</code>, <code>&lt;</code> and <code>&gt;</code>, and combine answers with <code>and</code>, <code>or</code> and <code>not</code>.</p>
 <lf-code data-try>launch {
     score = 72
     when score >= 90 {
@@ -442,19 +513,14 @@ launch {
         show n
     }
 
-    fuel = 3
-    loop while fuel > 0 {
-        fuel = fuel - 1
-    }
-
     loop 2 times {
         show "Zap"
     }
 }</lf-code>
-      <p><code>skip</code> jumps to the next item and <code>stop</code> leaves the loop.</p>
+        <p><code>skip</code> jumps to the next item and <code>stop</code> leaves the loop. <code>loop while</code> repeats as long as its answer is yes.</p>
 
-      <h2 id="g6"><span class="num">Chapter 6</span>Chaining with then</h2>
-      <p><code>then</code> hands the result on the left to the beam on the right, as its first input. Inside <code>keepIf</code>, <code>turn</code> and <code>sortBy</code>, you can use the item's fields by name, or <code>it</code> for the item itself.</p>
+        <h2 id="g6"><span class="num">06</span>Chaining with then</h2>
+        <p><code>then</code> hands the result on its left to the beam on its right as the first input. Inside <code>keepIf</code>, <code>turn</code> and <code>sortBy</code>, use the item's fields by name, or <code>it</code> for the item itself.</p>
 <lf-code data-try>object User {
     name
     age
@@ -469,8 +535,8 @@ launch {
     show [4, 8, 15, 16, 23, 42] then keepIf(it > 10) then sum
 }</lf-code>
 
-      <h2 id="g7"><span class="num">Chapter 7</span>Handling problems</h2>
-      <p>Wrap risky work in <code>attempt</code>. If anything fails, the <code>fails</code> block runs and receives the problem. Use <code>fail</code> to report a problem yourself.</p>
+        <h2 id="g7"><span class="num">07</span>Handling problems</h2>
+        <p>Wrap risky work in <code>attempt</code>. If anything fails, the <code>fails</code> block runs and receives the problem. Use <code>fail</code> to report one yourself.</p>
 <lf-code data-try>beam divide(a, b) {
     when b is 0 {
         fail "can't divide {a} by zero"
@@ -488,8 +554,8 @@ launch {
     show "Still running"
 }</lf-code>
 
-      <h2 id="g8"><span class="num">Chapter 8</span>Fast work</h2>
-      <p>Put <code>fast</code> in front of work to run it at the same time as the rest of the program. The program waits for all fast work to finish before it ends.</p>
+        <h2 id="g8"><span class="num">08</span>Fast work</h2>
+        <p>Put <code>fast</code> in front of work to run it at the same time as the rest of the program. The program waits for all fast work before it ends.</p>
 <lf-code data-try>beam brew(drink, seconds) {
     pause(seconds)
     show "{drink} is ready"
@@ -501,8 +567,8 @@ launch {
     show "Ordered both"
 }</lf-code>
 
-      <h2 id="g9"><span class="num">Chapter 9</span>Web apps</h2>
-      <p><code>use web</code> brings in the web library. Add routes with <code>server.get</code>, <code>server.post</code> or <code>server.on</code> (any method), then <code>start</code> the server. Inside a route, <code>request</code> holds the details, and parts of the path written as <code>:name</code> arrive in <code>request.params</code>.</p>
+        <h2 id="g9"><span class="num">09</span>Web apps</h2>
+        <p><code>use web</code> brings in the web library. Add routes with <code>server.get</code>, <code>server.post</code> or <code>server.on</code> (any method), then <code>start</code> the server. Inside a route, <code>request</code> holds the details, and path parts written as <code>:name</code> arrive in <code>request.params</code>.</p>
 <lf-code data-try>use web
 
 server = web.open(8080)
@@ -522,11 +588,11 @@ launch {
     show server.visit("/missing").status
     fast server.start()
 }</lf-code>
-      <p>What a route sends decides the reply: text is always sent as plain text, so nothing a visitor types can turn into a web page; lists, maps and objects become JSON; <code>web.page(html)</code> sends HTML on purpose, with visitor input cleaned by <code>web.escape(x)</code>, and <code>web.status(404, "Not found")</code> sends an error code. <code>server.visit</code> tries a route without a browser, which is useful in tests.</p>
-      <p class="note"><b>In the playground</b>, <code>start</code> lists your routes instead of opening a port. On your computer, <code>lf run app.lf</code> serves real pages at <code>http://localhost:8080</code>.</p>
+        <p>What a route sends decides the reply. Text is always sent as plain text, so nothing a visitor types can turn into a web page. Lists, maps and objects become JSON. <code>web.page(html)</code> sends HTML on purpose, with visitor input cleaned by <code>web.escape(x)</code>, and <code>web.status(404, "Not found")</code> sends an error code. <code>server.visit</code> tries a route without a browser, which is handy in tests.</p>
+        <p class="note"><b>In the playground</b>, <code>start</code> lists your routes instead of opening a port. On your computer, <code>lf run app.lf</code> serves real pages at <code>http://localhost:8080</code>.</p>
 
-      <h2 id="g10"><span class="num">Chapter 10</span>Testing</h2>
-      <p>A <code>test</code> block holds <code>expect</code> checks. <code>lf test file.lf</code> runs every test and reports which passed. In the playground, press <b>Run tests</b>.</p>
+        <h2 id="g10"><span class="num">10</span>Testing</h2>
+        <p>A <code>test</code> block holds <code>expect</code> checks. <code>lf test file.lf</code> runs every test and reports which passed. In the playground, press Run tests.</p>
 <lf-code data-try data-mode="test">beam discount(total) {
     when total >= 100 {
         send total * 0.9
@@ -541,143 +607,160 @@ test "big orders get 10 percent off" {
 test "small orders pay full price" {
     expect discount(50) is 50
 }</lf-code>
-    </article>
+      </article>
+    </div>
   </div>
 </section>
 
-<!-- ================= REFERENCE ================= -->
+<!-- ======================= REFERENCE ======================= -->
 <section data-view="reference" hidden>
-  <div class="wrap docs">
-    <nav class="toc" aria-label="Reference sections">
-      <div class="label">Reference</div>
-      <a href="#reference" data-jump="r1">Keywords</a>
-      <a href="#reference" data-jump="r2">Operators</a>
-      <a href="#reference" data-jump="r3">Built-in beams</a>
-      <a href="#reference" data-jump="r4">List, text, map</a>
-      <a href="#reference" data-jump="r5">Web library</a>
-      <a href="#reference" data-jump="r6">The lf command</a>
-    </nav>
-    <article>
-      <div class="eyebrow">Language reference · v0.1</div>
-      <h2 id="r1">Keywords</h2>
-      <div class="tablewrap"><table>
-        <tr><th>Keyword</th><th>Meaning</th></tr>
-        <tr><td><code>launch</code></td><td>Where the program starts</td></tr>
-        <tr><td><code>show</code></td><td>Print a value on its own line</td></tr>
-        <tr><td><code>beam</code></td><td>Make a function</td></tr>
-        <tr><td><code>send</code></td><td>Give back a result from a beam</td></tr>
-        <tr><td><code>lock</code></td><td>Make a value that can never change</td></tr>
-        <tr><td><code>object</code></td><td>Make a blueprint with fields and beams</td></tr>
-        <tr><td><code>rule</code> / <code>follows</code></td><td>List beams an object must have / promise to have them</td></tr>
-        <tr><td><code>me</code></td><td>The object a beam belongs to</td></tr>
-        <tr><td><code>when</code> / <code>otherwise</code></td><td>Make a decision</td></tr>
-        <tr><td><code>each … in</code></td><td>Go through a list, text, or map's names</td></tr>
-        <tr><td><code>loop while</code> / <code>loop … times</code></td><td>Repeat</td></tr>
-        <tr><td><code>skip</code> / <code>stop</code></td><td>Next item / leave the loop</td></tr>
-        <tr><td><code>then</code></td><td>Pass a result into the next beam</td></tr>
-        <tr><td><code>fast</code></td><td>Run work at the same time</td></tr>
-        <tr><td><code>attempt</code> / <code>fails</code> / <code>fail</code></td><td>Handle problems / report one</td></tr>
-        <tr><td><code>use</code></td><td>Bring in a library</td></tr>
-        <tr><td><code>test</code> / <code>expect</code></td><td>Write a test / check a result</td></tr>
-        <tr><td><code>yes</code> / <code>no</code> / <code>nothing</code></td><td>The yes/no values and the empty value</td></tr>
-        <tr><td><code>--</code></td><td>A note to the reader, ignored when running</td></tr>
-      </table></div>
+  <div class="wrap">
+    <div class="pagehead">
+      <span class="lambda">Reference · v0.1</span>
+      <h2>Language reference</h2>
+    </div>
+    <div class="docs">
+      <nav class="toc" aria-label="Reference sections">
+        <div class="label">Sections</div>
+        <a href="#reference" data-jump="r1">Keywords</a>
+        <a href="#reference" data-jump="r2">Operators</a>
+        <a href="#reference" data-jump="r3">Built-in beams</a>
+        <a href="#reference" data-jump="r4">List, text, map</a>
+        <a href="#reference" data-jump="r5">Web library</a>
+        <a href="#reference" data-jump="r6">The lf command</a>
+      </nav>
+      <article>
+        <h2 id="r1">Keywords</h2>
+        <div class="tablewrap"><table>
+          <tr><th>Keyword</th><th>Meaning</th></tr>
+          <tr><td><code>launch</code></td><td>Where the program starts</td></tr>
+          <tr><td><code>show</code></td><td>Print a value on its own line</td></tr>
+          <tr><td><code>beam</code></td><td>Make a function</td></tr>
+          <tr><td><code>send</code></td><td>Give back a result from a beam</td></tr>
+          <tr><td><code>lock</code></td><td>Make a value that can never change</td></tr>
+          <tr><td><code>object</code></td><td>Make a blueprint with fields and beams</td></tr>
+          <tr><td><code>rule</code> / <code>follows</code></td><td>List beams an object must have / promise to have them</td></tr>
+          <tr><td><code>me</code></td><td>The object a beam belongs to</td></tr>
+          <tr><td><code>when</code> / <code>otherwise</code></td><td>Make a decision</td></tr>
+          <tr><td><code>each … in</code></td><td>Go through a list, text, or a map's names</td></tr>
+          <tr><td><code>loop while</code> / <code>loop … times</code></td><td>Repeat</td></tr>
+          <tr><td><code>skip</code> / <code>stop</code></td><td>Next item / leave the loop</td></tr>
+          <tr><td><code>then</code></td><td>Pass a result into the next beam</td></tr>
+          <tr><td><code>fast</code></td><td>Run work at the same time</td></tr>
+          <tr><td><code>attempt</code> / <code>fails</code> / <code>fail</code></td><td>Handle problems / report one</td></tr>
+          <tr><td><code>use</code></td><td>Bring in a library</td></tr>
+          <tr><td><code>test</code> / <code>expect</code></td><td>Write a test / check a result</td></tr>
+          <tr><td><code>yes</code> / <code>no</code> / <code>nothing</code></td><td>The yes/no values and the empty value</td></tr>
+          <tr><td><code>--</code></td><td>A note for readers, ignored when running</td></tr>
+        </table></div>
 
-      <h2 id="r2">Operators</h2>
-      <div class="tablewrap"><table>
-        <tr><th>Operator</th><th>Meaning</th></tr>
-        <tr><td><code>+ - * / %</code></td><td>Math. <code>+</code> also joins text and lists</td></tr>
-        <tr><td><code>is</code> / <code>is not</code></td><td>Same / different (<code>==</code> and <code>!=</code> also work)</td></tr>
-        <tr><td><code>&lt; &gt; &lt;= &gt;=</code></td><td>Compare numbers or text</td></tr>
-        <tr><td><code>and or not</code></td><td>Combine yes/no answers</td></tr>
-        <tr><td><code>a to b</code></td><td>The list of whole numbers from a to b</td></tr>
-        <tr><td><code>x => …</code></td><td>A one-line beam</td></tr>
-        <tr><td><code>"{ }"</code></td><td>Put a value inside text; write <code>\{</code> for a plain brace</td></tr>
-      </table></div>
+        <h2 id="r2">Operators</h2>
+        <div class="tablewrap"><table>
+          <tr><th>Operator</th><th>Meaning</th></tr>
+          <tr><td><code>+ - * / %</code></td><td>Math. <code>+</code> also joins text and lists</td></tr>
+          <tr><td><code>is</code> / <code>is not</code></td><td>Same / different (<code>==</code> and <code>!=</code> also work)</td></tr>
+          <tr><td><code>&lt; &gt; &lt;= &gt;=</code></td><td>Compare numbers or text</td></tr>
+          <tr><td><code>and or not</code></td><td>Combine yes/no answers</td></tr>
+          <tr><td><code>a to b</code></td><td>The whole numbers from a to b</td></tr>
+          <tr><td><code>x => …</code></td><td>A one-line beam</td></tr>
+          <tr><td><code>"{ }"</code></td><td>Put a value inside text; write <code>\{</code> for a plain brace</td></tr>
+        </table></div>
 
-      <h2 id="r3">Built-in beams</h2>
-      <div class="tablewrap"><table>
-        <tr><th>Beam</th><th>What it does</th></tr>
-        <tr><td><code>text(x)</code></td><td>Turn any value into text</td></tr>
-        <tr><td><code>number(x)</code></td><td>Turn text like "42" into a number</td></tr>
-        <tr><td><code>count(x)</code></td><td>How many items, letters, or entries</td></tr>
-        <tr><td><code>sum(list)</code></td><td>Add up numbers</td></tr>
-        <tr><td><code>biggest</code> / <code>smallest</code></td><td>Largest or smallest number</td></tr>
-        <tr><td><code>round(x, places)</code></td><td>Round, optionally to decimal places</td></tr>
-        <tr><td><code>first</code> / <code>last</code></td><td>First or last item, or nothing</td></tr>
-        <tr><td><code>reverse</code> / <code>sort</code></td><td>New list, reversed or sorted</td></tr>
-        <tr><td><code>join(list, sep)</code></td><td>Join items into text</td></tr>
-        <tr><td><code>keepIf(list, rule)</code></td><td>Items where the rule is yes</td></tr>
-        <tr><td><code>dropIf(list, rule)</code></td><td>Items where the rule is no</td></tr>
-        <tr><td><code>turn(list, value)</code></td><td>Change every item</td></tr>
-        <tr><td><code>sortBy(list, value)</code></td><td>Sort by a field or value</td></tr>
-        <tr><td><code>findFirst(list, rule)</code></td><td>First matching item, or nothing</td></tr>
-        <tr><td><code>pause(seconds)</code></td><td>Wait</td></tr>
-        <tr><td><code>readFile(path)</code></td><td>Read a file as text (not in the playground)</td></tr>
-      </table></div>
+        <h2 id="r3">Built-in beams</h2>
+        <div class="tablewrap"><table>
+          <tr><th>Beam</th><th>What it does</th></tr>
+          <tr><td><code>text(x)</code></td><td>Turn any value into text</td></tr>
+          <tr><td><code>number(x)</code></td><td>Turn text like "42" into a number</td></tr>
+          <tr><td><code>count(x)</code></td><td>How many items, letters, or entries</td></tr>
+          <tr><td><code>sum(list)</code></td><td>Add up numbers</td></tr>
+          <tr><td><code>biggest</code> / <code>smallest</code></td><td>Largest or smallest number</td></tr>
+          <tr><td><code>round(x, places)</code></td><td>Round, optionally to decimal places</td></tr>
+          <tr><td><code>first</code> / <code>last</code></td><td>First or last item, or nothing</td></tr>
+          <tr><td><code>reverse</code> / <code>sort</code></td><td>A new list, reversed or sorted</td></tr>
+          <tr><td><code>join(list, sep)</code></td><td>Join items into text</td></tr>
+          <tr><td><code>keepIf(list, rule)</code></td><td>Items where the rule is yes</td></tr>
+          <tr><td><code>dropIf(list, rule)</code></td><td>Items where the rule is no</td></tr>
+          <tr><td><code>turn(list, value)</code></td><td>Change every item</td></tr>
+          <tr><td><code>sortBy(list, value)</code></td><td>Sort by a field or value</td></tr>
+          <tr><td><code>findFirst(list, rule)</code></td><td>First matching item, or nothing</td></tr>
+          <tr><td><code>pause(seconds)</code></td><td>Wait</td></tr>
+          <tr><td><code>readFile(path)</code></td><td>Read a file as text (not in the playground)</td></tr>
+        </table></div>
 
-      <h2 id="r4">List, text and map beams</h2>
-      <div class="tablewrap"><table>
-        <tr><th>On</th><th>Beams</th></tr>
-        <tr><td>List</td><td><code>add(x)</code>, <code>remove(position)</code>, <code>size()</code>, <code>has(x)</code></td></tr>
-        <tr><td>Text</td><td><code>upper()</code>, <code>lower()</code>, <code>trim()</code>, <code>size()</code>, <code>has(x)</code>, <code>startsWith(x)</code>, <code>split(sep)</code>, <code>replace(a, b)</code></td></tr>
-        <tr><td>Map</td><td><code>keys()</code>, <code>has(name)</code>, read with <code>map.name</code> or <code>map["name"]</code></td></tr>
-      </table></div>
+        <h2 id="r4">List, text and map beams</h2>
+        <div class="tablewrap"><table>
+          <tr><th>On</th><th>Beams</th></tr>
+          <tr><td>List</td><td><code>add(x)</code>, <code>remove(position)</code>, <code>size()</code>, <code>has(x)</code></td></tr>
+          <tr><td>Text</td><td><code>upper()</code>, <code>lower()</code>, <code>trim()</code>, <code>size()</code>, <code>has(x)</code>, <code>startsWith(x)</code>, <code>split(sep)</code>, <code>replace(a, b)</code></td></tr>
+          <tr><td>Map</td><td><code>keys()</code>, <code>has(name)</code>, read with <code>map.name</code> or <code>map["name"]</code></td></tr>
+        </table></div>
 
-      <h2 id="r5">Web library</h2>
-      <div class="tablewrap"><table>
-        <tr><th>Call</th><th>What it does</th></tr>
-        <tr><td><code>web.open(port)</code></td><td>Make a server (port 8080 if left out)</td></tr>
-        <tr><td><code>server.get(path) { }</code></td><td>Answer GET requests; also <code>post</code>, and <code>on</code> for any method</td></tr>
-        <tr><td><code>server.start()</code></td><td>Start serving; usually <code>fast server.start()</code></td></tr>
-        <tr><td><code>server.visit(path)</code></td><td>Try a route without a browser</td></tr>
-        <tr><td><code>request</code></td><td>Inside a route: <code>method</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>body</code></td></tr>
-        <tr><td><code>web.status(code, text)</code></td><td>Reply with a status code</td></tr>
-        <tr><td><code>web.json(x)</code> / <code>web.page(html)</code></td><td>Reply as JSON / as a web page</td></tr>
-        <tr><td><code>web.escape(x)</code></td><td>Make visitor input safe to put inside a web page</td></tr>
-        <tr><td>Built-in protection</td><td>Security headers, 1 MB body limit, timeouts, and errors that hide internal details from visitors</td></tr>
-      </table></div>
+        <h2 id="r5">Web library</h2>
+        <div class="tablewrap"><table>
+          <tr><th>Call</th><th>What it does</th></tr>
+          <tr><td><code>web.open(port)</code></td><td>Make a server (port 8080 if left out)</td></tr>
+          <tr><td><code>server.get(path) { }</code></td><td>Answer GET requests; also <code>post</code>, and <code>on</code> for any method</td></tr>
+          <tr><td><code>server.start()</code></td><td>Start serving; usually <code>fast server.start()</code></td></tr>
+          <tr><td><code>server.visit(path)</code></td><td>Try a route without a browser</td></tr>
+          <tr><td><code>request</code></td><td>Inside a route: <code>method</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>body</code></td></tr>
+          <tr><td><code>web.status(code, text)</code></td><td>Reply with a status code</td></tr>
+          <tr><td><code>web.json(x)</code> / <code>web.page(html)</code></td><td>Reply as JSON / as a web page</td></tr>
+          <tr><td><code>web.escape(x)</code></td><td>Make visitor input safe to put inside a web page</td></tr>
+          <tr><td>Built-in protection</td><td>Security headers, 1 MB body limit, timeouts, and errors that hide internal details from visitors</td></tr>
+        </table></div>
 
-      <h2 id="r6">The lf command</h2>
-      <div class="tablewrap"><table>
-        <tr><th>Command</th><th>What it does</th></tr>
-        <tr><td><code>lf run app.lf</code></td><td>Run a program (<code>lf app.lf</code> works too)</td></tr>
-        <tr><td><code>lf test app.lf</code></td><td>Run its test blocks</td></tr>
-        <tr><td><code>lf version</code></td><td>Show the version</td></tr>
-        <tr><td><code>lf help</code></td><td>Show help</td></tr>
-      </table></div>
-    </article>
+        <h2 id="r6">The lf command</h2>
+        <div class="tablewrap"><table>
+          <tr><th>Command</th><th>What it does</th></tr>
+          <tr><td><code>lf run app.lf</code></td><td>Run a program (<code>lf app.lf</code> works too)</td></tr>
+          <tr><td><code>lf test app.lf</code></td><td>Run its test blocks</td></tr>
+          <tr><td><code>lf version</code></td><td>Show the version</td></tr>
+          <tr><td><code>lf help</code></td><td>Show help</td></tr>
+        </table></div>
+      </article>
+    </div>
   </div>
 </section>
 
-<!-- ================= EXAMPLES ================= -->
+<!-- ======================= EXAMPLES ======================= -->
 <section data-view="examples" hidden>
   <div class="wrap">
-    <div class="eyebrow">Examples</div>
-    <h2 style="margin-top:10px">Programs to read and run</h2>
-    <p class="lede" style="margin-top:12px">These ship in the <code>examples</code> folder. The test suite runs every one and checks its output.</p>
+    <div class="pagehead">
+      <span class="lambda">Examples</span>
+      <h2>Programs to read and run</h2>
+      <p class="lede">These ship in the <code>examples</code> folder, and the test suite checks every one on each change.</p>
+    </div>
     <div class="cards" id="cards"></div>
   </div>
 </section>
 
-<!-- ================= PLAYGROUND ================= -->
+<!-- ======================= PLAYGROUND ======================= -->
 <section data-view="playground" hidden>
   <div class="wrap">
-    <div class="eyebrow">Playground</div>
-    <h2 style="margin-top:10px">Write it. Run it.</h2>
+    <div class="pagehead" style="padding-bottom:28px;margin-bottom:28px">
+      <span class="lambda">Playground</span>
+      <h2>Write it. Fire it.</h2>
+    </div>
     <div class="play">
       <div class="pane">
         <div class="toolbar">
-          <label for="exampleSelect" class="status">Example</label>
+          <label for="exampleSelect" class="status">Load</label>
           <select id="exampleSelect"></select>
+          <span class="status" style="margin-left:auto">Ctrl/⌘ + Enter runs</span>
         </div>
-        <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Laser Feet code"></textarea>
+        <div class="editor">
+          <div class="gutter" id="gutter" aria-hidden="true">1</div>
+          <div class="code-area">
+            <pre id="hl" aria-hidden="true"></pre>
+            <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="Laser Feet code"></textarea>
+          </div>
+        </div>
       </div>
       <div class="pane">
         <div class="toolbar">
-          <button class="btn primary" id="runBtn" disabled>Run</button>
-          <button class="btn" id="testBtn" disabled>Run tests</button>
-          <span class="status" id="playStatus">loading engine…</span>
+          <button class="btn fire" id="runBtn" type="button" disabled>Run ▸</button>
+          <button class="btn" id="testBtn" type="button" disabled>Run tests</button>
+          <span class="status" id="playStatus">charging…</span>
         </div>
         <pre class="out" id="output" aria-live="polite">Output appears here.</pre>
       </div>
@@ -688,9 +771,9 @@ test "small orders pay full price" {
 
 <footer>
   <div class="wrap">
-    <span>Laser Feet 0.1 · prototype interpreter written in Go</span>
-    <span>Engine SHA-256 <code id="engineHash"></code> · checked before every load</span>
-    <span>Files end in <code>.lf</code></span>
+    <span>Laser Feet 0.1 · interpreter written in Go</span>
+    <span>engine sha-256 <span id="engineHash"></span> · verified before every load</span>
+    <a href="https://github.com/billionairedev24/laserfeet">github.com/billionairedev24/laserfeet</a>
   </div>
 </footer>
 
@@ -701,9 +784,10 @@ const WASM_SHA256 = /*WASM_SHA256*/;
 const KW = new Set("launch show beam send lock object rule follows when otherwise each in loop while times then fast attempt fails fail use test expect is not and or yes no nothing me stop skip to".split(" "));
 const BI = new Set("text number count sum biggest smallest round first last reverse sort join keepIf dropIf turn sortBy findFirst pause readFile".split(" "));
 const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function highlight(src) {
-  const re = /(--[^\n]*)|("(?:\\.|[^"\\])*")|(\b\d[\d_]*(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
+  const re = /(--[^\n]*)|("(?:\\.|[^"\\\n])*"?)|(\b\d[\d_]*(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
   let out = "", last = 0, m;
   while ((m = re.exec(src))) {
     out += esc(src.slice(last, m.index));
@@ -720,7 +804,6 @@ function highlight(src) {
   return out + esc(src.slice(last));
 }
 
-// Turn every code block into a highlighted one, with Try it buttons where asked.
 document.querySelectorAll("pre.lf").forEach(pre => {
   const src = pre.textContent;
   pre.dataset.src = src;
@@ -733,27 +816,30 @@ document.querySelectorAll("pre.lf").forEach(pre => {
   }
 });
 
-// Views
+/* ---------- views ---------- */
 const views = ["home", "learn", "reference", "examples", "playground"];
 function route() {
   const v = views.includes(location.hash.slice(1)) ? location.hash.slice(1) : "home";
   document.querySelectorAll("section[data-view]").forEach(s => s.hidden = s.dataset.view !== v);
-  document.querySelectorAll("nav.main a").forEach(a => { if (a.getAttribute("href") !== "#" + v) a.removeAttribute("aria-current"); else a.setAttribute("aria-current", "page"); });
+  document.querySelectorAll("nav.main a").forEach(a => {
+    if (a.getAttribute("href") === "#" + v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  });
   window.scrollTo(0, 0);
+  if (v === "home") beam.resize(); else beam.pause();
 }
 window.addEventListener("hashchange", route);
 document.querySelectorAll("[data-jump]").forEach(a => a.addEventListener("click", e => {
   e.preventDefault();
-  document.getElementById(a.dataset.jump).scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  document.getElementById(a.dataset.jump).scrollIntoView();
 }));
 
-// Examples
+/* ---------- examples ---------- */
 const cards = document.getElementById("cards");
 const select = document.getElementById("exampleSelect");
 EXAMPLES.forEach((ex, i) => {
   const card = document.createElement("div");
-  card.className = "card";
-  card.innerHTML = `<span class="file">${ex.file}</span><h3>${ex.title}</h3><p>${ex.about}</p>`;
+  card.className = "card" + (ex.test ? " test" : "");
+  card.innerHTML = `<span class="file">${esc(ex.file)}</span><h3>${esc(ex.title)}</h3><p>${esc(ex.about)}</p>`;
   const b = document.createElement("button");
   b.className = "btn"; b.type = "button"; b.textContent = ex.test ? "Run its tests" : "Open in playground";
   b.addEventListener("click", () => openInPlayground(ex.src, ex.test));
@@ -764,33 +850,64 @@ EXAMPLES.forEach((ex, i) => {
   select.appendChild(o);
 });
 
+/* ---------- editor ---------- */
 const editor = document.getElementById("editor");
+const hl = document.getElementById("hl");
+const gutter = document.getElementById("gutter");
 const output = document.getElementById("output");
 let wantTest = false;
-function draftKey() { return "lf-draft"; }
-try { editor.value = localStorage.getItem(draftKey()) || EXAMPLES[0].src; } catch (e) { editor.value = EXAMPLES[0].src; }
-editor.addEventListener("input", () => { try { localStorage.setItem(draftKey(), editor.value); } catch (e) {} });
+function paintEditor() {
+  const v = editor.value;
+  hl.innerHTML = highlight(v) + "\n";
+  const lines = v.split("\n").length;
+  let g = "";
+  for (let i = 1; i <= lines; i++) g += i + "\n";
+  gutter.textContent = g;
+  syncScroll();
+}
+function syncScroll() {
+  hl.scrollTop = editor.scrollTop; hl.scrollLeft = editor.scrollLeft;
+  gutter.scrollTop = editor.scrollTop;
+}
+function setCode(src) {
+  editor.value = src;
+  paintEditor();
+  try { localStorage.setItem("lf-draft", src); } catch (e) {}
+}
+editor.addEventListener("input", () => { paintEditor(); try { localStorage.setItem("lf-draft", editor.value); } catch (e) {} });
+editor.addEventListener("scroll", syncScroll);
 editor.addEventListener("keydown", e => {
   if (e.key === "Tab" && !e.shiftKey) {
     e.preventDefault();
-    const s = editor.selectionStart;
-    editor.setRangeText("    ", s, editor.selectionEnd, "end");
+    editor.setRangeText("    ", editor.selectionStart, editor.selectionEnd, "end");
+    editor.dispatchEvent(new Event("input"));
+  } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault(); runCode(wantTest);
+  } else if (e.key === "Enter") {
+    // keep the indentation of the current line, and indent after "{"
+    const s = editor.selectionStart, before = editor.value.slice(0, s);
+    const line = before.slice(before.lastIndexOf("\n") + 1);
+    let indent = line.match(/^\s*/)[0];
+    if (/\{\s*$/.test(line)) indent += "    ";
+    e.preventDefault();
+    editor.setRangeText("\n" + indent, s, editor.selectionEnd, "end");
     editor.dispatchEvent(new Event("input"));
   }
-  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runCode(wantTest); }
 });
+let saved = null;
+try { saved = localStorage.getItem("lf-draft"); } catch (e) {}
+setCode(saved || EXAMPLES[0].src);
 select.addEventListener("change", () => {
   const ex = EXAMPLES[+select.value];
-  editor.value = ex.src; wantTest = ex.test;
-  editor.dispatchEvent(new Event("input"));
+  wantTest = ex.test; setCode(ex.src);
   output.textContent = ex.test ? "Press Run tests." : "Press Run.";
 });
 
 function openInPlayground(src, test) {
-  editor.value = src; wantTest = !!test;
-  try { localStorage.setItem(draftKey(), src); } catch (e) {}
+  wantTest = !!test;
   location.hash = "#playground";
   route();
+  setCode(src);
   runCode(wantTest);
 }
 
@@ -798,32 +915,164 @@ function paint(el, text) {
   el.innerHTML = esc(text)
     .replace(/^(⚠.*)$/gm, '<span class="err">$1</span>')
     .replace(/^(\s*✗.*)$/gm, '<span class="err">$1</span>')
+    .replace(/^(\s*\s{4}Problem.*)$/gm, '<span class="err">$1</span>')
     .replace(/^(✓.*)$/gm, '<span class="pass">$1</span>');
 }
 
-let ready = false;
+let ready = false, pending = null;
 async function runCode(test) {
-  if (!ready) { output.textContent = "The engine is still loading. It will run as soon as it's ready."; pending = test; return; }
+  if (!ready) { output.textContent = "The engine is still charging. Your code will run as soon as it's ready."; pending = test; return; }
   output.textContent = test ? "Running tests…" : "Running…";
   const t0 = performance.now();
   const res = await (test ? laserTest(editor.value) : laserRun(editor.value));
   paint(output, res.trim() === "" ? "(no output)" : res);
-  document.getElementById("playStatus").textContent = `finished in ${Math.max(1, Math.round(performance.now() - t0))} ms`;
+  const ps = document.getElementById("playStatus");
+  ps.textContent = `done in ${Math.max(1, Math.round(performance.now() - t0))} ms`;
+  ps.className = "status ready";
 }
-let pending = null;
 document.getElementById("runBtn").addEventListener("click", () => runCode(false));
 document.getElementById("testBtn").addEventListener("click", () => runCode(true));
-
-const heroRun = document.getElementById("heroRun");
-heroRun.addEventListener("click", async () => {
-  const src = document.getElementById("heroCode").dataset.src;
-  const res = await laserRun(src);
+document.getElementById("heroRun").addEventListener("click", async () => {
+  beam.fire();
+  const res = await laserRun(document.getElementById("heroCode").dataset.src);
   paint(document.getElementById("heroOut"), res);
 });
 
-// Load the Laser Feet engine (the Go interpreter compiled to WebAssembly)
+/* ---------- the beam ---------- */
+const beam = (() => {
+  const cv = document.getElementById("beam"), ctx = cv.getContext("2d");
+  const hero = cv.parentElement, bench = document.getElementById("bench");
+  let w = 0, h = 0, dpr = 1, path = [], segLen = [], total = 0, start = 0, running = false, raf = 0, lit = false;
+  const motes = Array.from({ length: 90 }, () => ({ x: Math.random(), y: Math.random(), vx: (Math.random() - .5) * .00012, vy: (Math.random() - .5) * .00009, r: Math.random() * 1.2 + .4 }));
+
+  function layout() {
+    const r = hero.getBoundingClientRect(), b = bench.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = r.width; h = r.height;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    const railY = h - 26;
+    const tx = Math.min(w - 24, b.left - r.left + b.width * 0.72);
+    const ty = b.bottom - r.top;
+    // emitter on the left, along the rail, a 45° mirror, then up into the bench
+    path = [[54, railY], [tx, railY], [tx, ty]];
+    segLen = []; total = 0;
+    for (let i = 1; i < path.length; i++) {
+      const L = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+      segLen.push(L); total += L;
+    }
+  }
+  function pointAt(d) {
+    for (let i = 0; i < segLen.length; i++) {
+      if (d <= segLen[i]) {
+        const t = d / segLen[i], a = path[i], b = path[i + 1];
+        return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, i];
+      }
+      d -= segLen[i];
+    }
+    const e = path[path.length - 1];
+    return [e[0], e[1], segLen.length - 1];
+  }
+  function strokePath(len, width, color, blur) {
+    ctx.beginPath();
+    ctx.moveTo(path[0][0], path[0][1]);
+    let d = 0;
+    for (let i = 0; i < segLen.length; i++) {
+      if (d + segLen[i] >= len) { const p = pointAt(len); ctx.lineTo(p[0], p[1]); break; }
+      ctx.lineTo(path[i + 1][0], path[i + 1][1]); d += segLen[i];
+    }
+    ctx.lineWidth = width; ctx.strokeStyle = color; ctx.shadowColor = color; ctx.shadowBlur = blur;
+    ctx.stroke();
+  }
+  function distToBeam(x, y, len) {
+    let best = 1e9, d = 0;
+    for (let i = 0; i < segLen.length && d < len; i++) {
+      const a = path[i], b = path[i + 1], L = Math.min(segLen[i], len - d);
+      const ux = (b[0] - a[0]) / segLen[i], uy = (b[1] - a[1]) / segLen[i];
+      const t = Math.max(0, Math.min(L, (x - a[0]) * ux + (y - a[1]) * uy));
+      best = Math.min(best, Math.hypot(x - (a[0] + ux * t), y - (a[1] + uy * t)));
+      d += segLen[i];
+    }
+    return best;
+  }
+  function draw(now) {
+    const elapsed = now - start;
+    const len = reduceMotion ? total : Math.min(total, total * Math.pow(Math.min(1, elapsed / 1100), .7));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    // rail
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(141,149,168,.16)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, path[0][1] + 9); ctx.lineTo(w, path[0][1] + 9); ctx.stroke();
+    // emitter housing
+    ctx.fillStyle = "#10141e"; ctx.strokeStyle = "#2a3246";
+    ctx.beginPath(); ctx.roundRect(14, path[0][1] - 11, 40, 22, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#5b6377"; ctx.font = "9px 'Martian Mono', monospace"; ctx.fillText("λ650", 19, path[0][1] + 3);
+    // mirror at the turn
+    const m = path[1];
+    ctx.save(); ctx.translate(m[0], m[1]); ctx.rotate(-Math.PI / 4);
+    ctx.fillStyle = "#1b2130"; ctx.fillRect(-13, -2, 26, 6);
+    ctx.fillStyle = "#c9d2e6"; ctx.fillRect(-13, -2, 26, 1.5);
+    ctx.restore();
+
+    // dust motes: they only glow where the beam passes through them (the Tyndall effect)
+    for (const p of motes) {
+      if (!reduceMotion) { p.x = (p.x + p.vx + 1) % 1; p.y = (p.y + p.vy + 1) % 1; }
+      const x = p.x * w, y = p.y * h;
+      const dd = distToBeam(x, y, len);
+      const glow = Math.max(0, 1 - dd / 34);
+      ctx.shadowBlur = glow > .2 ? 8 : 0; ctx.shadowColor = "#ff2e43";
+      ctx.fillStyle = glow > 0 ? `rgba(255,${120 - glow * 80},${130 - glow * 80},${.12 + glow * .85})` : "rgba(141,149,168,.10)";
+      ctx.beginPath(); ctx.arc(x, y, p.r + glow * 1.1, 0, 6.283); ctx.fill();
+    }
+
+    if (len > 0) {
+      ctx.globalCompositeOperation = "lighter";
+      const flicker = reduceMotion ? 1 : .92 + Math.sin(now / 90) * .04 + Math.random() * .04;
+      strokePath(len, 9, `rgba(255,46,67,${.10 * flicker})`, 30);
+      strokePath(len, 3, `rgba(255,46,67,${.55 * flicker})`, 14);
+      strokePath(len, 1.1, "rgba(255,225,228,.95)", 4);
+      // pulses travelling along the beam
+      if (!reduceMotion && len >= total) {
+        for (let k = 0; k < 3; k++) {
+          const p = pointAt(((now / 3.2) + k * total / 3) % total);
+          ctx.shadowBlur = 16; ctx.shadowColor = "#ff2e43"; ctx.fillStyle = "rgba(255,240,240,.9)";
+          ctx.beginPath(); ctx.arc(p[0], p[1], 1.8, 0, 6.283); ctx.fill();
+        }
+      }
+      // hit flare where the beam meets the bench
+      if (len >= total) {
+        const e = path[path.length - 1];
+        const g = ctx.createRadialGradient(e[0], e[1], 0, e[0], e[1], 26);
+        g.addColorStop(0, "rgba(255,230,232,.9)"); g.addColorStop(.25, "rgba(255,46,67,.45)"); g.addColorStop(1, "rgba(255,46,67,0)");
+        ctx.shadowBlur = 0; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(e[0], e[1], 26, 0, 6.283); ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+    if (len >= total && !lit) { lit = true; bench.classList.add("lit"); }
+    if (running && !reduceMotion) raf = requestAnimationFrame(draw);
+  }
+  function play() {
+    cancelAnimationFrame(raf);
+    running = true;
+    raf = requestAnimationFrame(draw);
+  }
+  return {
+    resize() { layout(); play(); },
+    fire() { lit = false; bench.classList.remove("lit"); start = performance.now(); play(); },
+    pause() { running = false; cancelAnimationFrame(raf); },
+    init() {
+      layout(); start = performance.now(); play();
+      new ResizeObserver(() => { if (!document.querySelector('[data-view="home"]').hidden) { layout(); if (reduceMotion) draw(performance.now()); } }).observe(hero);
+      document.addEventListener("visibilitychange", () => document.hidden ? this.pause() : (!document.querySelector('[data-view="home"]').hidden && play()));
+    }
+  };
+})();
+
+/* ---------- engine ---------- */
 (async () => {
-  const setStatus = t => { document.getElementById("playStatus").textContent = t; document.getElementById("heroStatus").textContent = t; };
+  const set = (t, ok) => ["playStatus", "heroStatus"].forEach(id => { const el = document.getElementById(id); el.textContent = t; el.className = "status" + (ok ? " ready" : ""); });
+  document.getElementById("engineHash").textContent = WASM_SHA256.slice(0, 12) + "…";
   try {
     const go = new Go();
     const resp = await fetch("laserfeet.wasm", { cache: "no-cache" });
@@ -831,20 +1080,20 @@ heroRun.addEventListener("click", async () => {
     const bytes = await resp.arrayBuffer();
     // Integrity check: only run the engine if its checksum matches the one this page was built with.
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-    const got = btoa(String.fromCharCode(...digest));
-    if (got !== WASM_SHA256) throw new Error("the engine file failed its checksum check, so it was not run");
+    let bin = ""; digest.forEach(b => bin += String.fromCharCode(b));
+    if (btoa(bin) !== WASM_SHA256) throw new Error("the engine file failed its checksum check, so it was not run");
     const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
     go.run(instance);
     ready = true;
-    setStatus("engine ready");
+    set("engine verified · ready", true);
     ["runBtn", "testBtn", "heroRun"].forEach(id => document.getElementById(id).disabled = false);
     if (pending !== null) { const p = pending; pending = null; runCode(p); }
   } catch (err) {
-    setStatus("engine couldn't load");
-    output.innerHTML = '<span class="err">The Laser Feet engine couldn\'t load here: ' + esc(String(err.message || err)) + '. You can still run everything on your computer with lf run.</span>';
+    set("engine couldn't load", false);
+    output.innerHTML = '<span class="err">The Laser Feet engine couldn\'t load: ' + esc(String(err.message || err)) + '. You can still run everything on your computer with lf run.</span>';
   }
 })();
 
-document.getElementById("engineHash").textContent = WASM_SHA256.slice(0, 12) + "…";
+beam.init();
 route();
 </script>

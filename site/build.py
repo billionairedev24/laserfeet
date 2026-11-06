@@ -27,5 +27,14 @@ page = page.replace("/*EXAMPLES*/", json.dumps(examples).replace("</", "<\\/"))
 wasm_hash = base64.b64encode(hashlib.sha256((here / "laserfeet.wasm").read_bytes()).digest()).decode()
 page = page.replace("/*WASM_SHA256*/", json.dumps(wasm_hash))
 page = page.replace("/*WASM_EXEC*/", (here / "wasm_exec.js").read_text())
+# index.html is the page body used for the Claude artifact (it adds its own <head>).
 (here / "index.html").write_text(page)
-print("built index.html", len(page), "bytes")
+# public/index.html is a complete standalone page for GitHub Pages or any web host.
+standalone = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+              '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
+              '<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}'
+              'body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>\n'
+              '</head>\n<body>\n' + page + '\n</body>\n</html>\n')
+(here / "public").mkdir(exist_ok=True)
+(here / "public" / "index.html").write_text(standalone)
+print("built index.html and public/index.html", len(page), "bytes")

@@ -9,11 +9,19 @@ Version 0.1 is a prototype: an interpreter written in Go.
 You need Go 1.24 or newer. Releases are built with the newest supported Go (1.26).
 
 ```
-go build -o lf ./cmd/lf
-./lf run examples/hello.lf
-./lf test examples/shop_test.lf
-./lf run examples/web.lf        # then open http://localhost:8080/hello
+go install ./cmd/lf             # puts lf in $(go env GOPATH)/bin
+lf run examples/hello.lf
+lf test examples/shop_test.lf
+lf run examples/web.lf          # then open http://localhost:8080/hello
 ```
+
+If `lf` isn't found, add Go's bin folder to your PATH. On Mac or Linux:
+
+```
+echo 'export PATH="$PATH:$(go env GOPATH)/bin"' >> ~/.zshrc && source ~/.zshrc
+```
+
+On Windows the Go installer adds `%USERPROFILE%\go\bin` to PATH; open a new terminal.
 
 ## Run the automated tests
 
@@ -30,6 +38,10 @@ This runs every example and compares its output with the matching `.out` file, c
 ```
 
 This builds `lf` for Linux, Mac and Windows, builds the website, and writes `dist/SHA256SUMS`. Builds are reproducible: the same source and Go version always give the same checksums. `dist/index.html` and `dist/laserfeet.wasm` together are the website.
+
+## Website
+
+The website source is `site/template.html`. `scripts/build.sh` turns it into `site/public/` (a complete page plus the engine), and the Website workflow publishes that with GitHub Pages on every push to `main`. One-time setup: Settings → Pages → Source: **GitHub Actions**.
 
 ## Releases and security
 
