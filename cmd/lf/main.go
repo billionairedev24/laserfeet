@@ -14,6 +14,7 @@ var version = "0.1.0" // set by scripts/build.sh for releases
 var help = `Laser Feet ` + version + `
 
 Usage:
+  lf new <name>        create a starter project
   lf run <file.lf>     run a program
   lf test <file.lf>    run the test blocks in a file
   lf version           show the version
@@ -33,6 +34,12 @@ func main() {
 		fmt.Print(help)
 	case "version", "--version":
 		fmt.Println("Laser Feet " + version)
+	case "new":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Please give the project a name, like: lf new my-app")
+			os.Exit(2)
+		}
+		os.Exit(newProject(args[1]))
 	case "run":
 		need(args)
 		os.Exit(run(args[1]))

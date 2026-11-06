@@ -339,23 +339,20 @@ server.get("/hello") {
     <div class="sect split">
       <div class="text">
         <span class="lambda">Install</span>
-        <h2>Run it on your computer</h2>
-        <p>Laser Feet is one command, <code>lf</code>. Install it from the source code once, then run any <code>.lf</code> file from any folder.</p>
-        <p class="note"><b>You need Go 1.24 or newer</b> to build <code>lf</code> today. Ready-made downloads with SHA-256 checksums and signed build provenance come with the first release.</p>
+        <h2>Install in one line</h2>
+        <p>The installer downloads <code>lf</code> for your computer, checks its SHA-256 checksum against the release, and refuses to install anything that doesn't match.</p>
+        <p class="note"><b>Prefer to check first?</b> Every release on GitHub lists <code>SHA256SUMS</code> and signed build provenance. You can also build from source with Go 1.24+: <code>go install ./cmd/lf</code>.</p>
       </div>
       <ol class="steps">
-        <li><div><span>Get the source and install <code>lf</code></span>
-<lf-code>git clone https://github.com/billionairedev24/laserfeet
-cd laserfeet
-go install ./cmd/lf</lf-code></div></li>
-        <li><div><span>Make <code>lf</code> work from any folder (Mac and Linux; on Windows the Go installer does this)</span>
-<lf-code>echo 'export PATH="$PATH:$(go env GOPATH)/bin"' >> ~/.zshrc
-source ~/.zshrc
-lf version</lf-code></div></li>
-        <li><div><span>Write <code>hello.lf</code> in any editor, then run it, test it, or serve it</span>
-<lf-code>lf run hello.lf
-lf test hello.lf
-lf run app.lf</lf-code></div></li>
+        <li><div><span>Mac or Linux</span>
+<lf-code>curl -fsSL https://billionairedev24.github.io/laserfeet/install.sh | sh</lf-code></div></li>
+        <li><div><span>Windows (PowerShell)</span>
+<lf-code>irm https://billionairedev24.github.io/laserfeet/install.ps1 | iex</lf-code></div></li>
+        <li><div><span>Start a project and run it</span>
+<lf-code>lf new my-app
+cd my-app
+lf run app.lf
+lf test app.lf</lf-code></div></li>
       </ol>
     </div>
 
@@ -712,6 +709,7 @@ test "small orders pay full price" {
         <h2 id="r6">The lf command</h2>
         <div class="tablewrap"><table>
           <tr><th>Command</th><th>What it does</th></tr>
+          <tr><td><code>lf new name</code></td><td>Create a starter project with an app and tests</td></tr>
           <tr><td><code>lf run app.lf</code></td><td>Run a program (<code>lf app.lf</code> works too)</td></tr>
           <tr><td><code>lf test app.lf</code></td><td>Run its test blocks</td></tr>
           <tr><td><code>lf version</code></td><td>Show the version</td></tr>

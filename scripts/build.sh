@@ -21,8 +21,8 @@ GOOS=windows GOARCH=amd64 go build "${flags[@]}" -o dist/lf-windows-amd64.exe ./
 GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -ldflags="-s -w -buildid=" -o site/laserfeet.wasm ./cmd/wasm
 cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" site/
 python3 site/build.py
-cp site/laserfeet.wasm site/public/
-cp site/public/index.html site/laserfeet.wasm dist/
+cp site/laserfeet.wasm install.sh install.ps1 site/public/
+cp site/public/index.html site/laserfeet.wasm install.sh install.ps1 dist/
 
 (cd dist && sha256sum -- * > SHA256SUMS)
 cat dist/SHA256SUMS

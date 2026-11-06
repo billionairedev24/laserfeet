@@ -4,7 +4,29 @@ A programming language with plain English keywords, objects and functions side b
 
 Version 0.1 is a prototype: an interpreter written in Go.
 
-## Build and run
+## Install
+
+Mac or Linux:
+
+```
+curl -fsSL https://billionairedev24.github.io/laserfeet/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```
+irm https://billionairedev24.github.io/laserfeet/install.ps1 | iex
+```
+
+Both installers check the download's SHA-256 checksum against the release before installing. Then:
+
+```
+lf new my-app
+cd my-app
+lf run app.lf
+```
+
+## Build from source
 
 You need Go 1.24 or newer. Releases are built with the newest supported Go (1.26).
 
