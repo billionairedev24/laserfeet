@@ -31,23 +31,61 @@ type binding struct {
 }
 
 // Env holds the names visible at one point in the program.
+// Small scopes (most blocks and calls) keep their names in a short slice,
+// which is much cheaper than a map; scopes that grow large switch to a map.
 type Env struct {
-	vars   map[string]*binding
+	names  []string
+	binds  []binding
+	big    map[string]*binding
 	parent *Env
 	obj    *Instance // fields of this object are visible by name
 	// the built-in names live here; your own names can reuse them
 	isBuiltins bool
 }
 
-func newEnv(parent *Env) *Env { return &Env{vars: map[string]*binding{}, parent: parent} }
+const smallScope = 8
+
+func newEnv(parent *Env) *Env { return &Env{parent: parent} }
+
+// find returns the binding for name in this scope only, or nil.
+func (e *Env) find(name string) *binding {
+	if e.big != nil {
+		return e.big[name]
+	}
+	for i := range e.names {
+		if e.names[i] == name {
+			return &e.binds[i]
+		}
+	}
+	return nil
+}
 
 func (e *Env) define(name string, v Value, locked bool) {
-	e.vars[name] = &binding{v, locked}
+	if b := e.find(name); b != nil {
+		b.v, b.locked = v, locked
+		return
+	}
+	if e.big != nil {
+		e.big[name] = &binding{v, locked}
+		return
+	}
+	if len(e.names) < smallScope {
+		e.names = append(e.names, name)
+		e.binds = append(e.binds, binding{v, locked})
+		return
+	}
+	e.big = make(map[string]*binding, 2*smallScope)
+	for i, n := range e.names {
+		b := e.binds[i]
+		e.big[n] = &b
+	}
+	e.names, e.binds = nil, nil
+	e.big[name] = &binding{v, locked}
 }
 
 func (e *Env) lookup(name string) (Value, bool) {
 	for s := e; s != nil; s = s.parent {
-		if b, ok := s.vars[name]; ok {
+		if b := s.find(name); b != nil {
 			return b.v, true
 		}
 		if s.obj != nil {
@@ -62,10 +100,11 @@ func (e *Env) lookup(name string) (Value, bool) {
 	return nil, false
 }
 
-func (e *Env) names() []string {
+func (e *Env) names_() []string {
 	var out []string
 	for s := e; s != nil; s = s.parent {
-		for k := range s.vars {
+		out = append(out, s.names...)
+		for k := range s.big {
 			out = append(out, k)
 		}
 		if s.obj != nil {
@@ -75,6 +114,41 @@ func (e *Env) names() []string {
 		}
 	}
 	return out
+}
+
+// Common whole numbers are boxed once and shared, so arithmetic on counters,
+// positions and small totals doesn't allocate memory.
+var numCache = func() (c [4096]Value) {
+	for i := range c {
+		c[i] = float64(i)
+	}
+	return
+}()
+
+func num(f float64) Value {
+	if f >= 0 && f < 4096 && f == math.Trunc(f) {
+		return numCache[int(f)]
+	}
+	return f
+}
+
+// needsScope reports whether a block can create new names. Blocks that can't
+// (most when-blocks) run in their parent's scope and skip an allocation.
+func needsScope(stmts []Stmt) bool {
+	for _, s := range stmts {
+		switch s.(type) {
+		case *AssignStmt, *BeamDecl, *UseStmt, *FastStmt:
+			return true
+		}
+	}
+	return false
+}
+
+func (in *Interp) blockEnv(stmts []Stmt, env *Env) *Env {
+	if needsScope(stmts) {
+		return newEnv(env)
+	}
+	return env
 }
 
 type ctrl int
@@ -291,9 +365,9 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 		return cSend, in.eval(s.Value, env)
 	case *WhenStmt:
 		if in.truth(s.Cond, env, "when") {
-			return in.execBlock(s.Body, newEnv(env))
+			return in.execBlock(s.Body, in.blockEnv(s.Body, env))
 		} else if s.Otherwise != nil {
-			return in.execBlock(s.Otherwise, newEnv(env))
+			return in.execBlock(s.Otherwise, in.blockEnv(s.Otherwise, env))
 		}
 	case *EachStmt:
 		over := in.eval(s.Over, env)
@@ -452,14 +526,14 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 	switch t := s.Target.(type) {
 	case *Ident:
 		if s.Lock {
-			if _, ok := env.vars[t.Name]; ok {
+			if env.find(t.Name) != nil {
 				in.fail(s.Line, "'%s' already exists here, so it can't be locked again", t.Name)
 			}
 			env.define(t.Name, v, true)
 			return
 		}
 		for e := env; e != nil && !e.isBuiltins; e = e.parent {
-			if b, ok := e.vars[t.Name]; ok {
+			if b := e.find(t.Name); b != nil {
 				if b.locked {
 					in.fail(s.Line, "'%s' is locked, so it can't be changed", t.Name)
 				}
@@ -516,7 +590,7 @@ func (in *Interp) truth(x Expr, env *Env, where string) bool {
 func (in *Interp) eval(x Expr, env *Env) Value {
 	switch x := x.(type) {
 	case *NumberLit:
-		return x.Value
+		return x.boxed()
 	case *TextLit:
 		return x.Value
 	case *BoolLit:
@@ -540,7 +614,7 @@ func (in *Interp) eval(x Expr, env *Env) Value {
 		v, ok := env.lookup(x.Name)
 		if !ok {
 			msg := fmt.Sprintf("I don't know what '%s' is", x.Name)
-			if s := suggest(x.Name, env.names()); s != "" {
+			if s := suggest(x.Name, env.names_()); s != "" {
 				msg += fmt.Sprintf(". Did you mean '%s'?", s)
 			} else if x.Name == "web" {
 				msg += ". Add 'use web' at the top of the file"
@@ -664,7 +738,7 @@ func (in *Interp) binary(x *Binary, env *Env) Value {
 	case "+":
 		if a, ok := l.(float64); ok {
 			if b, ok := r.(float64); ok {
-				return a + b
+				return num(a + b)
 			}
 		}
 		if a, ok := l.(*List); ok {
@@ -685,8 +759,11 @@ func (in *Interp) binary(x *Binary, env *Env) Value {
 			in.fail(x.Line, "'to' makes a range of numbers, like 1 to 10")
 		}
 		list := &List{}
+		if b >= a {
+			list.Items = make([]Value, 0, int(b-a)+1)
+		}
 		for i := a; i <= b; i++ {
-			list.Items = append(list.Items, i)
+			list.Items = append(list.Items, num(i))
 		}
 		return list
 	}
@@ -697,9 +774,9 @@ func (in *Interp) binary(x *Binary, env *Env) Value {
 	}
 	switch x.Op {
 	case "-":
-		return a - b
+		return num(a - b)
 	case "*":
-		return a * b
+		return num(a * b)
 	case "/":
 		if b == 0 {
 			in.fail(x.Line, "you can't divide by zero")
@@ -709,7 +786,7 @@ func (in *Interp) binary(x *Binary, env *Env) Value {
 		if b == 0 {
 			in.fail(x.Line, "you can't divide by zero")
 		}
-		return math.Mod(a, b)
+		return num(math.Mod(a, b))
 	}
 	in.fail(x.Line, "unknown operator %s", x.Op)
 	return nil
@@ -732,15 +809,27 @@ func (in *Interp) callExpr(c *Call, env *Env, first Value, hasFirst bool) Value 
 		}
 		return b.Lazy(in, env, c.Line, first, rest)
 	}
-	var args []Value
-	var names []string
+	n := len(c.Args)
+	if hasFirst {
+		n++
+	}
+	args := make([]Value, 0, n)
+	var names []string // stays nil unless some input is named
 	if hasFirst {
 		args = append(args, first)
-		names = append(names, "")
 	}
-	for _, a := range c.Args {
+	for i, a := range c.Args {
+		if a.Name != "" && names == nil {
+			names = make([]string, n)
+		}
+		if names != nil {
+			idx := i
+			if hasFirst {
+				idx++
+			}
+			names[idx] = a.Name
+		}
 		args = append(args, in.eval(a.Value, env))
-		names = append(names, a.Name)
 	}
 	return in.call(fn, args, names, c.Line, nil)
 }
@@ -770,11 +859,19 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		vals := in.matchArgs(label, f.Params, args, names, line)
 		parent := f.Closure
 		if f.Self != nil {
-			parent = &Env{vars: map[string]*binding{"me": {f.Self, true}}, parent: f.Closure, obj: f.Self}
+			parent = &Env{names: []string{"me"}, binds: []binding{{f.Self, true}}, parent: f.Closure, obj: f.Self}
 		}
-		e := newEnv(parent)
-		for i, p := range f.Params {
-			e.define(p, vals[i], false)
+		e := &Env{parent: parent}
+		if len(f.Params) <= smallScope {
+			e.names = append(make([]string, 0, len(f.Params)+2), f.Params...)
+			e.binds = make([]binding, len(f.Params), len(f.Params)+2)
+			for i := range f.Params {
+				e.binds[i].v = vals[i]
+			}
+		} else {
+			for i, p := range f.Params {
+				e.define(p, vals[i], false)
+			}
 		}
 		for k, v := range extra {
 			e.define(k, v, false)
@@ -796,7 +893,7 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		given := make([]bool, len(fieldNames))
 		pos := 0
 		for i, a := range args {
-			if names[i] == "" {
+			if names == nil || names[i] == "" {
 				if pos >= len(fieldNames) {
 					in.fail(line, "%s only has %d fields, but got more values", f.Name, len(fieldNames))
 				}
@@ -834,6 +931,9 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 }
 
 func (in *Interp) matchArgs(label string, params []string, args []Value, names []string, line int) []Value {
+	if names == nil && len(args) == len(params) {
+		return args // the common case: every input given in order
+	}
 	vals := make([]Value, len(params))
 	set := make([]bool, len(params))
 	pos := 0

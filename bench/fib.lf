@@ -1,0 +1,11 @@
+-- Benchmark: recursive calls and arithmetic
+beam fib(n) {
+    when n < 2 {
+        send n
+    }
+    send fib(n - 1) + fib(n - 2)
+}
+
+launch {
+    show fib(27)
+}

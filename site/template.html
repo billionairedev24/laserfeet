@@ -241,7 +241,7 @@ footer .wrap { display: flex; gap: 12px 28px; justify-content: space-between; fl
       <div>
         <div class="hazard" aria-label="Prototype, version 0.1">
           <span><svg width="14" height="13" viewBox="0 0 14 13" aria-hidden="true"><path d="M7 .8 13.3 12H.7z" fill="none" stroke="#111" stroke-width="1.4"/><circle cx="7" cy="8.4" r="1.2" fill="#111"/><path d="M7 8.4 9.6 5.2M7 8.4 4.4 5.2M7 8.4V4.6" stroke="#111" stroke-width=".8"/></svg>Prototype</span>
-          <span>v0.1 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
+          <span>v0.2 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
         </div>
         <h1>Code at the <em>speed of light</em></h1>
         <p class="lede">Laser Feet is a programming language that reads like plain English, mixes objects and functions freely, and comes with a secure web server built in.</p>
@@ -365,11 +365,11 @@ lf test app.lf</lf-code></div></li>
       <h2>Across the spectrum</h2>
       <p class="lede">Version 0.1 runs your code with an interpreter written in Go. Each step after that makes Laser Feet faster and more independent.</p>
       <ul class="spectrum">
-        <li class="now" style="--wl: var(--l650)"><span class="ver">0.1</span><strong>Prototype</strong><p>Interpreter, playground, web server, tests, friendly errors, signed builds.</p></li>
-        <li style="--wl: var(--l589)"><span class="ver">0.2</span><strong>Native programs</strong><p><code>lf build</code> makes one fast file that runs with nothing installed.</p></li>
+        <li style="--wl: var(--l650)"><span class="ver">0.1</span><strong>Prototype</strong><p>Interpreter, playground, web server, tests, friendly errors, signed builds, VS Code colors.</p></li>
+        <li class="now" style="--wl: var(--l589)"><span class="ver">0.2</span><strong>Standalone programs</strong><p><code>lf build</code> makes one file that runs with nothing installed, on an engine twice as fast.</p></li>
         <li style="--wl: var(--l532)"><span class="ver">0.3</span><strong>Standard library</strong><p>Databases, JSON, files, dates and the <code>sole</code> package manager.</p></li>
         <li style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Smarter editors</strong><p>VS Code colors are out now; autocomplete and live error underlines are next.</p></li>
-        <li style="--wl: var(--l405)"><span class="ver">1.0</span><strong>Independent</strong><p>Its own code generator, with the compiler written in Laser Feet.</p></li>
+        <li style="--wl: var(--l405)"><span class="ver">1.0</span><strong>Independent</strong><p>A true native compiler, written in Laser Feet itself.</p></li>
       </ul>
     </div>
   </div>
@@ -396,6 +396,7 @@ lf test app.lf</lf-code></div></li>
         <a href="#learn" data-jump="g8">Fast work</a>
         <a href="#learn" data-jump="g9">Web apps</a>
         <a href="#learn" data-jump="g10">Testing</a>
+        <a href="#learn" data-jump="g11">Sharing your program</a>
       </nav>
       <article>
         <h2 id="g1"><span class="num">01</span>Your first program</h2>
@@ -606,6 +607,13 @@ test "big orders get 10 percent off" {
 test "small orders pay full price" {
     expect discount(50) is 50
 }</lf-code>
+
+        <h2 id="g11"><span class="num">11</span>Sharing your program</h2>
+        <p><code>lf build</code> turns a program into one standalone file. The people you give it to don't need Laser Feet, Go, or anything else installed.</p>
+<lf-code>lf build app.lf            -- makes ./app (app.exe on Windows)
+lf build app.lf -o shop    -- picks the name
+./app</lf-code>
+        <p>The file carries a SHA-256 checksum of your program and refuses to start if it was changed or damaged after you built it. It runs on the same kind of computer you built it on, so build on a Mac for Macs and on Windows for Windows.</p>
       </article>
     </div>
   </div>
@@ -714,6 +722,7 @@ test "small orders pay full price" {
           <tr><td><code>lf new name</code></td><td>Create a starter project with an app and tests</td></tr>
           <tr><td><code>lf run app.lf</code></td><td>Run a program (<code>lf app.lf</code> works too)</td></tr>
           <tr><td><code>lf test app.lf</code></td><td>Run its test blocks</td></tr>
+          <tr><td><code>lf build app.lf</code></td><td>Make a standalone program file (<code>-o name</code> picks its name)</td></tr>
           <tr><td><code>lf version</code></td><td>Show the version</td></tr>
           <tr><td><code>lf help</code></td><td>Show help</td></tr>
         </table></div>
@@ -771,7 +780,7 @@ test "small orders pay full price" {
 
 <footer>
   <div class="wrap">
-    <span>Laser Feet 0.1 · interpreter written in Go</span>
+    <span>Laser Feet 0.2 · engine written in Go</span>
     <span>engine sha-256 <span id="engineHash"></span> · verified before every load</span>
     <a href="https://github.com/billionairedev24/laserfeet">github.com/billionairedev24/laserfeet</a>
   </div>

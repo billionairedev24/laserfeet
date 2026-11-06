@@ -1,0 +1,21 @@
+-- Benchmark: loops, lists, objects and text
+object Point {
+    x
+    y
+}
+
+launch {
+    total = 0
+    points = []
+    each i in 1 to 200000 {
+        points.add(Point(i, i * 2))
+    }
+    each p in points {
+        when p.x % 3 is 0 {
+            total = total + p.y
+        }
+    }
+    show total
+    big = points then keepIf(x > 199990) then turn(text(y)) then join(",")
+    show big
+}

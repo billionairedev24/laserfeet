@@ -7,7 +7,16 @@ type Expr interface{ Ln() int }
 type NumberLit struct {
 	Line  int
 	Value float64
+	box   any // the value, boxed once so evaluating a literal doesn't allocate
 }
+
+func (n *NumberLit) boxed() any {
+	if n.box == nil {
+		n.box = n.Value
+	}
+	return n.box
+}
+
 type TextLit struct {
 	Line  int
 	Value string

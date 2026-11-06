@@ -234,7 +234,7 @@ func (in *Interp) perItem(env *Env, x Expr, item Value) Value {
 	e := newEnv(env)
 	switch o := item.(type) {
 	case *Instance:
-		e = &Env{vars: map[string]*binding{}, parent: env, obj: o}
+		e = &Env{parent: env, obj: o}
 	case *Map:
 		for _, k := range o.Keys {
 			e.define(k, o.M[k], false)

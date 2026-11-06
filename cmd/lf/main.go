@@ -17,6 +17,7 @@ Usage:
   lf new <name>        create a starter project
   lf run <file.lf>     run a program
   lf test <file.lf>    run the test blocks in a file
+  lf build <file.lf>   make a standalone program (add -o name to pick its name)
   lf version           show the version
   lf help              show this help
 
@@ -24,6 +25,10 @@ You can also just type: lf <file.lf>
 `
 
 func main() {
+	// A program made with "lf build" carries its code inside; run that instead.
+	if code, found := runAttached(); found {
+		os.Exit(code)
+	}
 	args := os.Args[1:]
 	if len(args) == 0 {
 		fmt.Print(help)
@@ -40,6 +45,13 @@ func main() {
 			os.Exit(2)
 		}
 		os.Exit(newProject(args[1]))
+	case "build":
+		need(args)
+		out := ""
+		if len(args) >= 4 && args[2] == "-o" {
+			out = args[3]
+		}
+		os.Exit(buildProgram(args[1], out))
 	case "run":
 		need(args)
 		os.Exit(run(args[1]))

@@ -26,6 +26,18 @@ cd my-app
 lf run app.lf
 ```
 
+## Share a program
+
+```
+lf build app.lf      # makes ./app (app.exe on Windows), runs with nothing installed
+```
+
+The built file checks a SHA-256 of the program inside it and refuses to start if it was changed after building.
+
+## Speed
+
+`go test ./lang -bench .` runs the benchmarks in `bench/`. Version 0.2 made the engine about 2.1x faster on function calls (`bench/fib.lf`) and 1.4x faster on loops, lists and objects (`bench/loops.lf`) than 0.1, mainly by cutting memory allocations.
+
 ## VS Code
 
 Download `laserfeet.vsix` from the [latest release](https://github.com/billionairedev24/laserfeet/releases/latest) and run:
@@ -90,6 +102,7 @@ Changing the `VERSION` file on `main` runs the release workflow, which tags the 
 | `lang/web.go` | The `web` library |
 | `cmd/lf` | The `lf` command |
 | `cmd/wasm` | The browser version used by the playground |
+| `bench` | Speed benchmarks |
 | `examples` | Example programs, expected outputs, and test files |
 | `site` | The website |
 | `scripts/build.sh` | Builds all binaries, the website and the checksums |

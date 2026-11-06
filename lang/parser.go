@@ -539,7 +539,7 @@ func (p *parser) primary() Expr {
 		if err != nil {
 			p.fail(t.Line, "'%s' is not a valid number", t.Text)
 		}
-		return &NumberLit{t.Line, v}
+		return &NumberLit{Line: t.Line, Value: v, box: v}
 	case STRING:
 		p.next()
 		return p.text(t)
