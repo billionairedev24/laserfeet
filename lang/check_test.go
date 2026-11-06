@@ -88,7 +88,7 @@ func TestCheckAcceptsGoodCode(t *testing.T) {
 		"every path sends":               "beam sign(n: Int) gives Text {\n    when n > 0 {\n        send \"+\"\n    } otherwise {\n        send \"-\"\n    }\n}",
 		"decimal division":               "beam avg(a: Int, b: Int) gives Decimal {\n    send (a + b) / 2\n}",
 		"optional field nothing default": "object P {\n    nick: Text? = nothing\n}\nshow P()",
-		"fast each collects results": "beam sq(n: Int) gives Int {\n    send n * n\n}\nsquares = fast each n in [1, 2, 3] {\n    send sq(n)\n}\ntotal: Int = sum(squares)",
+		"fast each collects results":     "beam sq(n: Int) gives Int {\n    send n * n\n}\nsquares = fast each n in [1, 2, 3] {\n    send sq(n)\n}\ntotal: Int = sum(squares)",
 		"fast work reads outside values": "rate = 2\nr = fast each n in [1, 2] {\n    local = n * rate\n    send local\n}",
 		"web routes":                     "use web\nserver = web.open(8080)\nserver.get(\"/u/:id\") {\n    id = int(request.params.id)\n    send {id: id}\n}",
 	}
