@@ -1,0 +1,12 @@
+choice Status { Pending, Shipped, Lost }
+
+beam label(s: Status) gives Text {
+    focus s {
+        Pending {
+            send "waiting"
+        }
+        Shipped {
+            send "on its way"
+        }
+    }
+}

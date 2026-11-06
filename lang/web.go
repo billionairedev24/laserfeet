@@ -336,9 +336,18 @@ func writeJSON(b *strings.Builder, v Value) {
 		}
 		b.WriteByte('}')
 	case *Instance:
+		if x.Class.single != nil { // an option without data: just its name
+			writeJSON(b, x.Class.Name)
+			return
+		}
 		b.WriteByte('{')
+		n := 0
+		if x.Class.Choice != nil { // an option with data says which one it is
+			field(0, "kind", x.Class.Name)
+			n = 1
+		}
 		for i, f := range x.Class.Fields {
-			field(i, f.Name, x.Slots[i])
+			field(i+n, f.Name, x.Slots[i])
 		}
 		b.WriteByte('}')
 	case *Decimal:

@@ -1,0 +1,6 @@
+choice Status { Pending, Shipped(on: Text) }
+
+launch {
+    s = Status.Shipped("today")
+    show s.on
+}

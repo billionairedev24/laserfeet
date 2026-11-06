@@ -245,6 +245,10 @@ func (p *parser) statement() Stmt {
 			return p.objectDecl()
 		case "rule":
 			return p.ruleDecl()
+		case "choice":
+			return p.choiceDecl()
+		case "focus":
+			return p.focusStmt()
 		case "when":
 			return p.whenStmt()
 		case "each":
@@ -454,6 +458,91 @@ func (p *parser) objectDecl() Stmt {
 			}
 			d.Fields = append(d.Fields, fd)
 		}
+		p.endOfStatement()
+	}
+}
+
+// choiceDecl reads: choice Status { Pending, Shipped(on: Text, carrier: Text), Lost }
+// Options are separated by commas or new lines.
+func (p *parser) choiceDecl() Stmt {
+	t := p.next()
+	name := p.expectIdent("a name for the choice")
+	d := &ChoiceDecl{Line: t.Line, Name: name.Text}
+	p.expectSym("{", "to start choice "+name.Text)
+	for {
+		p.skipNewlines()
+		if p.acceptSym("}") {
+			if len(d.Options) == 0 {
+				p.fail(t.Line, "choice %s needs at least one option, like: choice %s { First, Second }", name.Text, name.Text)
+			}
+			return d
+		}
+		o := p.expectIdent("an option name, like Pending")
+		opt := &ObjectDecl{Line: o.Line, Name: o.Text}
+		if p.acceptSym("(") {
+			for !p.isSym(")") {
+				f := p.expectIdent("a name for the option's data")
+				if !p.acceptSym(":") {
+					p.fail(f.Line, "give '%s' a type, like %s: Text", f.Text, f.Text)
+				}
+				opt.Fields = append(opt.Fields, FieldDecl{Name: f.Text, Line: f.Line, Type: p.typeExpr()})
+				if !p.acceptSym(",") {
+					break
+				}
+			}
+			p.expectSym(")", "to close the option's data")
+		}
+		d.Options = append(d.Options, opt)
+		if !p.acceptSym(",") && !p.isSym("}") {
+			p.endOfStatement()
+		}
+	}
+}
+
+// focusStmt reads: focus value { Option(names) { ... } 200 { ... } otherwise { ... } }
+func (p *parser) focusStmt() Stmt {
+	t := p.next()
+	p.noTrail++
+	subject := p.expr()
+	p.noTrail--
+	s := &FocusStmt{Line: t.Line, Subject: subject}
+	p.expectSym("{", "to start the focus arms")
+	for {
+		p.skipNewlines()
+		if p.acceptSym("}") {
+			if len(s.Arms) == 0 {
+				p.fail(t.Line, "a focus needs at least one arm, like: Pending { ... }")
+			}
+			return s
+		}
+		at := p.peek()
+		arm := &FocusArm{Line: at.Line}
+		switch {
+		case p.isKw("otherwise"):
+			p.next()
+			arm.Otherwise = true
+		case at.Type == IDENT && (p.toks[p.pos+1].Text == "{" || p.toks[p.pos+1].Text == "(") && p.toks[p.pos+1].Type == SYMBOL:
+			p.next()
+			arm.Option = at.Text
+			if p.acceptSym("(") {
+				for !p.isSym(")") {
+					arm.Binds = append(arm.Binds, p.expectIdent("a name for the option's data").Text)
+					if !p.acceptSym(",") {
+						break
+					}
+				}
+				p.expectSym(")", "to close the names")
+			}
+		default:
+			p.noTrail++
+			arm.Value = p.or()
+			p.noTrail--
+		}
+		saved := p.noTrail
+		p.noTrail = 0
+		arm.Body = p.block("this focus arm")
+		p.noTrail = saved
+		s.Arms = append(s.Arms, arm)
 		p.endOfStatement()
 	}
 }

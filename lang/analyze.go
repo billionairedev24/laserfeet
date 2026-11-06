@@ -127,6 +127,15 @@ func MembersOf(t *Type) []Member {
 		}
 	case KClassRef:
 		add("from", "build a "+t.Class.Name+" from JSON", true)
+	case KChoiceRef:
+		for _, o := range t.Choice.Options {
+			if o.single != nil {
+				add(o.Name, t.Choice.Name, false)
+			} else {
+				add(o.Name, "("+strings.Join(fieldNames(o), ", ")+") makes a "+t.Choice.Name, true)
+			}
+		}
+		add("from", "read a "+t.Choice.Name+" from JSON", true)
 	case KModule:
 		for k, v := range t.Members {
 			add(k, v.name(), v.Kind == KBuiltin || v.Kind == KBeam)

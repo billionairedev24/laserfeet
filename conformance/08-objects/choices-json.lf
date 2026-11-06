@@ -1,0 +1,21 @@
+choice Status {
+    Pending
+    Shipped(on: Text)
+}
+
+object Order {
+    id: Int
+    status: Status
+}
+
+launch {
+    o = Order.from({id: 1, status: {kind: "Shipped", on: "2026-11-06"}})
+    show o.status
+    show Order(2, Status.Pending)
+    show Status.from("Pending")
+    attempt {
+        Status.from("Lost")
+    } fails problem {
+        show problem
+    }
+}

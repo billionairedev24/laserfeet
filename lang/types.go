@@ -63,11 +63,13 @@ const (
 	KRule
 	KBeam
 	KLibrary // Server, Response, Store, Request
+	KChoice  // a value of a choice: Status
 	// used only by lf check:
-	KUnknown  // not known yet (an untyped one-line beam input); accepted anywhere
-	KClassRef // an object's name used as a value: Item(...) or Item.from(json)
-	KModule   // a library or a file brought in with use
-	KBuiltin  // a built-in beam, checked by its own rule
+	KUnknown   // not known yet (an untyped one-line beam input); accepted anywhere
+	KClassRef  // an object's name used as a value: Item(...) or Item.from(json)
+	KModule    // a library or a file brought in with use
+	KBuiltin   // a built-in beam, checked by its own rule
+	KChoiceRef // a choice's name used as a value: Status.Pending
 )
 
 // Type is a resolved type.
@@ -76,6 +78,7 @@ type Type struct {
 	Elem     *Type // List and Map
 	Class    *Class
 	Rule     *RuleDef
+	Choice   *Choice
 	Params   []*Type
 	Result   *Type
 	Name     string // library types; built-in beam names
@@ -136,6 +139,10 @@ func (t *Type) name() string {
 		s = t.Class.Name
 	case KRule:
 		s = t.Rule.Name
+	case KChoice:
+		s = t.Choice.Name
+	case KChoiceRef:
+		s = "the choice " + t.Choice.Name
 	case KLibrary, KModule:
 		s = t.Name
 		if t.Name == "Job" && t.Elem != nil {
@@ -199,6 +206,8 @@ func (in *Interp) resolveType(te *TypeExpr, env *Env) *Type {
 			t = &Type{Kind: KObject, Class: x}
 		case *RuleDef:
 			t = &Type{Kind: KRule, Rule: x}
+		case *Choice:
+			t = &Type{Kind: KChoice, Choice: x}
 		default:
 			msg := fmt.Sprintf("there is no type called '%s'", te.Name)
 			if !ok {
@@ -225,7 +234,7 @@ func typeNames(env *Env) []string {
 	for _, n := range env.names_() {
 		if v, _ := env.lookup(n); v != nil {
 			switch v.(type) {
-			case *Class, *RuleDef:
+			case *Class, *RuleDef, *Choice:
 				out = append(out, n)
 			}
 		}
@@ -283,6 +292,9 @@ func conform(v Value, t *Type) (Value, bool) {
 	case KObject:
 		o, ok := v.(*Instance)
 		return v, ok && o.Class == t.Class
+	case KChoice:
+		o, ok := v.(*Instance)
+		return v, ok && o.Class.Choice == t.Choice
 	case KRule:
 		o, ok := v.(*Instance)
 		if !ok {
@@ -365,6 +377,8 @@ func (in *Interp) convertDeep(v Value, t *Type, where string) (Value, string) {
 			out.Set(k, c)
 		}
 		return out, ""
+	case KChoice:
+		return in.choiceFrom(t.Choice, v, where)
 	case KObject:
 		if o, ok := v.(*Instance); ok && o.Class == t.Class {
 			return o, ""

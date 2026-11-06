@@ -181,6 +181,33 @@ type ObjectDecl struct {
 	Fields  []FieldDecl
 	Methods []*BeamDecl
 }
+
+// ChoiceDecl declares a value that is exactly one of a few options:
+// choice Status { Pending, Shipped(on: Text), Lost }
+type ChoiceDecl struct {
+	Line    int
+	Name    string
+	Options []*ObjectDecl // each option is like a small object (no beams)
+}
+
+// FocusStmt runs the arm that matches a value: focus status { Pending { } Shipped(on) { } }
+type FocusStmt struct {
+	Line     int
+	Subject  Expr
+	Arms     []*FocusArm
+	Complete bool // set by lf check: every possible value has an arm
+}
+
+// FocusArm is one arm of a focus: an option (with names for its data), a value, or otherwise.
+type FocusArm struct {
+	Line      int
+	Option    string   // a choice's option
+	Binds     []string // names for the option's data, in order
+	Value     Expr     // or a value to compare with (200, "admin", nothing)
+	Otherwise bool
+	Body      []Stmt
+}
+
 type RuleDecl struct {
 	Line    int
 	Name    string
@@ -244,6 +271,8 @@ func (s *BeamDecl) Ln() int    { return s.Line }
 func (s *SendStmt) Ln() int    { return s.Line }
 func (s *ObjectDecl) Ln() int  { return s.Line }
 func (s *RuleDecl) Ln() int    { return s.Line }
+func (s *ChoiceDecl) Ln() int  { return s.Line }
+func (s *FocusStmt) Ln() int   { return s.Line }
 func (s *WhenStmt) Ln() int    { return s.Line }
 func (s *EachStmt) Ln() int    { return s.Line }
 func (s *LoopStmt) Ln() int    { return s.Line }

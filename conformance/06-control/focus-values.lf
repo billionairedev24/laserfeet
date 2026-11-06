@@ -1,0 +1,36 @@
+beam reason(code: Int) gives Text {
+    focus code {
+        200 {
+            send "ok"
+        }
+        404 {
+            send "not found"
+        }
+        otherwise {
+            send "something else"
+        }
+    }
+}
+
+beam greet(name: Text?) gives Text {
+    focus name {
+        nothing {
+            send "hello, stranger"
+        }
+        "Ada" {
+            send "welcome back, Ada"
+        }
+        otherwise {
+            send "hello"
+        }
+    }
+}
+
+launch {
+    show reason(200)
+    show reason(404)
+    show reason(500)
+    show greet(nothing)
+    show greet("Ada")
+    show greet("Bo")
+}

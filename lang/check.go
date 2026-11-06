@@ -93,6 +93,7 @@ type checker struct {
 	problems  []Problem
 	seen      map[string]bool
 	classes   map[string]*Class
+	choices   map[string]*Choice
 	rules     map[string]*RuleDef
 	beam      *beamCtx
 	read      func(string) (string, error)
@@ -184,11 +185,12 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 	saved := struct {
 		classes map[string]*Class
 		rules   map[string]*RuleDef
-	}{c.classes, c.rules}
-	c.classes, c.rules = map[string]*Class{}, map[string]*RuleDef{}
+		choices map[string]*Choice
+	}{c.classes, c.rules, c.choices}
+	c.classes, c.rules, c.choices = map[string]*Class{}, map[string]*RuleDef{}, map[string]*Choice{}
 	defer func() {
 		if !main {
-			c.classes, c.rules = saved.classes, saved.rules
+			c.classes, c.rules, c.choices = saved.classes, saved.rules, saved.choices
 		}
 	}()
 	top := &cscope{vars: map[string]*cvar{}, scope: true}
@@ -210,6 +212,16 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 				cl.Methods[m.Name] = m
 			}
 			c.classes[d.Name] = cl
+		case *ChoiceDecl:
+			ch, problem := newChoice(d, nil)
+			if problem != "" {
+				c.report(d.Line, "%s", problem)
+				continue
+			}
+			if c.classes[d.Name] != nil {
+				c.report(d.Line, "'%s' is already the name of an object", d.Name)
+			}
+			c.choices[d.Name] = ch
 		}
 	}
 	for _, s := range prog.Stmts {
@@ -223,6 +235,15 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 			cl.types[i] = c.resolve(f.Type)
 		}
 		top.vars[name] = &cvar{t: &Type{Kind: KClassRef, Class: cl}, locked: true}
+	}
+	for name, ch := range c.choices {
+		for _, o := range ch.Options {
+			o.types = make([]*Type, len(o.Fields))
+			for i, f := range o.Fields {
+				o.types[i] = c.resolve(f.Type)
+			}
+		}
+		top.vars[name] = &cvar{t: &Type{Kind: KChoiceRef, Choice: ch}, locked: true}
 	}
 	for _, s := range prog.Stmts {
 		if d, ok := s.(*BeamDecl); ok {
@@ -269,7 +290,7 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 		switch d := s.(type) {
 		case *BeamDecl:
 			c.beamBody(d.Name, d.Params, d.Sig, d.Body, top, d.Line)
-		case *RuleDecl, *ObjectDecl, *UseStmt:
+		case *RuleDecl, *ObjectDecl, *ChoiceDecl, *UseStmt:
 		case *LaunchStmt:
 		case *TestStmt:
 		default:
@@ -344,6 +365,8 @@ func (c *checker) resolve(te *TypeExpr) *Type {
 		t = &Type{Kind: KObject, Class: c.classes[te.Name]}
 	case c.rules[te.Name] != nil:
 		t = &Type{Kind: KRule, Rule: c.rules[te.Name]}
+	case c.choices[te.Name] != nil:
+		t = &Type{Kind: KChoice, Choice: c.choices[te.Name]}
 	default:
 		var names []string
 		for k := range simpleTypes {
@@ -353,6 +376,9 @@ func (c *checker) resolve(te *TypeExpr) *Type {
 			names = append(names, k)
 		}
 		for k := range c.rules {
+			names = append(names, k)
+		}
+		for k := range c.choices {
 			names = append(names, k)
 		}
 		names = append(names, "List", "Map", "Beam", "Server", "Request", "Response", "Store")
@@ -445,10 +471,19 @@ func (c *checker) beamBody(name string, params []string, sig *Sig, body []Stmt, 
 	saved := c.beam
 	c.beam = &beamCtx{name: "beam " + name, result: bt.Result}
 	c.block(body, sc)
-	if bt.Result != nil && !bt.Result.Optional && bt.Result.Kind != KNothing && !alwaysExits(body) {
+	if bt.Result != nil && !bt.Result.Optional && bt.Result.Kind != KNothing && !alwaysExits(body) && !endsWithIncompleteFocus(body) {
 		c.report(line, "beam %s gives %s, but it can finish without sending one. Make sure every path ends with send", name, bt.Result.name())
 	}
 	c.beam = saved
+}
+
+// endsWithIncompleteFocus: the focus has already said which arms are missing.
+func endsWithIncompleteFocus(body []Stmt) bool {
+	if len(body) == 0 {
+		return false
+	}
+	f, ok := body[len(body)-1].(*FocusStmt)
+	return ok && !f.Complete
 }
 
 // alwaysExits reports whether a block always ends by sending, failing, or leaving a loop.
@@ -463,6 +498,16 @@ func alwaysExits(stmts []Stmt) bool {
 		return s.Otherwise != nil && alwaysExits(s.Body) && alwaysExits(s.Otherwise)
 	case *AttemptStmt:
 		return alwaysExits(s.Body) && alwaysExits(s.Handler)
+	case *FocusStmt:
+		if !s.Complete {
+			return false
+		}
+		for _, a := range s.Arms {
+			if !alwaysExits(a.Body) {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }
@@ -516,6 +561,8 @@ func (c *checker) stmt(s Stmt, sc *cscope) {
 		}
 	case *SendStmt:
 		c.send(s, sc)
+	case *FocusStmt:
+		c.focus(s, sc)
 	case *WhenStmt:
 		c.flag(s.Cond, sc, "when")
 		name, isNothing := nothingTest(s.Cond)
@@ -586,7 +633,7 @@ func (c *checker) stmt(s Stmt, sc *cscope) {
 	case *BeamDecl:
 		sc.vars[s.Name] = &cvar{t: c.sigType(s.Params, s.Sig), locked: true}
 		c.beamBody(s.Name, s.Params, s.Sig, s.Body, sc, s.Line)
-	case *ObjectDecl, *RuleDecl:
+	case *ObjectDecl, *RuleDecl, *ChoiceDecl:
 		c.report(s.Ln(), "objects and rules must be created at the top of the file, not inside a block")
 	case *LaunchStmt:
 		c.report(s.Line, "'launch' must be at the top of the file, not inside a block")
@@ -1155,7 +1202,7 @@ func comparable(a, b *Type) bool {
 	if a.Kind == KRule || b.Kind == KRule {
 		return a.Kind == KObject || b.Kind == KObject || a.Kind == b.Kind
 	}
-	return a.Kind == b.Kind && (a.Kind != KObject || a.Class == b.Class)
+	return a.Kind == b.Kind && (a.Kind != KObject || a.Class == b.Class) && (a.Kind != KChoice || a.Choice == b.Choice)
 }
 
 // member is the type of x.name.
@@ -1189,6 +1236,28 @@ func (c *checker) member(line int, obj *Type, name string, forSet bool) *Type {
 		if name == "from" {
 			return &Type{Kind: KBuiltin, Name: obj.Class.Name + ".from", Class: obj.Class}
 		}
+	case KChoiceRef:
+		if o := obj.Choice.option(name); o != nil {
+			if o.single != nil {
+				return &Type{Kind: KChoice, Choice: obj.Choice}
+			}
+			return &Type{Kind: KClassRef, Class: o} // Status.Shipped(...) makes a Status
+		}
+		if name == "from" {
+			return &Type{Kind: KBuiltin, Name: obj.Choice.Name + ".from", Choice: obj.Choice}
+		}
+		c.report(line, "choice %s has no option called '%s'%s", obj.Choice.Name, name, didYouMean(name, obj.Choice.optionNames()))
+		return tUnknown
+	case KChoice:
+		hint := obj.Choice.Options[0].Name + " { ... }"
+		for _, o := range obj.Choice.Options {
+			if o.single == nil {
+				hint = o.Name + "(" + strings.Join(fieldNames(o), ", ") + ") { ... }"
+				break
+			}
+		}
+		c.report(line, "a %s may be any of its options, so it has no '%s'. Use focus to look inside it: focus x { %s }", obj.Choice.Name, name, hint)
+		return tUnknown
 	case KModule:
 		if obj.Members == nil {
 			return tUnknown
@@ -1474,6 +1543,9 @@ func (c *checker) construct(line int, cl *Class, args []*Type, names []string) *
 			c.report(line, "making %s needs a value for '%s'", aOrAn(cl.Name), f.Name)
 		}
 	}
+	if cl.Choice != nil {
+		return &Type{Kind: KChoice, Choice: cl.Choice}
+	}
 	return &Type{Kind: KObject, Class: cl}
 }
 
@@ -1525,6 +1597,8 @@ func fits(from, to *Type) (bool, string) {
 		return false, ""
 	case KObject:
 		return from.Kind == KObject && from.Class == to.Class, ""
+	case KChoice:
+		return from.Kind == KChoice && from.Choice == to.Choice, ""
 	case KRule:
 		if from.Kind == KRule {
 			return from.Rule == to.Rule, ""
@@ -1569,6 +1643,8 @@ func sameType(a, b *Type) bool {
 		return sameType(a.Elem, b.Elem)
 	case KObject:
 		return a.Class.Name == b.Class.Name
+	case KChoice:
+		return a.Choice == b.Choice
 	case KRule:
 		return a.Rule.Name == b.Rule.Name
 	case KLibrary:
@@ -1629,4 +1705,118 @@ func aOrAn(name string) string {
 		return "an " + name
 	}
 	return "a " + name
+}
+
+// focus checks a focus: each arm must fit the value, an option's data get their
+// types, and every option of a choice needs an arm (or there's an otherwise).
+func (c *checker) focus(s *FocusStmt, sc *cscope) {
+	subject := c.expr(s.Subject, sc, nil)
+	ch := subject.Choice
+	if subject.Kind != KChoice {
+		ch = nil
+	}
+	seen := map[string]bool{}
+	sawNothing, sawYes, sawNo, badOption := false, false, false, false
+	for i, arm := range s.Arms {
+		armSc := &cscope{vars: map[string]*cvar{}, parent: sc}
+		switch {
+		case arm.Otherwise:
+			if i != len(s.Arms)-1 {
+				c.report(arm.Line, "'otherwise' must be the last arm of a focus, because the arms after it would never run")
+			}
+			s.Complete = true
+		case arm.Option != "":
+			if ch == nil {
+				if subject.Kind != KUnknown && subject.Kind != KJson {
+					c.report(arm.Line, "'%s' is an option of a choice, but this focus is on %s", arm.Option, subject.name())
+				}
+				break
+			}
+			o := ch.option(arm.Option)
+			if o == nil {
+				c.report(arm.Line, "choice %s has no option called '%s'%s", ch.Name, arm.Option, didYouMean(arm.Option, ch.optionNames()))
+				for _, b := range arm.Binds {
+					armSc.vars[b] = &cvar{t: tUnknown, declared: true}
+				}
+				badOption = true
+				break
+			}
+			if seen[o.Name] {
+				c.report(arm.Line, "%s already has an arm in this focus", o.Name)
+			}
+			seen[o.Name] = true
+			if len(arm.Binds) > 0 && len(arm.Binds) != len(o.Fields) {
+				c.report(arm.Line, "%s has %d value%s (%s), so name all of them or none", o.Name, len(o.Fields), plural(len(o.Fields)), strings.Join(fieldNames(o), ", "))
+			}
+			for j, b := range arm.Binds {
+				if j < len(o.types) {
+					armSc.vars[b] = &cvar{t: o.types[j], declared: true}
+					c.note(arm.Line, b, o.types[j])
+				}
+			}
+		default:
+			vt := c.expr(arm.Value, sc, nonOpt(subject))
+			switch v := arm.Value.(type) {
+			case *NothingLit:
+				sawNothing = true
+				if !subject.Optional && subject.Kind != KJson && subject.Kind != KUnknown {
+					c.report(arm.Line, "this value can't be nothing, so the nothing arm would never run")
+				}
+			case *BoolLit:
+				if v.Value {
+					sawYes = true
+				} else {
+					sawNo = true
+				}
+			}
+			if _, isNothing := arm.Value.(*NothingLit); !isNothing && !comparable(nonOpt(subject), vt) {
+				c.report(arm.Line, "this arm is %s, but the focus is on %s, so it would never match", vt.name(), subject.name())
+			}
+		}
+		c.block(arm.Body, armSc)
+		for _, b := range arm.Binds {
+			delete(armSc.vars, b) // an option's data belong to its arm only
+		}
+		c.merge(armSc, sc)
+	}
+	if s.Complete || badOption {
+		return
+	}
+	nothingDone := !subject.Optional || sawNothing
+	switch {
+	case ch != nil:
+		var missing []string
+		for _, o := range ch.Options {
+			if !seen[o.Name] {
+				missing = append(missing, o.Name)
+			}
+		}
+		if !nothingDone {
+			missing = append(missing, "nothing")
+		}
+		if len(missing) > 0 {
+			c.report(s.Line, "this focus has no arm for %s. Add %s, or an otherwise { } arm", joinOr(missing), armHint(missing))
+			return
+		}
+		s.Complete = true
+	case subject.Kind == KFlag && sawYes && sawNo && nothingDone:
+		s.Complete = true
+	case subject.Kind == KJson || subject.Kind == KUnknown:
+	default:
+		c.report(s.Line, "a focus on %s can't list every possible value, so it needs an otherwise { } arm at the end", subject.name())
+	}
+}
+
+func armHint(missing []string) string {
+	if len(missing) == 1 {
+		return missing[0] + " { }"
+	}
+	return "arms for them"
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }

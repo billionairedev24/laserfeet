@@ -199,6 +199,12 @@ func (in *Interp) loadInto(prog *Program, env *Env, main bool) {
 			env.define(d.Name, &Beam{Name: d.Name, Params: d.Params, Sig: d.Sig, Body: d.Body, Closure: env}, true)
 		case *ObjectDecl:
 			in.declareObject(d, env)
+		case *ChoiceDecl:
+			ch, problem := newChoice(d, env)
+			if problem != "" {
+				in.fail(d.Line, "%s", problem)
+			}
+			env.define(d.Name, ch, true)
 		case *LaunchStmt:
 			if !main {
 				continue
@@ -215,7 +221,7 @@ func (in *Interp) loadInto(prog *Program, env *Env, main bool) {
 	}
 	for _, s := range prog.Stmts {
 		switch s.(type) {
-		case *RuleDecl, *BeamDecl, *ObjectDecl, *LaunchStmt, *TestStmt:
+		case *RuleDecl, *BeamDecl, *ObjectDecl, *ChoiceDecl, *LaunchStmt, *TestStmt:
 			continue
 		}
 		if c, _ := in.exec(s, env); c != cNone {
@@ -370,6 +376,8 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 			return cSend, nil
 		}
 		return cSend, in.eval(s.Value, env)
+	case *FocusStmt:
+		return in.execFocus(s, env)
 	case *WhenStmt:
 		if in.truth(s.Cond, env, "when") {
 			return in.execBlock(s.Body, env)
@@ -472,7 +480,7 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 		in.expect(s, env)
 	case *BeamDecl:
 		env.define(s.Name, &Beam{Name: s.Name, Params: s.Params, Sig: s.Sig, Body: s.Body, Closure: env}, true)
-	case *ObjectDecl, *RuleDecl:
+	case *ObjectDecl, *RuleDecl, *ChoiceDecl:
 		in.fail(s.Ln(), "objects and rules must be created at the top of the file, not inside a block")
 	case *LaunchStmt:
 		in.fail(s.Line, "'launch' must be at the top of the file, not inside a block")
@@ -1016,6 +1024,8 @@ func (in *Interp) get(obj Value, name string, line int) Value {
 			})
 		}
 		in.fail(line, "%s has nothing called '%s' (objects have .from(json) to build one from JSON)", o.Name, name)
+	case *Choice:
+		return in.choiceMember(o, name, line)
 	case *Module:
 		if v, ok := o.Members[name]; ok {
 			return v

@@ -1,0 +1,18 @@
+choice Size { Small, Medium, Large }
+
+object Shirt {
+    color: Text
+    size: Size = Size.Medium
+}
+
+launch {
+    s = Shirt("red")
+    focus s.size {
+        Small {
+            show "S"
+        }
+        otherwise {
+            show "not small"
+        }
+    }
+}

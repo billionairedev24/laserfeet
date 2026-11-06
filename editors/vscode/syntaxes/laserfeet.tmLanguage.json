@@ -46,7 +46,7 @@
       }
     },
     "object-declaration": {
-      "match": "\\b(object|rule)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(follows)\\s+([A-Za-z_][A-Za-z0-9_, ]*))?",
+      "match": "\\b(object|rule|choice)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(follows)\\s+([A-Za-z_][A-Za-z0-9_, ]*))?",
       "captures": {
         "1": {
           "name": "storage.type.class.laserfeet"
@@ -196,7 +196,7 @@
         },
         {
           "name": "keyword.control.laserfeet",
-          "match": "\\b(when|otherwise|each|in|loop|while|times|stop|skip|send|attempt|fails|fail|then|fast|wait|launch|expect)\\b"
+          "match": "\\b(when|otherwise|focus|each|in|loop|while|times|stop|skip|send|attempt|fails|fail|then|fast|wait|launch|expect)\\b"
         },
         {
           "name": "keyword.control.transaction.laserfeet",
@@ -212,7 +212,7 @@
         },
         {
           "name": "storage.type.laserfeet",
-          "match": "\\b(beam|object|rule)\\b"
+          "match": "\\b(beam|object|rule|choice)\\b"
         },
         {
           "name": "keyword.other.import.laserfeet",

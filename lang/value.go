@@ -52,6 +52,8 @@ type Class struct {
 	Env     *Env
 	index   map[string]int // field name -> slot
 	types   []*Type        // field types, by slot
+	Choice  *Choice        // set when this is an option of a choice
+	single  *Instance      // the one value of an option without data
 }
 
 type RuleDef struct {
@@ -109,7 +111,12 @@ func typeName(v Value) string {
 	case *RuleDef:
 		return "the rule " + x.Name
 	case *Instance:
+		if x.Class.Choice != nil {
+			return "a " + x.Class.Choice.Name
+		}
 		return "a " + x.Class.Name
+	case *Choice:
+		return "the choice " + x.Name
 	case *Module:
 		return "the " + x.Name + " library"
 	case *Response:
@@ -162,6 +169,9 @@ func toText(v Value, quote bool) string {
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
 	case *Instance:
+		if x.Class.single != nil {
+			return x.Class.Name
+		}
 		parts := []string{}
 		for i, f := range x.Class.Fields {
 			parts = append(parts, f.Name+": "+toText(x.Slots[i], true))
@@ -178,6 +188,8 @@ func toText(v Value, quote bool) string {
 		return "<object " + x.Name + ">"
 	case *RuleDef:
 		return "<rule " + x.Name + ">"
+	case *Choice:
+		return "<choice " + x.Name + ">"
 	case *Module:
 		return "<library " + x.Name + ">"
 	case *Response:

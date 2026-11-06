@@ -133,6 +133,29 @@
     ],
     "description": "Answer POST requests with a JSON body"
   },
+  "Choice": {
+    "prefix": "choice",
+    "body": [
+      "choice ${1:Status} {",
+      "\t${2:Pending}",
+      "\t${3:Shipped}(${4:on}: ${5:Text})",
+      "}"
+    ],
+    "description": "A value that is exactly one of a few options"
+  },
+  "Focus": {
+    "prefix": "focus",
+    "body": [
+      "focus ${1:value} {",
+      "\t${2:Option} {",
+      "\t\t$0",
+      "\t}",
+      "\totherwise {",
+      "\t}",
+      "}"
+    ],
+    "description": "Run the arm that matches a value"
+  },
   "Transaction": {
     "prefix": "transaction",
     "body": [

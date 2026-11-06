@@ -1,0 +1,29 @@
+choice Status {
+    Pending
+    Shipped(on: Text, carrier: Text)
+    Lost
+}
+
+beam describe(s: Status) gives Text {
+    focus s {
+        Pending {
+            send "waiting"
+        }
+        Shipped(on, carrier) {
+            send "shipped {on} by {carrier}"
+        }
+        Lost {
+            send "lost"
+        }
+    }
+}
+
+launch {
+    show describe(Status.Pending)
+    show describe(Status.Shipped("2026-11-06", "DHL"))
+    show describe(Status.Shipped(carrier: "UPS", on: "2026-11-07"))
+    show Status.Lost
+    show Status.Shipped("a", "b")
+    show Status.Lost is Status.Lost
+    show Status.Lost is Status.Pending
+}

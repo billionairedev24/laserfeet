@@ -1,0 +1,1 @@
+line 3: a focus on Int can't list every possible value, so it needs an otherwise { } arm at the end

@@ -1,6 +1,6 @@
 # The Laser Feet Language Specification
 
-Version 0.7. This document says exactly what Laser Feet code means. Where the
+Version 0.8. This document says exactly what Laser Feet code means. Where the
 website explains, this specification decides. Every section has matching
 programs in `conformance/<section>/`: each one prints exactly its `.out` file,
 or is refused with exactly the message in its `.err` file. `go test ./lang -run
@@ -18,7 +18,7 @@ existing code without changing what it does.
 5. [Text](#5-text)
 6. [Control flow](#6-control-flow)
 7. [Beams](#7-beams)
-8. [Objects and rules](#8-objects-and-rules)
+8. [Objects, rules and choices](#8-objects-rules-and-choices)
 9. [Problems and tests](#9-problems-and-tests)
 10. [Collections](#10-collections)
 11. [Doing things at the same time](#11-doing-things-at-the-same-time)
@@ -48,7 +48,7 @@ Source files are UTF-8 text with the `.lf` extension.
 ```
 launch show beam send lock object rule follows when otherwise each in loop
 while times then fast attempt fails fail use test expect is not and or yes no
-nothing me stop skip to gives wait
+nothing me stop skip to gives wait choice focus
 ```
 
 Keywords may be used as entry names in a map (`{to: "x"}`) and after a dot.
@@ -72,6 +72,7 @@ meaning only in `transaction with ... as ... { }` and `f(...) as name { }`.
 | `Beam(A, B) gives R` | A beam (function) taking `A` and `B` and giving `R`. |
 | object names | Objects (section 8). |
 | rule names | Any object that follows the rule. |
+| choice names | Exactly one of the choice's options (section 8). |
 
 **Numbers mix this way:** Int mixes with Decimal (giving Decimal) and with Float
 (giving Float). Float and Decimal never mix: convert one with `float(x)` or
@@ -153,6 +154,14 @@ code did.
 - `loop while condition { ... }` repeats while the condition is `yes`.
 - `loop n times { ... }` repeats `n` times.
 - `stop` leaves the innermost loop; `skip` goes on to its next round.
+- `focus value { arm { ... } ... }` runs the first arm that matches the value.
+  An arm is an option of a choice (section 8), a value to compare with
+  (`200`, `"admin"`, `yes`, `nothing`), or `otherwise`, which matches anything
+  and must come last. A focus on a choice must have an arm for every option
+  (and for `nothing`, if the value may be nothing), or an `otherwise`. A focus
+  on other values needs an `otherwise`, except a Flag with both `yes` and `no`.
+  A focus that covers every value and whose arms all `send` counts as sending
+  on every path.
 - `launch { ... }` is where a program starts. It runs after everything else at
   the top of the file.
 
@@ -181,7 +190,7 @@ beam total(items: List[Item]) gives Decimal {
 - **A block after a call** is passed as a beam: `server.get("/") { ... }`.
   `f(...) as name { ... }` gives that beam one input, called `name`.
 
-## 8. Objects and rules
+## 8. Objects, rules and choices
 
 ```
 object Item {
@@ -204,6 +213,38 @@ object Item {
 - A **rule** lists beams with their types. `object Square follows Shape`
   promises those beams, and the checker holds the object to it. A rule name can
   be used as a type.
+
+**Choices.** A choice is a type whose value is exactly one of its options.
+Options may carry data, written like an object's fields:
+
+```
+choice Status {
+    Pending
+    Shipped(on: Text, carrier: Text)
+    Lost
+}
+```
+
+- Options are separated by new lines or commas: `choice Size { Small, Medium, Large }`.
+- `Status.Pending` is a value. `Status.Shipped("2026-11-06", "DHL")` (or with
+  names, `Status.Shipped(on: ..., carrier: ...)`) makes one.
+- A choice value has no fields of its own; `focus` looks inside it, naming the
+  option's data in order (all of them, or none):
+
+```
+focus status {
+    Pending { ... }
+    Shipped(on, carrier) { ... }   -- on and carrier exist only in this arm
+    Lost { ... }
+}
+```
+
+- `is` compares choice values, data included.
+- As JSON, an option without data is its name (`"Pending"`), and an option
+  with data is an object that says which option it is
+  (`{"kind": "Shipped", "on": "2026-11-06", "carrier": "DHL"}`).
+  `Status.from(json)`, and fields of type `Status` in `Item.from(json)`, read
+  both forms and refuse anything else.
 
 ## 9. Problems and tests
 
@@ -321,7 +362,8 @@ statement   = "launch" block
             | "lock" NAME [ ":" type ] "=" expr
             | NAME ":" type "=" expr
             | target "=" expr
-            | beamDecl | objectDecl | ruleDecl
+            | beamDecl | objectDecl | ruleDecl | choiceDecl
+            | "focus" expr "{" { arm NL } "}"
             | "when" expr block { "otherwise" "when" expr block } [ "otherwise" block ]
             | "each" NAME "in" expr block
             | "loop" "while" expr block
@@ -341,6 +383,9 @@ beamDecl    = "beam" NAME "(" [ param { "," param } ] ")" [ "gives" type ] block
 param       = NAME ":" type ;
 objectDecl  = "object" NAME [ "follows" NAME { "," NAME } ] "{" { member NL } "}" ;
 member      = NAME ":" type [ "=" expr ] | beamDecl ;
+choiceDecl  = "choice" NAME "{" option { ( "," | NL ) option } "}" ;
+option      = NAME [ "(" param { "," param } ")" ] ;
+arm         = ( NAME [ "(" NAME { "," NAME } ")" ] | or | "otherwise" ) block ;
 ruleDecl    = "rule" NAME "{" { "beam" NAME "(" [ param { "," param } ] ")" [ "gives" type ] NL } "}" ;
 
 type        = NAME [ "[" type { "," type } "]" ] [ "?" ]
@@ -374,7 +419,9 @@ key         = NAME | TEXT | keyword ;
 
 A block directly after a call's `)` is passed to the call as a beam, except
 where a block is already expected: after the condition of `when`, `each`,
-`loop` and `fast each`, and after the database of `transaction with`.
+`loop` and `fast each`, after the value of `focus` and its arms, and after the
+database of `transaction with`. In a focus arm, a name followed by `{` or `(`
+is an option.
 
 ## 16. Layout (lf fmt)
 

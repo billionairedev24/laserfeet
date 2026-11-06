@@ -1,0 +1,8 @@
+launch {
+    code = 200
+    focus code {
+        200 {
+            show "ok"
+        }
+    }
+}

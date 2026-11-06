@@ -1,0 +1,4 @@
+Shipped(on: "2026-11-06")
+Order(id: 2, status: Pending)
+Pending
+Status must be one of Pending or Shipped, but got "Lost"

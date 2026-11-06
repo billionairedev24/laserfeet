@@ -454,6 +454,10 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 		}
 		return tInt
 	}
+	if fn.Choice != nil { // Status.from(json)
+		c.argCount(line, n, a, 1, 1)
+		return &Type{Kind: KChoice, Choice: fn.Choice}
+	}
 	if fn.Class != nil { // Item.from(json)
 		c.argCount(line, n, a, 1, 1)
 		return &Type{Kind: KObject, Class: fn.Class}

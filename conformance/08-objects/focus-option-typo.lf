@@ -1,0 +1,11 @@
+choice Status { Pending, Shipped(on: Text) }
+
+launch {
+    s = Status.Pending
+    focus s {
+        Pending {
+        }
+        Shiped(on) {
+        }
+    }
+}
