@@ -1,0 +1,289 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Laser Feet",
+  "scopeName": "source.laserfeet",
+  "fileTypes": [
+    "lf"
+  ],
+  "patterns": [
+    {
+      "include": "#statements"
+    }
+  ],
+  "repository": {
+    "statements": {
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#beam-declaration"
+        },
+        {
+          "include": "#object-declaration"
+        },
+        {
+          "include": "#test-declaration"
+        },
+        {
+          "include": "#expression"
+        }
+      ]
+    },
+    "comment": {
+      "name": "comment.line.double-dash.laserfeet",
+      "match": "--.*$"
+    },
+    "beam-declaration": {
+      "match": "\\b(beam)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "storage.type.function.laserfeet"
+        },
+        "2": {
+          "name": "entity.name.function.laserfeet"
+        }
+      }
+    },
+    "object-declaration": {
+      "match": "\\b(object|rule)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(follows)\\s+([A-Za-z_][A-Za-z0-9_, ]*))?",
+      "captures": {
+        "1": {
+          "name": "storage.type.class.laserfeet"
+        },
+        "2": {
+          "name": "entity.name.type.laserfeet"
+        },
+        "3": {
+          "name": "storage.modifier.laserfeet"
+        },
+        "4": {
+          "name": "entity.other.inherited-class.laserfeet"
+        }
+      }
+    },
+    "test-declaration": {
+      "match": "\\b(test)\\b",
+      "name": "keyword.other.test.laserfeet"
+    },
+    "expression": {
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#string"
+        },
+        {
+          "include": "#number"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#builtins"
+        },
+        {
+          "include": "#call"
+        },
+        {
+          "include": "#type"
+        },
+        {
+          "include": "#operators"
+        },
+        {
+          "include": "#property"
+        },
+        {
+          "include": "#punctuation"
+        }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.laserfeet",
+      "begin": "\"",
+      "end": "\"|$",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.laserfeet"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.laserfeet"
+        }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.laserfeet",
+          "match": "\\\\[nt\"\\\\{}]"
+        },
+        {
+          "name": "meta.interpolation.laserfeet",
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.begin.laserfeet"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.end.laserfeet"
+            }
+          },
+          "contentName": "source.laserfeet.embedded",
+          "patterns": [
+            {
+              "include": "#interpolated"
+            }
+          ]
+        }
+      ]
+    },
+    "interpolated": {
+      "patterns": [
+        {
+          "include": "#number"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#builtins"
+        },
+        {
+          "include": "#call"
+        },
+        {
+          "include": "#type"
+        },
+        {
+          "include": "#operators"
+        },
+        {
+          "include": "#property"
+        },
+        {
+          "name": "variable.other.laserfeet",
+          "match": "[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "number": {
+      "name": "constant.numeric.laserfeet",
+      "match": "\\b\\d[\\d_]*(\\.\\d+)?\\b"
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.laserfeet",
+          "match": "\\b(when|otherwise|each|in|loop|while|times|stop|skip|send|attempt|fails|fail|then|fast|launch|expect)\\b"
+        },
+        {
+          "name": "storage.modifier.laserfeet",
+          "match": "\\b(lock|follows)\\b"
+        },
+        {
+          "name": "storage.type.laserfeet",
+          "match": "\\b(beam|object|rule)\\b"
+        },
+        {
+          "name": "keyword.other.import.laserfeet",
+          "match": "\\buse\\b"
+        },
+        {
+          "name": "keyword.other.show.laserfeet",
+          "match": "\\bshow\\b"
+        },
+        {
+          "name": "keyword.operator.word.laserfeet",
+          "match": "\\b(is|not|and|or|to)\\b"
+        },
+        {
+          "name": "constant.language.laserfeet",
+          "match": "\\b(yes|no|nothing)\\b"
+        },
+        {
+          "name": "variable.language.me.laserfeet",
+          "match": "\\bme\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "name": "support.function.builtin.laserfeet",
+      "match": "\\b(text|number|count|sum|biggest|smallest|round|first|last|reverse|sort|join|keepIf|dropIf|turn|sortBy|findFirst|pause|readFile|writeFile|fileExists|now|env|json|store)\\b(?=\\s*\\()"
+    },
+    "call": {
+      "match": "\\b([a-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.call.laserfeet"
+        }
+      }
+    },
+    "type": {
+      "name": "entity.name.type.laserfeet",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.laserfeet",
+          "match": "=>"
+        },
+        {
+          "name": "keyword.operator.comparison.laserfeet",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.assignment.laserfeet",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arithmetic.laserfeet",
+          "match": "[+\\-*/%]"
+        }
+      ]
+    },
+    "property": {
+      "patterns": [
+        {
+          "match": "(\\.)([A-Za-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.laserfeet"
+            },
+            "2": {
+              "name": "entity.name.function.member.laserfeet"
+            }
+          }
+        },
+        {
+          "match": "(\\.)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.laserfeet"
+            },
+            "2": {
+              "name": "variable.other.property.laserfeet"
+            }
+          }
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.comma.laserfeet",
+          "match": ","
+        },
+        {
+          "name": "punctuation.separator.colon.laserfeet",
+          "match": ":"
+        }
+      ]
+    }
+  }
+}

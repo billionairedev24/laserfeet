@@ -1,0 +1,46 @@
+{
+  "name": "laserfeet",
+  "displayName": "Laser Feet",
+  "description": "Syntax highlighting, snippets and editing support for the Laser Feet programming language (.lf files).",
+  "version": "0.1.0",
+  "publisher": "laserfeet",
+  "license": "SEE LICENSE IN README.md",
+  "icon": "icons/extension.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/billionairedev24/laserfeet"
+  },
+  "homepage": "https://billionairedev24.github.io/laserfeet/",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Programming Languages", "Snippets"],
+  "keywords": ["laserfeet", "laser feet", "lf"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "laserfeet",
+        "aliases": ["Laser Feet", "laserfeet", "lf"],
+        "extensions": [".lf"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/lf-file.svg",
+          "dark": "./icons/lf-file.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "laserfeet",
+        "scopeName": "source.laserfeet",
+        "path": "./syntaxes/laserfeet.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "laserfeet",
+        "path": "./snippets/laserfeet.json"
+      }
+    ]
+  }
+}

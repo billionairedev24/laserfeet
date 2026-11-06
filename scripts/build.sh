@@ -22,5 +22,22 @@ python3 site/build.py
 cp site/laserfeet.wasm install.sh install.ps1 site/public/
 cp site/public/index.html site/laserfeet.wasm install.sh install.ps1 dist/
 
+# VS Code extension, versioned to match VERSION (needs Node.js; skipped if it's missing)
+if command -v npx >/dev/null 2>&1; then
+  ext="$(mktemp -d)"
+  cp -r editors/vscode/. "$ext/"
+  python3 - "$ext/package.json" "$version" <<'PY'
+import json, sys
+path, version = sys.argv[1], sys.argv[2]
+data = json.load(open(path))
+data["version"] = version
+json.dump(data, open(path, "w"), indent=2)
+PY
+  (cd "$ext" && npx --yes @vscode/vsce@3.6.2 package --skip-license --allow-missing-repository -o "$OLDPWD/dist/laserfeet.vsix" >/dev/null)
+  rm -rf "$ext"
+else
+  echo "npx not found: skipping the VS Code extension" >&2
+fi
+
 (cd dist && sha256sum -- * > SHA256SUMS)
 cat dist/SHA256SUMS

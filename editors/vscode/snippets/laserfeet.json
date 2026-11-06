@@ -1,0 +1,62 @@
+{
+  "Launch block": {
+    "prefix": "launch",
+    "body": ["launch {", "\t$0", "}"],
+    "description": "Where the program starts"
+  },
+  "Beam": {
+    "prefix": "beam",
+    "body": ["beam ${1:name}(${2:input}) {", "\tsend ${3:$2}", "}"],
+    "description": "A function"
+  },
+  "Object": {
+    "prefix": "object",
+    "body": ["object ${1:Name} {", "\t${2:field}", "", "\tbeam ${3:describe}() {", "\t\tsend \"${4:{$2\\}}\"", "\t}", "}"],
+    "description": "A blueprint with fields and beams"
+  },
+  "Rule": {
+    "prefix": "rule",
+    "body": ["rule ${1:Name} {", "\tbeam ${2:action}()", "}"],
+    "description": "Beams an object promises to have"
+  },
+  "When": {
+    "prefix": "when",
+    "body": ["when ${1:condition} {", "\t$0", "}"],
+    "description": "A decision"
+  },
+  "When / otherwise": {
+    "prefix": "whenotherwise",
+    "body": ["when ${1:condition} {", "\t$2", "} otherwise {", "\t$0", "}"],
+    "description": "A decision with an alternative"
+  },
+  "Each": {
+    "prefix": "each",
+    "body": ["each ${1:item} in ${2:items} {", "\t$0", "}"],
+    "description": "Go through a list"
+  },
+  "Loop while": {
+    "prefix": "loop",
+    "body": ["loop while ${1:condition} {", "\t$0", "}"],
+    "description": "Repeat while something is yes"
+  },
+  "Attempt / fails": {
+    "prefix": "attempt",
+    "body": ["attempt {", "\t$1", "} fails ${2:problem} {", "\tshow \"Problem: {$2\\}\"", "}"],
+    "description": "Handle problems"
+  },
+  "Test": {
+    "prefix": "test",
+    "body": ["test \"${1:what it checks}\" {", "\texpect ${2:value} is ${3:expected}", "}"],
+    "description": "A test block"
+  },
+  "Web server": {
+    "prefix": "server",
+    "body": ["use web", "", "server = web.open(${1:8080})", "", "server.get(\"${2:/}\") {", "\tsend \"${3:Hello from Laser Feet}\"", "}", "", "launch {", "\tfast server.start()", "}"],
+    "description": "A web server with one route"
+  },
+  "Route": {
+    "prefix": "get",
+    "body": ["server.get(\"${1:/path}\") {", "\t$0", "}"],
+    "description": "Answer GET requests on a path"
+  }
+}

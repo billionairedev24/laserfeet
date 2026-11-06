@@ -26,6 +26,16 @@ cd my-app
 lf run app.lf
 ```
 
+## VS Code
+
+Download `laserfeet.vsix` from the [latest release](https://github.com/billionairedev24/laserfeet/releases/latest) and run:
+
+```
+code --install-extension laserfeet.vsix
+```
+
+VS Code then recognizes `.lf` files as Laser Feet, with syntax colors, bracket matching, `--` comment toggling and snippets. The extension lives in `editors/vscode`.
+
 ## Build from source
 
 You need Go 1.24 or newer. Releases are built with the newest supported Go (1.26).
@@ -83,6 +93,8 @@ Changing the `VERSION` file on `main` runs the release workflow, which tags the 
 | `examples` | Example programs, expected outputs, and test files |
 | `site` | The website |
 | `scripts/build.sh` | Builds all binaries, the website and the checksums |
+| `editors/vscode` | The VS Code extension |
+| `install.sh`, `install.ps1` | One-line installers that verify checksums |
 | `.github/workflows` | CI (tests, vulnerability scan, build) and signed releases |
 
 ## A taste
