@@ -1,0 +1,6 @@
+launch {
+    show 3 > 2 and 2 >= 2
+    show "a" is "a"
+    show 1 is not 2
+    show 1 == 1 and 1 != 2
+}

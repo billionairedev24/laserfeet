@@ -1,0 +1,5 @@
+beam sign(n: Int) gives Text {
+    when n > 0 {
+        send "+"
+    }
+}

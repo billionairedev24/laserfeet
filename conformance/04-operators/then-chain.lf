@@ -1,0 +1,4 @@
+launch {
+    show [5, 3, 8] then sort then first
+    show [1, 2, 3] then turn(it * it) then sum
+}

@@ -1,0 +1,6 @@
+object Item {
+    price: Decimal
+}
+launch {
+    show Item("free")
+}

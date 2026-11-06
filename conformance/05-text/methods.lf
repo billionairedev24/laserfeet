@@ -1,0 +1,9 @@
+launch {
+    t = "  Laser Feet  "
+    show t.trim().upper()
+    show t.trim().split(" ")
+    show "abc".startsWith("ab")
+    show "abc".has("bc")
+    show "a-b".replace("-", "+")
+    show "héllo".size()
+}

@@ -1,0 +1,14 @@
+beam check(n: Int) gives Int {
+    when n < 0 {
+        fail "no negatives: {n}"
+    }
+    send n
+}
+launch {
+    attempt {
+        check(-1)
+        show "not reached"
+    } fails problem {
+        show "caught: {problem}"
+    }
+}

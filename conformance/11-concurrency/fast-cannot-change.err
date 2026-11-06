@@ -1,0 +1,1 @@
+line 4: fast work can't change 'total', because other work may be using it at the same time. Send a result instead, and collect it with wait or fast each

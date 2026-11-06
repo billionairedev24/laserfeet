@@ -1,0 +1,12 @@
+launch {
+    xs = [3, 1, 2]
+    xs.add(5)
+    show xs
+    show xs.size()
+    show xs[0]
+    show xs.has(2)
+    show sort(xs)
+    show reverse(xs)
+    show biggest(xs)
+    show smallest(xs)
+}

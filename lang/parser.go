@@ -878,7 +878,8 @@ func parseInner(src string, line int) (e Expr) {
 			e = nil
 		}
 	}()
-	sub := &parser{toks: toks}
+	// inside text, 'then' keeps its old reading rather than turning the {...} into plain text
+	sub := &parser{toks: toks, src: []rune(src), grouped: map[Expr]bool{}, fixing: true}
 	x := sub.expr()
 	sub.skipNewlines()
 	if sub.peek().Type != EOF {

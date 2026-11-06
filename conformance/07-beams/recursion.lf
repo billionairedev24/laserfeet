@@ -1,0 +1,9 @@
+beam fib(n: Int) gives Int {
+    when n < 2 {
+        send n
+    }
+    send fib(n - 1) + fib(n - 2)
+}
+launch {
+    show fib(20)
+}

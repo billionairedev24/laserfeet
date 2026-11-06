@@ -1,0 +1,5 @@
+launch {
+    f = float(1.5)
+    d: Decimal = 2.5
+    show f + d
+}

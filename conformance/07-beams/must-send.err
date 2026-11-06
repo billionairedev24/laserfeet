@@ -1,0 +1,1 @@
+line 1: beam sign gives Text, but it can finish without sending one. Make sure every path ends with send

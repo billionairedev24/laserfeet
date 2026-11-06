@@ -1,0 +1,6 @@
+launch {
+    n = 3
+    when n {
+        show "yes"
+    }
+}

@@ -1,0 +1,6 @@
+beam greet(name: Text, greeting: Text) gives Text {
+    send "{greeting}, {name}"
+}
+launch {
+    show greet(greeting: "Hi", name: "Ada")
+}

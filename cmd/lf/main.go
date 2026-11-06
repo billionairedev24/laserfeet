@@ -152,7 +152,7 @@ func run(path string) int {
 	}
 	in := newInterp(path)
 	if err := in.Run(read(path)); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", path, err)
+		fmt.Fprintln(os.Stderr, describeError(path, err))
 		return 1
 	}
 	return 0
@@ -165,7 +165,7 @@ func test(path string) int {
 	in := newInterp(path)
 	results, err := in.RunTests(read(path))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", path, err)
+		fmt.Fprintln(os.Stderr, describeError(path, err))
 		return 1
 	}
 	failed := 0
@@ -182,4 +182,15 @@ func test(path string) int {
 		return 1
 	}
 	return 0
+}
+
+// describeError writes a problem the same way lf check does: file, line N: message.
+func describeError(path string, err error) string {
+	switch e := err.(type) {
+	case *lang.RuntimeError:
+		return fmt.Sprintf("%s, line %d: %s", path, e.Line, e.Msg)
+	case *lang.SyntaxError:
+		return fmt.Sprintf("%s, line %d: %s", path, e.Line, e.Msg)
+	}
+	return fmt.Sprintf("%s: %v", path, err)
 }

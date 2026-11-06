@@ -1,0 +1,10 @@
+launch {
+    i = 0
+    loop while i < 3 {
+        i = i + 1
+    }
+    show i
+    loop 2 times {
+        show "hi"
+    }
+}

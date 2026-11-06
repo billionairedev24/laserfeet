@@ -1,0 +1,17 @@
+use web
+object Todo {
+    title: Text
+    done: Flag = no
+}
+server = web.open(8080)
+server.post("/todos") as request {
+    t = Todo.from(request.json)
+    send web.status(201, t)
+}
+launch {
+    r = server.visit("/todos", "POST", {title: "Write spec"})
+    show r.status
+    show r.json.title
+    bad = server.visit("/todos", "POST", {done: yes})
+    show bad.status
+}

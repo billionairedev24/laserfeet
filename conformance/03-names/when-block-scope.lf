@@ -1,0 +1,10 @@
+launch {
+    n = 5
+    when n > 3 {
+        label = "big"
+    }
+    otherwise {
+        label = "small"
+    }
+    show label
+}

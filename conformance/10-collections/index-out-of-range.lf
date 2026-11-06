@@ -1,0 +1,4 @@
+launch {
+    xs = [1, 2]
+    show xs[5]
+}

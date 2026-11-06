@@ -1,0 +1,5 @@
+launch {
+    show 1_000_000
+    show 3.50
+    show 0.1 + 0.2
+}

@@ -1,0 +1,4 @@
+launch {
+    -- a whole-line comment
+    show 1   -- after code
+}

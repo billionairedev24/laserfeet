@@ -1,0 +1,17 @@
+object User {
+    name: Text
+    age: Int
+}
+launch {
+    us = [User("Ada", 36), User("Tobi", 12), User("Kemi", 25)]
+    show us then keepIf(age >= 18) then turn(name) then join(", ")
+    show us then dropIf(age >= 18) then count
+    youngest = us then sortBy(age) then first
+    when youngest is not nothing {
+        show youngest.name
+    }
+    found = us then findFirst(name is "Kemi")
+    when found is not nothing {
+        show found.age
+    }
+}

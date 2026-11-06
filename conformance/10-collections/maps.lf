@@ -1,0 +1,6 @@
+launch {
+    m = {name: "Ada", city: "Lagos"}
+    show m.name
+    show m.keys()
+    show m.has("city")
+}

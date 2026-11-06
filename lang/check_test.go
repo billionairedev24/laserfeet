@@ -46,7 +46,7 @@ func TestCheckCatchesMistakes(t *testing.T) {
 		{"wrong field type", "object Item {\n    price: Decimal\n}\nshow Item(\"free\")",
 			"line 4: Item.price must be Decimal, but this is Text"},
 		{"missing field", "object Item {\n    name: Text\n    price: Decimal\n}\nshow Item(name: \"Hat\")",
-			"line 5: making a Item needs a value for 'price'"},
+			"line 5: making an Item needs a value for 'price'"},
 		{"list of the wrong things", "beam total(prices: List[Decimal]) gives Decimal {\n    send sum(prices)\n}\nshow total([\"a\"])",
 			"line 4: an item of this list must be Decimal, but this is Text"},
 		{"when needs yes or no", "count = 3\nwhen count {\n}",

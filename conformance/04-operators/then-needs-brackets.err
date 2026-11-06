@@ -1,0 +1,1 @@
+line 2: it's unclear what 'then' takes here. Add brackets: ("n: " + [1, 2]) then ... passes all of it, or put brackets around just the part 'then' should take (lf fix adds the first kind, which is how this code ran before)

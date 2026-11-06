@@ -1,0 +1,12 @@
+object Counter {
+    n: Int = 0
+    beam bump() {
+        me.n = me.n + 1
+    }
+}
+launch {
+    c = Counter()
+    c.bump()
+    c.bump()
+    show c.n
+}

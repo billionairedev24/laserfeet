@@ -1,0 +1,6 @@
+rule Shape {
+    beam area() gives Decimal
+}
+object Box follows Shape {
+    side: Decimal
+}

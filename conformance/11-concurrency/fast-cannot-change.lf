@@ -1,0 +1,6 @@
+launch {
+    total = 0
+    r = fast each n in [1, 2] {
+        total = total + n
+    }
+}

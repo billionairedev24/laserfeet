@@ -1,0 +1,13 @@
+object User {
+    name: Text
+    age: Int
+}
+launch {
+    u = User.from({name: "Ada", age: 36})
+    show u.name
+    attempt {
+        User.from({name: "Bo", age: "old"})
+    } fails problem {
+        show problem
+    }
+}

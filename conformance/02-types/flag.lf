@@ -1,0 +1,4 @@
+launch {
+    ok = yes
+    show ok and not no
+}

@@ -1,0 +1,6 @@
+launch {
+    each n in 1 to 4 {
+        show n
+    }
+    show 1 to 4 then sum
+}

@@ -1,0 +1,5 @@
+launch {
+    total: Decimal = 0
+    total = total + 1.25
+    show total
+}

@@ -1,0 +1,5 @@
+launch {
+    show "tab\there"
+    show "braces \{kept\}"
+    show "quote \"inside\""
+}

@@ -1,0 +1,14 @@
+beam size(n: Int) gives Text {
+    when n < 10 {
+        send "small"
+    } otherwise when n < 100 {
+        send "medium"
+    } otherwise {
+        send "large"
+    }
+}
+launch {
+    show size(3)
+    show size(30)
+    show size(300)
+}

@@ -1,0 +1,7 @@
+launch {
+    double = beam(x: Int) gives Int {
+        send x * 2
+    }
+    show double(21)
+    show [1, 2] then turn(x => x + 1)
+}

@@ -1,0 +1,8 @@
+show "top first"
+launch {
+    show "launch last"
+}
+show later()
+beam later() gives Text {
+    send "declared after use"
+}

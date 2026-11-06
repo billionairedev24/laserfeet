@@ -1,0 +1,15 @@
+rule Shape {
+    beam area() gives Decimal
+}
+object Square follows Shape {
+    side: Decimal
+    beam area() gives Decimal {
+        send me.side * me.side
+    }
+}
+beam report(s: Shape) gives Text {
+    send "area {s.area()}"
+}
+launch {
+    show report(Square(1.5))
+}

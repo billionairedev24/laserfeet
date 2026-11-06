@@ -1,0 +1,5 @@
+use postgres
+db = postgres.open("postgres://x@localhost/db")
+db.transaction() {
+    tx.run("select 1")
+}

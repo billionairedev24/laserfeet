@@ -1,0 +1,12 @@
+object Item {
+    name: Text
+    price: Decimal
+    quantity: Int = 1
+}
+launch {
+    a = Item("Lamp", 19.99)
+    show a.quantity
+    b = Item(name: "Bulb", price: 0.1, quantity: 3)
+    show b.price * b.quantity
+    show a
+}

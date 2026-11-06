@@ -1,0 +1,6 @@
+beam apply(f: Beam(Int) gives Int, n: Int) gives Int {
+    send f(n)
+}
+launch {
+    show apply(x => x * 10, 4)
+}

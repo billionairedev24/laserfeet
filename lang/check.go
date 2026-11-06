@@ -1471,7 +1471,7 @@ func (c *checker) construct(line int, cl *Class, args []*Type, names []string) *
 	}
 	for i, f := range cl.Fields {
 		if !given[i] && f.Default == nil && !cl.types[i].Optional {
-			c.report(line, "making a %s needs a value for '%s'", cl.Name, f.Name)
+			c.report(line, "making %s needs a value for '%s'", aOrAn(cl.Name), f.Name)
 		}
 	}
 	return &Type{Kind: KObject, Class: cl}
@@ -1621,4 +1621,12 @@ func shortText(e Expr) string {
 		return shortText(x.Object) + "." + x.Name
 	}
 	return "db"
+}
+
+// aOrAn puts "a" or "an" before a name: a Product, an Item.
+func aOrAn(name string) string {
+	if name != "" && strings.ContainsRune("AEIOUaeiou", rune(name[0])) {
+		return "an " + name
+	}
+	return "a " + name
 }

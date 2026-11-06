@@ -1,0 +1,6 @@
+beam half(n: Int) gives Decimal {
+    send n / 2
+}
+launch {
+    show half("ten")
+}

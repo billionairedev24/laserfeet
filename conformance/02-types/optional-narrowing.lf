@@ -1,0 +1,13 @@
+beam find(n: Int) gives Text? {
+    when n > 0 {
+        send "found"
+    }
+    send nothing
+}
+launch {
+    t = find(1)
+    when t is not nothing {
+        show t.upper()
+    }
+    show find(0) is nothing
+}

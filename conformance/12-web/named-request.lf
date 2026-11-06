@@ -1,0 +1,13 @@
+use web
+server = web.open(8080)
+server.get("/hi/:name") as request {
+    send "Hi {request.params.name}"
+}
+server.get("/plain") {
+    send "plain"
+}
+launch {
+    show server.visit("/hi/Ada")
+    show server.visit("/plain")
+    show server.visit("/nope").status
+}

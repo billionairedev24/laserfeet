@@ -1,0 +1,4 @@
+launch {
+    lock rate = 2
+    rate = 3
+}

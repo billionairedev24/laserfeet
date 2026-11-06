@@ -1,0 +1,9 @@
+beam twice(n: Int) gives Int {
+    send n * 2
+}
+test "doubles" {
+    expect twice(2) is 4
+}
+launch {
+    show twice(3)
+}

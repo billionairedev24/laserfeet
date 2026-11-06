@@ -1,0 +1,7 @@
+launch {
+    show 2 + 3 * 4
+    show (2 + 3) * 4
+    show 10 - 4 - 3
+    show 7 % 3
+    show -2 * 3
+}

@@ -1,0 +1,7 @@
+launch {
+    sql = """
+    select *
+    from t
+"""
+    show sql.trim()
+}

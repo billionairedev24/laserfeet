@@ -1,0 +1,1 @@
+line 4: name the request to use it: write 'as request' before the route's '{', like server.get("/hello") as request { ... } (lf fix can do this for you)

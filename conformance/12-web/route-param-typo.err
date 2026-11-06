@@ -1,0 +1,1 @@
+line 4: the path /u/:id has no :ids, so request.params.ids is never set. Did you mean 'id'?

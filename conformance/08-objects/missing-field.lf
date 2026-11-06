@@ -1,0 +1,7 @@
+object Item {
+    name: Text
+    price: Decimal
+}
+launch {
+    show Item(name: "Hat")
+}

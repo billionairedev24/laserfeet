@@ -1,0 +1,5 @@
+use web
+server = web.open(8080)
+server.get("/hi/:name") {
+    send request.params.name
+}

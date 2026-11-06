@@ -1,0 +1,4 @@
+launch {
+    show "a" + "b"
+    show "n=" + text(3)
+}

@@ -53,7 +53,7 @@ func TestFormatLaysOutCode(t *testing.T) {
 // formatting must never change what a program does.
 func TestExamplesAreFormatted(t *testing.T) {
 	var files []string
-	for _, root := range []string{"../examples", "../packages", "../bench"} {
+	for _, root := range []string{"../examples", "../packages", "../bench", "../conformance"} {
 		filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 			if err == nil && strings.HasSuffix(p, ".lf") && !strings.Contains(p, "mistakes") {
 				files = append(files, p)

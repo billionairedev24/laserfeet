@@ -1,0 +1,7 @@
+beam square(n: Int) gives Int {
+    send n * n
+}
+launch {
+    job = fast square(7)
+    show wait job
+}

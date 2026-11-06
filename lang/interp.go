@@ -943,7 +943,7 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 			if fd.Default != nil {
 				inst.Slots[j] = in.fieldValue(line, f, j, in.eval(fd.Default, f.Env))
 			} else {
-				in.fail(line, "making a %s needs a value for '%s'", f.Name, fd.Name)
+				in.fail(line, "making %s needs a value for '%s'", aOrAn(f.Name), fd.Name)
 			}
 		}
 		return inst

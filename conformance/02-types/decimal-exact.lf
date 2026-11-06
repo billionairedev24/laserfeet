@@ -1,0 +1,6 @@
+launch {
+    show 0.1 + 0.2 is 0.3
+    show 19.99 * 3
+    show 10 / 4
+    show 1 / 3
+}

@@ -1,0 +1,7 @@
+beam adder(n: Int) gives Beam(Int) gives Int {
+    send x => x + n
+}
+launch {
+    add5 = adder(5)
+    show add5(1)
+}
