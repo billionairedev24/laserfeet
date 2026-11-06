@@ -1,0 +1,43 @@
+use web
+
+server = web.open(8080)
+server.sessions("a-test-secret-that-is-long-enough-1234")
+
+server.before() as request {
+    when request.path.startsWith("/admin") and not request.session.has("user") {
+        send web.redirect("/login")
+    }
+}
+
+server.post("/login") as request {
+    name = request.form.name
+    when name is nothing {
+        send web.status(400, "name is missing")
+    }
+    request.session.set("user", name)
+    send web.redirect("/admin")
+}
+
+server.get("/admin") as request {
+    send "hello {request.session.get("user")}"
+}
+
+server.post("/logout") as request {
+    request.session.clear()
+    send web.redirect("/")
+}
+
+launch {
+    show server.visit("/admin").header("Location")
+    login = server.visit("/login", "POST", "name=Ada", {"Content-Type": "application/x-www-form-urlencoded"})
+    show login.status
+    cookie = login.cookies[0].split(";")[0]
+    show server.visit("/admin", "GET", nothing, {Cookie: cookie}).body
+    show server.visit("/admin", "GET", nothing, {Cookie: "lf_session=made.up"}).status
+    -- another site can't act as the signed-in visitor
+    attack = server.visit("/logout", "POST", "", {Cookie: cookie, Origin: "https://evil.example", Host: "shop.local"})
+    show attack.status
+    out = server.visit("/logout", "POST", "", {Cookie: cookie, Origin: "https://shop.local", Host: "shop.local"})
+    show out.status
+    show out.cookies[0].has("Max-Age=-1")
+}

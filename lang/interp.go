@@ -158,8 +158,14 @@ type Interp struct {
 	// ReadSource reads another .lf file for 'use "file.lf"'. The path is already
 	// checked to stay inside the program's folder. Nil means files can't be used.
 	ReadSource func(path string) (string, error)
-	tests      []*TestStmt
-	outMu      sync.Mutex
+	// Dir is the folder of the program being run: templates and static files
+	// are found from there, wherever lf was started.
+	Dir string
+	// ReadAsset, when set, reads templates and static files instead of the disk
+	// (a program built with lf build carries them inside it). Paths use /.
+	ReadAsset func(path string) (string, error)
+	tests     []*TestStmt
+	outMu     sync.Mutex
 }
 
 func NewInterp(out io.Writer) *Interp {
@@ -1079,18 +1085,11 @@ func (in *Interp) get(obj Value, name string, line int) Value {
 			return b
 		}
 	case *Response:
-		switch name {
-		case "status":
-			return box(int64(o.Status))
-		case "body":
-			return o.Body
-		case "json":
-			v, err := fromJSON(o.Body)
-			if err != nil {
-				in.fail(line, "this response isn't JSON")
-			}
-			return v
-		}
+		return in.responseMember(o, name, line)
+	case *Session:
+		return in.sessionMember(o, name, line)
+	case *Upload:
+		return in.uploadMember(o, name, line)
 	}
 	in.fail(line, "%s has nothing called '%s'", typeName(obj), name)
 	return nil

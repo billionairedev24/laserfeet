@@ -111,6 +111,7 @@ func read(path string) string {
 func newInterp(path string) *lang.Interp {
 	in := lang.NewInterp(os.Stdout)
 	dir := filepath.Dir(path)
+	in.Dir = dir
 	in.ReadSource = func(p string) (string, error) {
 		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p)))
 		return string(b), err

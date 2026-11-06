@@ -3,15 +3,22 @@ package lang
 import (
 	"encoding/json"
 	"html"
-	"net/url"
-	"sort"
+	"path"
 	"strings"
+	"time"
 )
 
 // Server is a Laser Feet web server.
 type Server struct {
-	Port   int
-	routes []*route
+	Port    int
+	routes  []*route
+	before  []Value        // beams run before every route (server.before)
+	origins []string       // other sites allowed to call this server (server.allow)
+	statics []staticFolder // folders served as files (server.files)
+	limits  []*limiter     // requests allowed per visitor (server.limit)
+	session *sessionKeys   // signed session cookies (server.sessions)
+	maxBody int64          // largest request body, in bytes
+	quiet   bool           // no request log lines
 }
 
 type route struct {
@@ -26,6 +33,7 @@ type Response struct {
 	Status      int
 	Body        string
 	ContentType string
+	Headers     [][2]string // extra headers, in order (Set-Cookie may repeat)
 }
 
 func loadModule(in *Interp, name string) *Module {
@@ -108,6 +116,8 @@ func webModule() *Module {
 			wantArgs(in, line, "web.escape", a, 1)
 			return html.EscapeString(Text(a[0]))
 		}),
+		"reply":    builtin("reply", webReply),
+		"redirect": builtin("redirect", webRedirect),
 		"page": builtin("page", func(in *Interp, line int, a []Value) Value {
 			wantArgs(in, line, "web.page", a, 1)
 			return &Response{Status: 200, Body: Text(a[0]), ContentType: "text/html; charset=utf-8"}
@@ -138,6 +148,97 @@ func serverMethod(in *Interp, s *Server, name string) *Builtin {
 		return addRoute("GET")
 	case "post":
 		return addRoute("POST")
+	case "put":
+		return addRoute("PUT")
+	case "patch":
+		return addRoute("PATCH")
+	case "delete":
+		return addRoute("DELETE")
+	case "before":
+		return builtin("before", func(in *Interp, line int, a []Value) Value {
+			wantArgs(in, line, "server.before", a, 1)
+			s.before = append(s.before, a[0])
+			return nil
+		})
+	case "allow":
+		return builtin("allow", func(in *Interp, line int, a []Value) Value {
+			if len(a) == 0 {
+				in.fail(line, "server.allow needs the sites that may call this server, like server.allow(\"https://shop.example\")")
+			}
+			for _, o := range a {
+				o := strings.TrimRight(Text(o), "/")
+				if o != "*" && !strings.HasPrefix(o, "https://") && !strings.HasPrefix(o, "http://") {
+					in.fail(line, "server.allow takes addresses like https://shop.example, but got %q", o)
+				}
+				s.origins = append(s.origins, o)
+			}
+			return nil
+		})
+	case "files":
+		return builtin("files", func(in *Interp, line int, a []Value) Value {
+			wantArgs(in, line, "server.files", a, 2)
+			prefix, dir := Text(a[0]), strings.TrimRight(Text(a[1]), "/")
+			if !strings.HasPrefix(prefix, "/") {
+				in.fail(line, "the path for server.files must start with /, like \"/static\"")
+			}
+			if !strings.HasSuffix(prefix, "/") {
+				prefix += "/"
+			}
+			s.statics = append(s.statics, staticFolder{prefix, path.Clean(dir)})
+			return nil
+		})
+	case "limit":
+		return builtin("limit", func(in *Interp, line int, a []Value) Value {
+			prefix := "/"
+			if len(a) == 3 {
+				prefix, a = Text(a[0]), a[1:]
+			}
+			if len(a) != 2 {
+				in.fail(line, "server.limit takes how many requests and in how long, like server.limit(100, minutes(1)), optionally after a path")
+			}
+			n := in.wantInt(line, "the number of requests", a[0])
+			per, ok := a[1].(Duration)
+			if !ok || n < 1 || per <= 0 {
+				in.fail(line, "server.limit takes a positive number and a Duration, like server.limit(100, minutes(1))")
+			}
+			s.limits = append(s.limits, &limiter{prefix: prefix, n: int(n), per: time.Duration(per), seen: map[string]*window{}})
+			return nil
+		})
+	case "sessions":
+		return builtin("sessions", func(in *Interp, line int, a []Value) Value {
+			if len(a) < 1 || len(a) > 2 {
+				in.fail(line, "server.sessions takes a secret, and optionally how long a session lasts, like server.sessions(env(\"SESSION_SECRET\", \"\"), days(7))")
+			}
+			secret := Text(a[0])
+			if len(secret) < 32 {
+				in.fail(line, "the session secret must be at least 32 characters, so nobody can guess it. Make one with: lf secret")
+			}
+			age := 7 * 24 * time.Hour
+			if len(a) == 2 {
+				d, ok := a[1].(Duration)
+				if !ok || d <= 0 {
+					in.fail(line, "how long a session lasts must be a Duration, like days(7)")
+				}
+				age = time.Duration(d)
+			}
+			s.session = &sessionKeys{key: []byte(secret), age: age}
+			return nil
+		})
+	case "bodyLimit":
+		return builtin("bodyLimit", func(in *Interp, line int, a []Value) Value {
+			wantArgs(in, line, "server.bodyLimit", a, 1)
+			mb := in.wantInt(line, "the size in megabytes", a[0])
+			if mb < 1 || mb > 1024 {
+				in.fail(line, "server.bodyLimit takes megabytes, from 1 to 1024")
+			}
+			s.maxBody = mb << 20
+			return nil
+		})
+	case "quiet":
+		return builtin("quiet", func(in *Interp, line int, a []Value) Value {
+			s.quiet = true
+			return nil
+		})
 	case "start":
 		return builtin("start", func(in *Interp, line int, a []Value) Value {
 			startServer(in, s, line)
@@ -146,22 +247,7 @@ func serverMethod(in *Interp, s *Server, name string) *Builtin {
 	case "visit":
 		// visit pretends to be a browser: handy for tests and the playground.
 		return builtin("visit", func(in *Interp, line int, a []Value) Value {
-			if len(a) < 1 || len(a) > 3 {
-				in.fail(line, "server.visit needs a path, and optionally a method and a body, like server.visit(\"/todos\", \"POST\", {title: \"Milk\"})")
-			}
-			method := "GET"
-			if len(a) >= 2 {
-				method = strings.ToUpper(Text(a[1]))
-			}
-			body := ""
-			if len(a) == 3 {
-				if t, ok := a[2].(string); ok {
-					body = t
-				} else {
-					body = toJSON(a[2])
-				}
-			}
-			return s.handle(in, method, Text(a[0]), body)
+			return s.handle(in, visitRequest(in, line, a))
 		})
 	case "routes":
 		return builtin("routes", func(in *Interp, line int, a []Value) Value {
@@ -181,97 +267,6 @@ func splitPath(p string) []string {
 		return nil
 	}
 	return strings.Split(p, "/")
-}
-
-// handle finds the route for a request and runs it. The caller must hold the interpreter lock.
-func (s *Server) handle(in *Interp, method, rawPath, body string) (resp *Response) {
-	u, err := url.Parse(rawPath)
-	if err != nil {
-		return &Response{Status: 400, Body: "Bad request"}
-	}
-	got := splitPath(u.Path)
-	for _, r := range s.routes {
-		if r.method != "ANY" && r.method != method {
-			continue
-		}
-		if len(r.parts) != len(got) {
-			continue
-		}
-		params := NewMap()
-		ok := true
-		for i, part := range r.parts {
-			if strings.HasPrefix(part, ":") {
-				params.Set(part[1:], got[i])
-			} else if part != got[i] {
-				ok = false
-				break
-			}
-		}
-		if !ok {
-			continue
-		}
-		query := NewMap()
-		keys := make([]string, 0, len(u.Query()))
-		for k := range u.Query() {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			query.Set(k, u.Query().Get(k))
-		}
-		req := NewMap()
-		req.Set("method", method)
-		req.Set("path", u.Path)
-		req.Set("params", params)
-		req.Set("query", query)
-		req.Set("body", body)
-		var parsed Value
-		if strings.TrimSpace(body) != "" {
-			if v, err := fromJSON(body); err == nil {
-				parsed = v
-			}
-		}
-		req.Set("json", parsed)
-		return s.run(in, r, req)
-	}
-	return &Response{Status: 404, Body: "Not found: " + u.Path, ContentType: "text/plain; charset=utf-8"}
-}
-
-func (s *Server) run(in *Interp, r *route, req *Map) (resp *Response) {
-	defer func() {
-		if x := recover(); x != nil {
-			if re, ok := x.(*RuntimeError); ok && re.Status == 400 {
-				// the visitor sent something that doesn't fit: tell them what (it's about their input)
-				resp = &Response{Status: 400, Body: toJSON(mapOf("error", re.Msg)), ContentType: "application/json"}
-				return
-			}
-			if re, ok := x.(*RuntimeError); ok {
-				in.print("Problem while handling " + r.pattern + ": " + re.Error())
-				// details go to the server log only, never to the visitor
-				resp = &Response{Status: 500, Body: "Something went wrong", ContentType: "text/plain; charset=utf-8"}
-				return
-			}
-			panic(x)
-		}
-	}()
-	var out Value
-	if b, ok := r.handler.(*Beam); ok && len(b.Params) == 0 {
-		out = in.call(b, nil, nil, 0, nil) // a route that doesn't name its request
-	} else {
-		out = in.call(r.handler, []Value{req}, nil, 0, nil)
-	}
-	switch v := out.(type) {
-	case *Response:
-		return v
-	case string:
-		// plain text is never treated as a web page, so visitor input can't inject HTML;
-		// use web.page(...) to send HTML on purpose.
-		return &Response{Status: 200, Body: v, ContentType: "text/plain; charset=utf-8"}
-	case nil:
-		return &Response{Status: 204}
-	default:
-		return &Response{Status: 200, Body: toJSON(v), ContentType: "application/json"}
-	}
 }
 
 func toPlain(v Value) any {

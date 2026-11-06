@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -70,8 +72,29 @@ func collectFiles(path, src string) (map[string]string, error) {
 			queue = append(queue, item{key, string(b), next})
 		}
 	}
+	// templates, web files and migrations next to the program go inside it too
+	for _, folder := range assetFolders {
+		root := filepath.Join(dir, folder)
+		filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			if strings.HasPrefix(filepath.Base(p), ".") {
+				return nil // never pack .env and other hidden files
+			}
+			rel, _ := filepath.Rel(dir, p)
+			b, err := os.ReadFile(p)
+			if err == nil {
+				files["assets/"+filepath.ToSlash(rel)] = string(b)
+			}
+			return nil
+		})
+	}
 	return files, nil
 }
+
+// assetFolders are packed into programs made with lf build, when they exist.
+var assetFolders = []string{"views", "public", "static", "templates", "migrations"}
 
 // buildProgram writes a standalone executable for the program in path.
 func buildProgram(path, out string) int {
@@ -183,6 +206,12 @@ func runAttached() (code int, found bool) {
 	in := lang.NewInterp(os.Stdout)
 	in.ReadSource = func(p string) (string, error) {
 		if src, ok := b.Files[p]; ok && p != b.Main {
+			return src, nil
+		}
+		return "", fmt.Errorf("%s was not packed into this program", p)
+	}
+	in.ReadAsset = func(p string) (string, error) {
+		if src, ok := b.Files["assets/"+path.Clean(p)]; ok {
 			return src, nil
 		}
 		return "", fmt.Errorf("%s was not packed into this program", p)

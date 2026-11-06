@@ -3,13 +3,17 @@
 package lang
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -77,10 +81,15 @@ var securityHeaders = map[string]string{
 func newHandler(in *Interp, s *Server) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
 		for k, v := range securityHeaders {
 			w.Header().Set(k, v)
 		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+		limit := int64(maxBodyBytes)
+		if s.maxBody > 0 {
+			limit = s.maxBody
+		}
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 		if err != nil {
 			var tooBig *http.MaxBytesError
 			if errors.As(err, &tooBig) {
@@ -90,16 +99,53 @@ func newHandler(in *Interp, s *Server) http.Handler {
 			http.Error(w, "Could not read the request", http.StatusBadRequest)
 			return
 		}
+		req := &incoming{method: r.Method, uri: r.URL.RequestURI(), body: string(body), ip: clientIP(r), header: map[string]string{}}
+		for k, v := range r.Header {
+			req.header[strings.ToLower(k)] = strings.Join(v, ", ")
+		}
+		req.header["cookie"] = strings.Join(r.Header.Values("Cookie"), "; ")
+		req.header["host"] = r.Host
 		in.gil.Lock()
-		resp := s.handle(in, r.Method, r.URL.RequestURI(), string(body))
+		resp := s.handle(in, req)
 		in.gil.Unlock()
+		secure := secureHost(req)
+		for _, h := range resp.Headers {
+			v := h[1]
+			if h[0] == "Set-Cookie" && secure {
+				v += "; Secure"
+			}
+			w.Header().Add(h[0], v)
+		}
 		if resp.ContentType != "" {
 			w.Header().Set("Content-Type", resp.ContentType)
 		}
 		w.WriteHeader(resp.Status)
-		io.WriteString(w, resp.Body)
+		if r.Method != "HEAD" {
+			io.WriteString(w, resp.Body)
+		}
+		if !s.quiet {
+			logRequest(r.Method, r.URL.Path, resp.Status, time.Since(start), req.ip)
+		}
 	})
 	return mux
+}
+
+// clientIP is the visitor's address, without the port. (Behind a proxy this is
+// the proxy; trusting forwarded headers is up to the program.)
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// logRequest writes one line of JSON per request to standard error, for log tools.
+func logRequest(method, path string, status int, took time.Duration, ip string) {
+	fmt.Fprintln(os.Stderr, jsonString(map[string]any{
+		"time": time.Now().UTC().Format(time.RFC3339), "method": method, "path": path,
+		"status": status, "ms": took.Milliseconds(), "ip": ip,
+	}))
 }
 
 // startServer serves real HTTP requests until the program is stopped.
@@ -114,8 +160,24 @@ func startServer(in *Interp, s *Server, line int) {
 		MaxHeaderBytes:    maxHeaderBytes,
 	}
 	in.print(fmt.Sprintf("Laser Feet server running at http://localhost:%d", s.Port))
+	// Ctrl-C or a stop signal (from Docker, say) lets requests in progress finish first
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	done := make(chan struct{})
+	go func() {
+		<-stop
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		srv.Shutdown(ctx)
+		close(done)
+	}()
 	in.gil.Unlock()
 	err := srv.ListenAndServe()
+	if errors.Is(err, http.ErrServerClosed) {
+		<-done
+		fmt.Fprintln(os.Stderr, "Laser Feet server stopped")
+		os.Exit(0)
+	}
 	in.gil.Lock()
 	in.fail(line, "the web server stopped: %s", err.Error())
 }

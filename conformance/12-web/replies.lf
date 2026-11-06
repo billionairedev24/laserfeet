@@ -1,0 +1,39 @@
+use web
+
+server = web.open(8080)
+server.files("/static", "public")
+server.allow("https://shop.example")
+server.limit("/login", 2, minutes(1))
+
+server.get("/theme") as request {
+    reply = web.reply({theme: request.cookie("theme"), agent: request.header("User-Agent")})
+    send reply.cookie("theme", "dark", days(30)).header("Cache-Control", "no-store")
+}
+
+server.delete("/items/:id") as request {
+    send web.status(204)
+}
+
+server.post("/login") {
+    send "ok"
+}
+
+launch {
+    th = server.visit("/theme", "GET", nothing, {Cookie: "theme=light", "User-Agent": "test"})
+    show th.body
+    show th.cookies
+    show th.header("Cache-Control")
+    show server.visit("/static/").body
+    show server.visit("/static/site.css").header("Content-Type")
+    show server.visit("/static/.env").status
+    show server.visit("/static/../replies.lf").status
+    show server.visit("/health").body
+    show server.visit("/items/3", "DELETE").status
+    pre = server.visit("/theme", "OPTIONS", nothing, {Origin: "https://shop.example", "Access-Control-Request-Method": "GET"})
+    show pre.status
+    show pre.header("Access-Control-Allow-Origin")
+    show server.visit("/theme", "OPTIONS", nothing, {Origin: "https://evil.example", "Access-Control-Request-Method": "GET"}).status
+    show server.visit("/login", "POST").status
+    show server.visit("/login", "POST").status
+    show server.visit("/login", "POST").status
+}

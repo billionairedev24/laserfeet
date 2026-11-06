@@ -1510,7 +1510,7 @@ func (c *checker) call(x *Call, sc *cscope, first *Type, hasFirst bool) *Type {
 
 func (c *checker) isRouteCall(x *Call) bool {
 	g, ok := x.Callee.(*Get)
-	return ok && (g.Name == "get" || g.Name == "post" || g.Name == "on")
+	return ok && (g.Name == "get" || g.Name == "post" || g.Name == "on" || g.Name == "put" || g.Name == "patch" || g.Name == "delete" || g.Name == "before")
 }
 
 func (c *checker) callWith(x *Call, sc *cscope, first *Type) *Type {

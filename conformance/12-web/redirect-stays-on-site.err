@@ -1,0 +1,1 @@
+line 4: web.redirect only goes to a page on this site, like "/login", but got "https://evil.example"

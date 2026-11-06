@@ -118,7 +118,7 @@ var simpleTypes = map[string]*Type{
 	"Date": tDate, "Time": tTime, "Duration": tDuration, "UUID": tUUID,
 }
 
-var libraryTypes = map[string]bool{"Server": true, "Response": true, "Store": true, "Request": true, "Database": true}
+var libraryTypes = map[string]bool{"Server": true, "Response": true, "Store": true, "Request": true, "Database": true, "Session": true, "Upload": true}
 
 // Describe is how a type reads in messages.
 func (t *Type) Describe() string {
@@ -373,6 +373,12 @@ func conform(v Value, t *Type) (Value, bool) {
 			return v, ok
 		case "Database":
 			_, ok := v.(*Database)
+			return v, ok
+		case "Session":
+			_, ok := v.(*Session)
+			return v, ok
+		case "Upload":
+			_, ok := v.(*Upload)
 			return v, ok
 		}
 	case KNothing:

@@ -1,0 +1,16 @@
+{"theme":"light","agent":"test"}
+["theme=dark; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000"]
+no-store
+<h1>hi</h1>
+
+text/css; charset=utf-8
+404
+404
+{"ok":true}
+204
+204
+https://shop.example
+403
+200
+200
+429

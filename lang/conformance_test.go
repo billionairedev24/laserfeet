@@ -58,6 +58,7 @@ func runConformance(src, dir string) (string, bool) {
 	var out bytes.Buffer
 	in := NewInterp(&out)
 	in.ReadSource = read
+	in.Dir = dir
 	if err := in.Run(src); err != nil {
 		switch e := err.(type) {
 		case *RuntimeError:

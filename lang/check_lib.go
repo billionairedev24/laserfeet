@@ -21,7 +21,7 @@ func builtinType(name string) *Type {
 
 func libraryModule(name string) *Type {
 	members := map[string][]string{
-		"web":      {"open", "json", "status", "page", "escape", "fetch"},
+		"web":      {"open", "json", "status", "page", "escape", "fetch", "reply", "redirect"},
 		"json":     {"read", "write", "pretty"},
 		"files":    {"read", "write", "exists", "list"},
 		"time":     {"now", "today", "seconds", "at"},
@@ -43,6 +43,12 @@ var libraryMembers = map[string]bool{
 	"text.upper": true, "text.lower": true, "text.trim": true, "text.size": true, "text.has": true,
 	"text.startsWith": true, "text.split": true, "text.replace": true,
 	"server.get": true, "server.post": true, "server.on": true, "server.start": true, "server.visit": true, "server.routes": true,
+	"server.put": true, "server.patch": true, "server.delete": true, "server.before": true, "server.allow": true,
+	"server.files": true, "server.limit": true, "server.sessions": true, "server.bodyLimit": true, "server.quiet": true,
+	"request.header": true, "request.cookie": true,
+	"response.header": true, "response.cookie": true, "response.forget": true,
+	"session.get": true, "session.set": true, "session.has": true, "session.remove": true, "session.clear": true,
+	"upload.saveAs":  true,
 	"database.query": true, "database.first": true, "database.run": true, "database.transaction": true,
 	"store.add": true, "store.all": true, "store.find": true, "store.update": true, "store.remove": true, "store.count": true,
 }
@@ -64,6 +70,20 @@ func memberType(name string, recv *Type) *Type {
 		return mapOf_(tText)
 	case "request.json":
 		return tJson
+	case "request.form":
+		return mapOf_(tText)
+	case "request.ip":
+		return tText
+	case "request.session":
+		return lib("Session")
+	case "request.files":
+		return listOf(lib("Upload"))
+	case "response.cookies":
+		return listOf(tText)
+	case "upload.field", "upload.name", "upload.type", "upload.text":
+		return tText
+	case "upload.size":
+		return tInt
 	}
 	if libraryMembers[name] {
 		return &Type{Kind: KBuiltin, Name: name, Elem: recv}
@@ -458,16 +478,124 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 			c.need(line, a[0], tText, "the entry name")
 		}
 		return tFlag
-	case "server.get", "server.post", "server.on":
+	case "server.get", "server.post", "server.on", "server.put", "server.patch", "server.delete":
 		if c.argCount(line, n[7:], a, 2, 2) {
 			c.need(line, a[0], tText, "the path")
+		}
+		return tNothing
+	case "server.before":
+		c.argCount(line, "before", a, 1, 1)
+		return tNothing
+	case "server.allow":
+		if len(a) == 0 {
+			c.report(line, "server.allow needs the sites that may call this server, like server.allow(\"https://shop.example\")")
+		}
+		for _, t := range a {
+			c.need(line, t, tText, "a site")
+		}
+		return tNothing
+	case "server.files":
+		if c.argCount(line, "files", a, 2, 2) {
+			c.need(line, a[0], tText, "the path")
+			c.need(line, a[1], tText, "the folder")
+		}
+		return tNothing
+	case "server.limit":
+		if c.argCount(line, "limit", a, 2, 3) {
+			if len(a) == 3 {
+				c.need(line, a[0], tText, "the path")
+				a = a[1:]
+			}
+			c.need(line, a[0], tInt, "the number of requests")
+			c.need(line, a[1], tDuration, "how long")
+		}
+		return tNothing
+	case "server.sessions":
+		if c.argCount(line, "sessions", a, 1, 2) {
+			c.need(line, a[0], tText, "the secret")
+			if len(a) == 2 {
+				c.need(line, a[1], tDuration, "how long a session lasts")
+			}
+		}
+		return tNothing
+	case "server.bodyLimit":
+		if c.argCount(line, "bodyLimit", a, 1, 1) {
+			c.need(line, a[0], tInt, "the size in megabytes")
+		}
+		return tNothing
+	case "server.quiet":
+		c.argCount(line, "quiet", a, 0, 0)
+		return tNothing
+	case "request.header", "request.cookie":
+		if c.argCount(line, n[8:], a, 1, 1) {
+			c.need(line, a[0], tText, "the name")
+		}
+		return opt(tText)
+	case "response.header":
+		if c.argCount(line, "header", a, 1, 2) {
+			c.need(line, a[0], tText, "the header name")
+			if len(a) == 2 {
+				c.need(line, a[1], tText, "the header value")
+				return lib("Response")
+			}
+		}
+		return opt(tText)
+	case "response.cookie":
+		if c.argCount(line, "cookie", a, 2, 3) {
+			c.need(line, a[0], tText, "the cookie name")
+			c.need(line, a[1], tText, "the cookie value")
+			if len(a) == 3 {
+				c.need(line, a[2], tDuration, "how long to keep it")
+			}
+		}
+		return lib("Response")
+	case "response.forget":
+		if c.argCount(line, "forget", a, 1, 1) {
+			c.need(line, a[0], tText, "the cookie name")
+		}
+		return lib("Response")
+	case "web.reply":
+		c.argCount(line, "web.reply", a, 1, 1)
+		return lib("Response")
+	case "web.redirect":
+		if c.argCount(line, "web.redirect", a, 1, 1) {
+			c.need(line, a[0], tText, "where to go")
+		}
+		return lib("Response")
+	case "session.get":
+		if c.argCount(line, "get", a, 1, 1) {
+			c.need(line, a[0], tText, "the name")
+		}
+		return opt(tText)
+	case "session.has":
+		if c.argCount(line, "has", a, 1, 1) {
+			c.need(line, a[0], tText, "the name")
+		}
+		return tFlag
+	case "session.set":
+		if c.argCount(line, "set", a, 2, 2) {
+			c.need(line, a[0], tText, "the name")
+			c.need(line, a[1], tText, "the value")
+		}
+		return tNothing
+	case "session.remove":
+		if c.argCount(line, "remove", a, 1, 1) {
+			c.need(line, a[0], tText, "the name")
+		}
+		return tNothing
+	case "session.clear":
+		c.argCount(line, "clear", a, 0, 0)
+		return tNothing
+	case "upload.saveAs":
+		if c.argCount(line, "saveAs", a, 1, 1) {
+			c.need(line, a[0], tText, "the file to save to")
 		}
 		return tNothing
 	case "server.start":
 		c.argCount(line, "start", a, 0, 0)
 		return tNothing
 	case "server.visit":
-		if c.argCount(line, "visit", a, 1, 3) {
+		if c.argCount(line, "visit", a, 1, 4) {
 			c.need(line, a[0], tText, "the path")
 			if len(a) >= 2 {
 				c.need(line, a[1], tText, "the method")
@@ -529,7 +657,7 @@ func builtinWant(name string, i int) *Type {
 		return tJson
 	case i == 2 && (name == "store.update" || name == "server.visit" || name == "web.fetch"):
 		return tJson
-	case i == 0 && (name == "web.json" || name == "json.write" || name == "json.pretty" || name == "text"):
+	case i == 0 && (name == "web.json" || name == "web.reply" || name == "json.write" || name == "json.pretty" || name == "text"):
 		return tJson
 	}
 	return nil
