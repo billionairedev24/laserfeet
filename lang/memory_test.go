@@ -1,3 +1,7 @@
+//go:build !race
+
+// The race detector adds its own memory to every value, so budgets are measured without it.
+
 package lang
 
 import (
