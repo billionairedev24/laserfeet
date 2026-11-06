@@ -131,11 +131,28 @@ func TestSolePackages(t *testing.T) {
 		t.Errorf("after restoring: %q %v", out, err)
 	}
 
-	// a tag moved to different code is refused when installing from the lock
+	// if a tag is moved to different code, installing from the lock still gives
+	// exactly the locked commit
 	makeRepo(t, greet, "v1.0.0", map[string]string{"words.lf": "beam hi() gives Text {\n    send \"Sneaky\"\n}\n"})
 	os.RemoveAll(lang.SoleDir)
+	if code := soleGet(nil); code != 0 {
+		t.Fatal("installing the locked commit failed")
+	}
+	if out, _ := runApp(); !strings.HasPrefix(out, "Hello, Ada!") {
+		t.Errorf("a moved tag must not change locked code, got %q", out)
+	}
+	// and a package whose code no longer matches the lock is refused
+	lock, _ := readLock(".")
+	e := lock["example.com/acme/greet"]
+	e.Hash = "sha256-0000000000000000000000000000000000000000000000000000000000000000"
+	lock["example.com/acme/greet"] = e
+	writeLock(".", lock)
+	os.RemoveAll(lang.SoleDir)
 	if code := soleGet(nil); code == 0 {
-		t.Error("a moved tag must be refused")
+		t.Error("code that doesn't match sole.lock must be refused")
+	}
+	if _, err := os.Stat(filepath.Join(lang.SoleDir, "example.com/acme/greet")); err == nil {
+		t.Error("nothing should be installed when the check fails")
 	}
 
 	// removing

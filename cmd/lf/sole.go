@@ -256,20 +256,25 @@ func download(url, version, commit string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ref := commit
-	if version != commit && version != "HEAD" {
-		ref = version
+	if _, err := git("init", "-q", tmp); err != nil {
+		os.RemoveAll(tmp)
+		return "", err
 	}
-	steps := [][]string{
-		{"init", "-q", tmp},
-		{"-C", tmp, "fetch", "-q", "--depth", "1", "--", url, ref},
-		{"-C", tmp, "checkout", "-q", "FETCH_HEAD"},
-	}
-	for _, s := range steps {
-		if _, err := git(s...); err != nil {
+	// Fetch exactly the commit we want. Some servers only hand out named refs, so
+	// fall back to the tag or branch, and then insist it is still that commit.
+	if _, err := git("-C", tmp, "fetch", "-q", "--depth", "1", "--", url, commit); err != nil {
+		ref := version
+		if version == commit || version == "HEAD" {
+			ref = "HEAD"
+		}
+		if _, err := git("-C", tmp, "fetch", "-q", "--depth", "1", "--", url, ref); err != nil {
 			os.RemoveAll(tmp)
 			return "", fmt.Errorf("couldn't download %s %s: %v", url, version, err)
 		}
+	}
+	if _, err := git("-C", tmp, "checkout", "-q", "FETCH_HEAD"); err != nil {
+		os.RemoveAll(tmp)
+		return "", err
 	}
 	got, err := git("-C", tmp, "rev-parse", "HEAD")
 	if err != nil {
