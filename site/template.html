@@ -241,7 +241,7 @@ footer .wrap { display: flex; gap: 12px 28px; justify-content: space-between; fl
       <div>
         <div class="hazard" aria-label="Prototype, version 0.1">
           <span><svg width="14" height="13" viewBox="0 0 14 13" aria-hidden="true"><path d="M7 .8 13.3 12H.7z" fill="none" stroke="#111" stroke-width="1.4"/><circle cx="7" cy="8.4" r="1.2" fill="#111"/><path d="M7 8.4 9.6 5.2M7 8.4 4.4 5.2M7 8.4V4.6" stroke="#111" stroke-width=".8"/></svg>Prototype</span>
-          <span>v0.4 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
+          <span>v0.5 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
         </div>
         <h1>Code at the <em>speed of light</em></h1>
         <p class="lede">Laser Feet is a programming language that reads like plain English, mixes objects and functions freely, and comes with a secure web server built in.</p>
@@ -328,7 +328,7 @@ server.get("/hello") {
         <div class="module" style="--wl: var(--l650)">
           <span class="tag">Friendly problems</span>
           <h3>Errors that point at the fix</h3>
-          <p>Every problem names the line and, where it can, suggests what you meant.</p>
+          <p>Every problem names the line and suggests what you meant, before anything runs, and live in VS Code as you type.</p>
           <pre class="out"><span class="err">Problem on line 3: I don't know what 'nmae' is. Did you mean 'name'?</span></pre>
         </div>
       </div>
@@ -348,7 +348,7 @@ server.get("/hello") {
 <lf-code>curl -fsSL https://billionairedev24.github.io/laserfeet/install.sh | sh</lf-code></div></li>
         <li><div><span>Windows (PowerShell)</span>
 <lf-code>irm https://billionairedev24.github.io/laserfeet/install.ps1 | iex</lf-code></div></li>
-        <li><div><span>Add Laser Feet to VS Code (download <code>laserfeet.vsix</code> from the latest release)</span>
+        <li><div><span>Add Laser Feet to VS Code for live errors, autocomplete and hover (download <code>laserfeet.vsix</code> from the latest release)</span>
 <lf-code>code --install-extension laserfeet.vsix</lf-code></div></li>
         <li><div><span>Start a project and run it</span>
 <lf-code>lf new my-app
@@ -368,8 +368,8 @@ lf test app.lf</lf-code></div></li>
         <li style="--wl: var(--l650)"><span class="ver">0.1</span><strong>Prototype</strong><p>Interpreter, playground, web server, tests, friendly errors, signed builds, VS Code colors.</p></li>
         <li style="--wl: var(--l589)"><span class="ver">0.2</span><strong>Standalone programs</strong><p><code>lf build</code> makes one file that runs with nothing installed, on an engine twice as fast.</p></li>
         <li style="--wl: var(--l532)"><span class="ver">0.3</span><strong>Standard library</strong><p>A built-in store, JSON, files, time, settings, and code split across files.</p></li>
-        <li class="now" style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Types</strong><p>Required types, exact Decimal money, <code>lf check</code> before every run, objects 3.7x smaller.</p></li>
-        <li style="--wl: var(--l405)"><span class="ver">0.5 → 1.0</span><strong>Next</strong><p>Editor autocomplete and live errors, multi-core <code>fast</code>, PostgreSQL, Docker, the <code>sole</code> package manager, then a native compiler written in Laser Feet.</p></li>
+        <li style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Types</strong><p>Required types, exact Decimal money, <code>lf check</code> before every run, objects 3.7x smaller.</p></li>
+        <li class="now" style="--wl: var(--l405)"><span class="ver">0.5</span><strong>Editors, jobs, Docker</strong><p>Live errors and autocomplete in VS Code, <code>fast</code> jobs with <code>wait</code>, <code>web.fetch</code>, official Docker image. Next: databases, packages, multi-core.</p></li>
       </ul>
     </div>
   </div>
@@ -394,7 +394,7 @@ lf test app.lf</lf-code></div></li>
         <a href="#learn" data-jump="g5">Decisions and loops</a>
         <a href="#learn" data-jump="g6">Chaining with then</a>
         <a href="#learn" data-jump="g7">Handling problems</a>
-        <a href="#learn" data-jump="g8">Fast work</a>
+        <a href="#learn" data-jump="g8">At the same time</a>
         <a href="#learn" data-jump="g9">Web apps</a>
         <a href="#learn" data-jump="g10">Testing</a>
         <a href="#learn" data-jump="g11">Sharing your program</a>
@@ -615,18 +615,32 @@ launch {
     show "Still running"
 }</lf-code>
 
-        <h2 id="g8"><span class="num">09</span>Fast work</h2>
-        <p>Put <code>fast</code> in front of work to run it at the same time as the rest of the program. The program waits for all fast work before it ends.</p>
-<lf-code data-try>beam brew(drink: Text, seconds: Decimal) {
-    pause(seconds)
-    show "{drink} is ready"
+        <h2 id="g8"><span class="num">09</span>Doing things at the same time</h2>
+        <p>Put <code>fast</code> in front of work to start it and carry on straight away. It gives you a <b>job</b>; <code>wait job</code> gives its result when it's ready. <code>fast each</code> runs its block for every item of a list at the same time, on as many workers as your computer has cores, and gives back what each one sent, in the original order.</p>
+<lf-code data-try>beam brew(drink: Text) gives Text {
+    pause(0.3)
+    send "{drink} is ready"
+}
+
+beam square(n: Int) gives Int {
+    pause(0.1)
+    send n * n
 }
 
 launch {
-    fast brew("Tea", 0.4)
-    fast brew("Coffee", 0.2)
-    show "Ordered both"
+    tea = fast brew("Tea")
+    coffee = fast brew("Coffee")
+    show wait tea        -- both were brewing at the same time
+    show wait coffee
+
+    squares = fast each n in 1 to 6 {
+        send square(n)
+    }
+    show squares
 }</lf-code>
+        <p><b>Safe by design.</b> Fast work can read values from outside it but never change them, and <code>lf check</code> refuses code that tries. Results travel back through <code>send</code> and <code>wait</code> instead, so two pieces of work can never trip over the same value, and you never need a lock.</p>
+        <p><b>Problems and time limits.</b> If fast work fails, the problem appears at its <code>wait</code>, where <code>attempt</code> can catch it. <code>wait job for 5 seconds</code> gives up after a time limit. <code>web.fetch(url)</code> calls another web service and lets other fast work run while it waits for the reply.</p>
+        <p class="note"><b>How it runs today:</b> fast work takes turns on the engine, and switches whenever one piece is waiting on the network, a file or <code>pause</code>, which is where most web apps spend their time. Running Laser Feet code on several cores at once is planned; programs written with these rules won't need to change.</p>
 
         <h2 id="g9"><span class="num">10</span>Web apps</h2>
         <p><code>use web</code> brings in the web library. Add routes with <code>server.get</code>, <code>server.post</code> or <code>server.on</code> (any method), then <code>start</code> the server. Inside a route, <code>request</code> holds the details, and path parts written as <code>:name</code> arrive in <code>request.params</code>.</p>
@@ -675,6 +689,10 @@ test "small orders pay full price" {
 lf build app.lf -o shop    -- picks the name
 ./app</lf-code>
         <p>The file carries a SHA-256 checksum of your program and refuses to start if it was changed or damaged after you built it. Files your program uses with <code>use "file.lf"</code> are packed in too. It runs on the same kind of computer you built it on, so build on a Mac for Macs and on Windows for Windows.</p>
+        <p><b>In Docker.</b> Every project made with <code>lf new</code> has a Dockerfile. It runs your tests, builds the app with the official Laser Feet image, and ships an image that holds only your built program: no shell, no operating-system packages, running as an unprivileged user.</p>
+<lf-code>docker build -t my-app .
+docker run --rm -p 8080:8080 my-app</lf-code>
+        <p>The official image, <code>ghcr.io/billionairedev24/laserfeet</code>, comes with signed build provenance for both Intel and ARM servers.</p>
 
         <h2 id="g12"><span class="num">13</span>Saving data</h2>
         <p><code>use store</code> gives you a small built-in database. Records are maps with an <code>id</code> that Laser Feet gives them. Everything is saved to a file after each change, so it survives restarts.</p>
@@ -785,7 +803,9 @@ launch {
           <tr><td><code>loop while</code> / <code>loop … times</code></td><td>Repeat</td></tr>
           <tr><td><code>skip</code> / <code>stop</code></td><td>Next item / leave the loop</td></tr>
           <tr><td><code>then</code></td><td>Pass a result into the next beam</td></tr>
-          <tr><td><code>fast</code></td><td>Run work at the same time</td></tr>
+          <tr><td><code>fast</code></td><td>Start work at the same time; gives a job</td></tr>
+          <tr><td><code>wait</code></td><td>Get a job's result: <code>wait job</code>, or <code>wait job for 5 seconds</code></td></tr>
+          <tr><td><code>fast each … in</code></td><td>Run a block for every item at once and collect what each sends</td></tr>
           <tr><td><code>attempt</code> / <code>fails</code> / <code>fail</code></td><td>Handle problems / report one</td></tr>
           <tr><td><code>use</code></td><td>Bring in a library</td></tr>
           <tr><td><code>test</code> / <code>expect</code></td><td>Write a test / check a result</td></tr>
@@ -803,6 +823,7 @@ launch {
           <tr><td><code>List[T]</code> <code>Map[T]</code> <code>T?</code></td><td>A list, named entries, or a value that may be nothing</td></tr>
           <tr><td><code>Beam(A, B) gives C</code></td><td>A beam as a value</td></tr>
           <tr><td><code>Server</code> <code>Request</code> <code>Response</code> <code>Store</code></td><td>Library types</td></tr>
+          <tr><td><code>Job[T]</code></td><td>Work started with <code>fast</code>; <code>wait</code> gives a <code>T</code></td></tr>
           <tr><td><code>int</code> <code>float</code> <code>decimal</code> <code>fixed</code></td><td>Convert numbers; <code>fixed(x, 2)</code> gives text with 2 places</td></tr>
           <tr><td><code>Item.from(json)</code></td><td>Build an object from JSON, checking every field</td></tr>
         </table></div>
@@ -859,6 +880,7 @@ launch {
           <tr><td><code>web.status(code, reply)</code></td><td>Reply with a status code; a map or list reply is sent as JSON</td></tr>
           <tr><td><code>web.json(x)</code> / <code>web.page(html)</code></td><td>Reply as JSON / as a web page</td></tr>
           <tr><td><code>web.escape(x)</code></td><td>Make visitor input safe to put inside a web page</td></tr>
+          <tr><td><code>web.fetch(url, method, body)</code></td><td>Call another web service; gives a response with <code>.status</code>, <code>.body</code>, <code>.json</code> (30-second limit, 10 MB maximum)</td></tr>
           <tr><td>Built-in protection</td><td>Security headers, 1 MB body limit, timeouts, and errors that hide internal details from visitors</td></tr>
         </table></div>
 
@@ -881,6 +903,7 @@ launch {
           <tr><td><code>lf test app.lf</code></td><td>Run its test blocks</td></tr>
           <tr><td><code>lf check app.lf</code></td><td>Find type mistakes without running anything (<code>run</code>, <code>test</code> and <code>build</code> check first too)</td></tr>
           <tr><td><code>lf build app.lf</code></td><td>Make a standalone program file (<code>-o name</code> picks its name)</td></tr>
+          <tr><td><code>lf lsp</code></td><td>The language server that gives editors live errors, autocomplete and hover</td></tr>
           <tr><td><code>lf version</code></td><td>Show the version</td></tr>
           <tr><td><code>lf help</code></td><td>Show help</td></tr>
         </table></div>
@@ -938,7 +961,7 @@ launch {
 
 <footer>
   <div class="wrap">
-    <span>Laser Feet 0.4 · engine written in Go</span>
+    <span>Laser Feet 0.5 · engine written in Go</span>
     <span>engine sha-256 <span id="engineHash"></span> · verified before every load</span>
     <a href="https://github.com/billionairedev24/laserfeet">github.com/billionairedev24/laserfeet</a>
   </div>
@@ -948,7 +971,7 @@ launch {
 <script>
 const EXAMPLES = /*EXAMPLES*/;
 const WASM_SHA256 = /*WASM_SHA256*/;
-const KW = new Set("gives launch show beam send lock object rule follows when otherwise each in loop while times then fast attempt fails fail use test expect is not and or yes no nothing me stop skip to".split(" "));
+const KW = new Set("wait gives launch show beam send lock object rule follows when otherwise each in loop while times then fast attempt fails fail use test expect is not and or yes no nothing me stop skip to".split(" "));
 const BI = new Set("text number count sum biggest smallest round first last reverse sort join keepIf dropIf turn sortBy findFirst pause readFile".split(" "));
 const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;

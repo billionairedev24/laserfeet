@@ -183,7 +183,7 @@
         },
         {
           "name": "keyword.control.laserfeet",
-          "match": "\\b(when|otherwise|each|in|loop|while|times|stop|skip|send|attempt|fails|fail|then|fast|launch|expect)\\b"
+          "match": "\\b(when|otherwise|each|in|loop|while|times|stop|skip|send|attempt|fails|fail|then|fast|wait|launch|expect)\\b"
         },
         {
           "name": "storage.modifier.laserfeet",

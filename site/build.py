@@ -12,6 +12,7 @@ meta = [
     ("chaining.lf", "Chaining with then", "Filter, sort and reshape a list of users in one line.", False),
     ("errors.lf", "Handling problems", "attempt and fails keep a program running when something breaks.", False),
     ("fast.lf", "Fast work", "Two jobs running at the same time.", False),
+    ("jobs.lf", "Jobs and fast each", "Start work with fast, collect it with wait and fast each, with errors and time limits.", False),
     ("web.lf", "Product API", "A small web API with routes, path values and JSON replies.", False),
     ("shop_test.lf", "Shopping cart tests", "Tests for cart totals and discounts.", True),
     ("todo/app.lf", "To-do API", "A real web API: saves data, reads JSON, checks input with rules from checks.lf, and tests every route.", True),

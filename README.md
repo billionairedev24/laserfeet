@@ -59,7 +59,30 @@ Download `laserfeet.vsix` from the [latest release](https://github.com/billionai
 code --install-extension laserfeet.vsix
 ```
 
-VS Code then recognizes `.lf` files as Laser Feet, with syntax colors, bracket matching, `--` comment toggling and snippets. The extension lives in `editors/vscode`.
+You get live errors as you type, autocomplete (fields after a dot, names, keywords, types), types on hover, syntax colors and snippets. Live features come from `lf lsp`, a standard language server, so other editors that speak LSP can use it too. The extension (in `editors/vscode`) uses no third-party packages.
+
+## Doing things at the same time
+
+```
+tea = fast brew("Tea")                 -- start work, get a job
+show wait tea                          -- its result (or its problem)
+squares = fast each n in 1 to 8 {      -- one run per item, on a worker pool
+    send slowSquare(n)
+}
+```
+
+Fast work may read outside values but never change them; `lf check` enforces this, so there are no data races and no locks. `wait job for 5 seconds` sets a time limit. `web.fetch(url)` calls other services (30-second limit, 10 MB maximum). Today fast work takes turns on the engine and switches while waiting on the network, files or `pause`; running on several cores at once is planned.
+
+## Docker
+
+Every `lf new` project has a Dockerfile that tests and builds the app with the official image and ships only the built program on an empty image, as an unprivileged user:
+
+```
+docker build -t my-app .
+docker run --rm -p 8080:8080 my-app
+```
+
+The official image `ghcr.io/billionairedev24/laserfeet` is published for amd64 and arm64 with every release, with signed build provenance.
 
 ## Build from source
 
@@ -119,7 +142,9 @@ Changing the `VERSION` file on `main` runs the release workflow, which tags the 
 | `examples` | Example programs, expected outputs, and test files |
 | `site` | The website |
 | `scripts/build.sh` | Builds all binaries, the website and the checksums |
-| `editors/vscode` | The VS Code extension |
+| `editors/vscode` | The VS Code extension (and its test) |
+| `cmd/lf/lsp.go` | The language server behind live errors and autocomplete |
+| `docker` | The official image |
 | `install.sh`, `install.ps1` | One-line installers that verify checksums |
 | `.github/workflows` | CI (tests, vulnerability scan, build) and signed releases |
 
