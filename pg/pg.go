@@ -243,7 +243,7 @@ func (cn *Conn) startup(c Config) error {
 	cn.w = cn.w[:0]
 	cn.i32(0)
 	cn.i32(196608) // protocol 3.0
-	for _, kv := range [][2]string{{"user", c.User}, {"database", c.Database}, {"application_name", "laserfeet"}, {"client_encoding", "UTF8"}} {
+	for _, kv := range [][2]string{{"user", c.User}, {"database", c.Database}, {"application_name", "laserfeet"}, {"client_encoding", "UTF8"}, {"DateStyle", "ISO, YMD"}, {"TimeZone", "UTC"}} {
 		cn.str(kv[0])
 		cn.str(kv[1])
 	}

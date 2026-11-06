@@ -34,7 +34,7 @@ lf run app.lf
 | `use store` | A built-in database saved safely to a JSON file |
 | `use json` | `json.read`, `json.write`, `json.pretty` |
 | `use files` | `files.read`, `files.write`, `files.exists`, `files.list` |
-| `use time` | `time.now`, `time.today`, `time.seconds` |
+| `use time` | `time.now()` (a `Time`), `time.today()` (a `Date`), `time.at(text)`, `time.seconds()` |
 | `use "file.lf"` | Your own beams and objects from another file |
 
 `env("PORT", "8080")` reads a setting from the environment. See `examples/todo` for a complete web API that uses all of these, with tests.

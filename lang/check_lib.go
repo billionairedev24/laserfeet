@@ -9,6 +9,7 @@ var builtinNames = map[string]bool{
 	"biggest": true, "smallest": true, "round": true, "fixed": true, "first": true, "last": true,
 	"reverse": true, "sort": true, "join": true, "pause": true, "readFile": true, "env": true,
 	"keepIf": true, "dropIf": true, "turn": true, "sortBy": true, "findFirst": true,
+	"date": true, "seconds": true, "minutes": true, "hours": true, "days": true, "duration": true, "uuid": true,
 }
 
 func builtinType(name string) *Type {
@@ -23,7 +24,7 @@ func libraryModule(name string) *Type {
 		"web":      {"open", "json", "status", "page", "escape", "fetch"},
 		"json":     {"read", "write", "pretty"},
 		"files":    {"read", "write", "exists", "list"},
-		"time":     {"now", "today", "seconds"},
+		"time":     {"now", "today", "seconds", "at"},
 		"store":    {"open", "memory"},
 		"postgres": {"open"},
 	}[name]
@@ -317,9 +318,44 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 			c.need(line, a[0], tText, "the folder")
 		}
 		return listOf(tText)
-	case "time.now", "time.today":
+	case "time.now":
 		c.argCount(line, n, a, 0, 0)
-		return tText
+		return tTime
+	case "time.today":
+		c.argCount(line, n, a, 0, 0)
+		return tDate
+	case "time.at":
+		if c.argCount(line, n, a, 1, 1) {
+			c.needOneOf(line, a[0], "the time", tText, tTime)
+		}
+		return tTime
+	case "date":
+		switch len(a) {
+		case 1:
+			c.needOneOf(line, a[0], "the date", tText, tDate, tTime)
+		case 3:
+			for i, what := range []string{"the year", "the month", "the day"} {
+				c.need(line, a[i], tInt, what)
+			}
+		default:
+			c.report(line, "date takes text like \"2026-11-06\", or a year, month and day")
+		}
+		return tDate
+	case "seconds", "minutes", "hours", "days":
+		if c.argCount(line, n, a, 1, 1) && a[0] != nil && !isNum(a[0]) && a[0].Kind != KJson && a[0].Kind != KUnknown {
+			c.report(line, "%s takes a number, like %s(5)", n, n)
+		}
+		return tDuration
+	case "duration":
+		if c.argCount(line, n, a, 1, 1) {
+			c.needOneOf(line, a[0], "the duration", tText, tDuration)
+		}
+		return tDuration
+	case "uuid":
+		if c.argCount(line, n, a, 0, 1) && len(a) == 1 {
+			c.needOneOf(line, a[0], "the UUID", tText, tUUID)
+		}
+		return tUUID
 	case "time.seconds":
 		c.argCount(line, n, a, 0, 0)
 		return tFloat
@@ -479,4 +515,19 @@ func builtinWant(name string, i int) *Type {
 		return tJson
 	}
 	return nil
+}
+
+// needOneOf reports a problem unless t is one of the types given.
+func (c *checker) needOneOf(line int, t *Type, what string, options ...*Type) {
+	if t == nil || t.Kind == KJson || t.Kind == KUnknown {
+		return
+	}
+	names := make([]string, len(options))
+	for i, o := range options {
+		if t.Kind == o.Kind && !t.Optional {
+			return
+		}
+		names[i] = o.name()
+	}
+	c.report(line, "%s must be %s, but this is %s", what, joinOr(names), t.name())
 }

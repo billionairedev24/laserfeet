@@ -1,0 +1,29 @@
+use time
+
+object Booking {
+    id: UUID
+    start: Date
+    length: Duration
+}
+
+launch {
+    d = date("2026-11-06")
+    show d
+    show d.weekday
+    show d + days(30)
+    show d.addMonths(3)
+    show date(2026, 12, 25) - d
+    t = time.at("2026-11-06T10:00:00Z")
+    show t + hours(2) + minutes(30)
+    show (t + hours(26)).date
+    show minutes(90)
+    show (hours(3) - minutes(30)).inHours
+    show seconds(45) * 2
+    show d < date("2027-01-01")
+    show duration("2d6h")
+    b = Booking.from({id: "0b7f3c1e-1234-4abc-8def-0123456789ab", start: "2026-12-01", length: "2h"})
+    show b
+    show b.length > hours(1)
+    show text(uuid()).size()
+    show [date("2026-03-01"), date("2026-01-01")] then sort
+}

@@ -416,6 +416,9 @@ func formatFloat(f float64) string {
 // Decimal with Int or Decimal gives Decimal, Float with Int or Float gives Float,
 // and Float never mixes with Decimal without a conversion.
 func (in *Interp) arith(line int, op string, l, r Value) Value {
+	if v, ok := in.clockOp(line, op, l, r); ok {
+		return v
+	}
 	switch a := l.(type) {
 	case int64:
 		switch b := r.(type) {

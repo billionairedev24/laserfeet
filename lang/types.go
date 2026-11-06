@@ -64,6 +64,10 @@ const (
 	KBeam
 	KLibrary // Server, Response, Store, Request
 	KChoice  // a value of a choice: Status
+	KDate
+	KTime
+	KDuration
+	KUUID
 	// used only by lf check:
 	KUnknown   // not known yet (an untyped one-line beam input); accepted anywhere
 	KClassRef  // an object's name used as a value: Item(...) or Item.from(json)
@@ -102,8 +106,16 @@ var (
 	tNothing = &Type{Kind: KNothing}
 )
 
+var (
+	tDate     = &Type{Kind: KDate}
+	tTime     = &Type{Kind: KTime}
+	tDuration = &Type{Kind: KDuration}
+	tUUID     = &Type{Kind: KUUID}
+)
+
 var simpleTypes = map[string]*Type{
 	"Int": tInt, "Float": tFloat, "Decimal": tDecimal, "Text": tText, "Flag": tFlag, "Json": tJson, "Nothing": tNothing,
+	"Date": tDate, "Time": tTime, "Duration": tDuration, "UUID": tUUID,
 }
 
 var libraryTypes = map[string]bool{"Server": true, "Response": true, "Store": true, "Request": true, "Database": true}
@@ -134,6 +146,14 @@ func (t *Type) name() string {
 		s = "Json"
 	case KNothing:
 		s = "Nothing"
+	case KDate:
+		s = "Date"
+	case KTime:
+		s = "Time"
+	case KDuration:
+		s = "Duration"
+	case KUUID:
+		s = "UUID"
 	case KList:
 		s = "List[" + t.Elem.name() + "]"
 	case KMap:
@@ -308,6 +328,18 @@ func conform(v Value, t *Type) (Value, bool) {
 	case KChoice:
 		o, ok := v.(*Instance)
 		return v, ok && o.Class.Choice == t.Choice
+	case KDate:
+		_, ok := v.(Date)
+		return v, ok
+	case KTime:
+		_, ok := v.(Moment)
+		return v, ok
+	case KDuration:
+		_, ok := v.(Duration)
+		return v, ok
+	case KUUID:
+		_, ok := v.(UUID)
+		return v, ok
 	case KRule:
 		o, ok := v.(*Instance)
 		if !ok {
@@ -392,6 +424,12 @@ func (in *Interp) convertDeep(v Value, t *Type, where string) (Value, string) {
 		return out, ""
 	case KChoice:
 		return in.choiceFrom(t.Choice, v, where)
+	case KDate, KTime, KDuration, KUUID:
+		c, err := clockFrom(t.Kind, v)
+		if err != nil {
+			return nil, fmt.Sprintf("%s must be %s, but got %s", where, t.name(), describeValue(v))
+		}
+		return c, ""
 	case KObject:
 		if o, ok := v.(*Instance); ok && o.Class == t.Class {
 			return o, ""

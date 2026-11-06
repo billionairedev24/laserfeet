@@ -140,6 +140,23 @@ func MembersOf(t *Type) []Member {
 		for k, v := range t.Members {
 			add(k, v.name(), v.Kind == KBuiltin || v.Kind == KBeam)
 		}
+	case KDate:
+		for _, n := range []string{"year", "month", "day"} {
+			add(n, "Int", false)
+		}
+		add("weekday", "Text, like Friday", false)
+		add("addDays", "(n: Int) gives Date", true)
+		add("addMonths", "(n: Int) gives Date", true)
+	case KTime:
+		add("date", "Date", false)
+		for _, n := range []string{"hour", "minute", "second"} {
+			add(n, "Int", false)
+		}
+	case KDuration:
+		add("inSeconds", "Int", false)
+		for _, n := range []string{"inMinutes", "inHours", "inDays"} {
+			add(n, "Decimal", false)
+		}
 	case KList:
 		add("add", "add items", true)
 		add("remove", "remove the item at a position", true)

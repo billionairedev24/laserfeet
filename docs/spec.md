@@ -65,6 +65,10 @@ meaning only in `transaction with ... as ... { }` and `f(...) as name { }`.
 | `Float` | IEEE 754 64-bit numbers, for measurements where speed matters more than exactness. |
 | `Text` | Unicode text. `size()` counts characters, not bytes. |
 | `Flag` | `yes` or `no`. |
+| `Date` | A day on the calendar, with no time of day or time zone: `2026-11-06`. |
+| `Time` | A moment, always kept in UTC: `2026-11-06T10:00:00Z`. |
+| `Duration` | A length of time: `1h30m`, `45s`, `2d6h` (a `d` is 24 hours). |
+| `UUID` | A 128-bit identifier: `0b7f3c1e-1234-4abc-8def-0123456789ab`. |
 | `Json` | Data from outside the program (requests, files, databases), checked when it's used. |
 | `List[T]` | An ordered list of values of type `T`. |
 | `Map[T]` | Named entries, each holding a value of type `T`. |
@@ -80,6 +84,28 @@ meaning only in `transaction with ... as ... { }` and `f(...) as name { }`.
 `decimal(x)`. A decimal written in the code (`2.5`) can also be used where a
 Float is expected. Dividing two Ints with `/` gives an exact Decimal
 (`10 / 4` is `2.5`).
+
+**Dates and times.** `date("2026-11-06")` or `date(2026, 11, 6)` makes a
+Date; `seconds(n)`, `minutes(n)`, `hours(n)`, `days(n)` and
+`duration("1h30m")` make Durations; `uuid()` makes a random UUID and
+`uuid(text)` reads one. With `use time`: `time.now()` (a Time),
+`time.today()` (a Date, where the program runs) and `time.at(text)`.
+
+| Operation | Gives |
+|---|---|
+| Time ± Duration, Duration + Time | Time |
+| Date ± Duration | Date (the Duration must be whole days) |
+| Time − Time, Date − Date | Duration |
+| Duration ± Duration, Duration × Int, Duration ÷ Int | Duration |
+| `<` `>` `<=` `>=` between two of the same kind | Flag |
+
+Members: a Date has `year`, `month`, `day`, `weekday`, `addDays(n)` and
+`addMonths(n)`; a Time has `date`, `hour`, `minute`, `second`; a Duration has
+`inSeconds` (Int), `inMinutes`, `inHours` and `inDays` (Decimal). Text is never
+silently a Date: `start: Date = "2026-11-06"` is refused, and the message shows
+`date("2026-11-06")`. In JSON all four are text; `Item.from(json)` reads them.
+PostgreSQL `date`, `timestamp`, `timestamptz` and `uuid` columns arrive as Date,
+Time and UUID, and these values can be sent as `$1` values.
 
 **Where types are written:** beam inputs, beam results (`gives`) and object
 fields always state their type. Values inside a beam take the type of what is
@@ -302,6 +328,8 @@ a position outside the list is a problem. Methods: `add(x)`, `remove(x)`,
 | `sortBy(list, key)` | a new list, sorted by the key |
 | `findFirst(list, test)` | the first item that passes, or `nothing` |
 | `text(x)`, `int(x)`, `decimal(x)`, `float(x)`, `number(x)` | conversions |
+| `date(x)`, `duration(x)`, `uuid(x)`, `uuid()` | dates, durations and identifiers (section 2) |
+| `seconds(n)`, `minutes(n)`, `hours(n)`, `days(n)` | Durations |
 | `round(x)`, `fixed(x, places)` | rounding, and text with a fixed number of decimal places |
 | `env(name, default)` | a setting from the environment |
 | `pause(seconds)` | waits |
@@ -363,7 +391,8 @@ transaction with db as tx {
 ## 14. Programs and files
 
 - `use name` brings in a library: `web`, `store`, `json`, `files`, `time`,
-  `postgres`.
+  `postgres`. `time` has `now()`, `today()`, `at(text)` and `seconds()` (seconds
+  since 1970, for measuring).
 - `use "file.lf"` brings in the beams, objects and rules of another file, under
   the file's name (`use "tools.lf"` gives `tools.slug(...)`).
 - `use "host/owner/repo"` brings in a package installed with `lf get`, checked

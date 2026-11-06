@@ -1,0 +1,1 @@
+line 2: 'start' must be Date, but this is Text. To read one from text, write date("2026-11-06")

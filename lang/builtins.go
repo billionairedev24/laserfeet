@@ -41,6 +41,7 @@ func floatOf(in *Interp, line int, name string, v Value) float64 {
 
 func installBuiltins(in *Interp, g *Env) {
 	def := func(b *Builtin) { g.define(b.Name, b, true) }
+	in.clockBuiltins(def)
 
 	def(builtin("text", func(in *Interp, line int, a []Value) Value {
 		wantArgs(in, line, "text", a, 1)

@@ -350,6 +350,8 @@ func writeJSON(b *strings.Builder, v Value) {
 			field(i+n, f.Name, x.Slots[i])
 		}
 		b.WriteByte('}')
+	case Date, Moment, Duration, UUID:
+		writeJSON(b, x.(interface{ String() string }).String())
 	case *Decimal:
 		b.WriteString(x.String()) // exact, never rounded through a Float
 	case int64, float64, string, bool, nil:

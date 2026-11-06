@@ -1176,6 +1176,13 @@ func (c *checker) binary(x *Binary, sc *cscope) *Type {
 	}
 	l := c.expr(x.Left, sc, nil)
 	r := c.expr(x.Right, sc, nil)
+	if t, ok := clockType(x.Op, l, r); ok {
+		if t == nil {
+			c.report(x.Line, "'%s' can't be used with %s and %s", x.Op, l.name(), r.name())
+			return tUnknown
+		}
+		return t
+	}
 	dyn := l.Kind == KJson || l.Kind == KUnknown || r.Kind == KJson || r.Kind == KUnknown
 	for _, t := range []*Type{l, r} {
 		if t.Optional && t.Kind != KJson && t.Kind != KUnknown {
@@ -1313,6 +1320,10 @@ func (c *checker) member(line int, obj *Type, name string, forSet bool) *Type {
 			return &Type{Kind: KBuiltin, Name: "map." + name, Elem: obj}
 		}
 		return opt(obj.Elem)
+	case KDate, KTime, KDuration:
+		if t := clockMemberType(obj.Kind, name); t != nil {
+			return t
+		}
 	case KList, KText, KLibrary:
 		if obj.Kind == KLibrary && obj.Name == "Params" {
 			for _, p := range c.params {
@@ -1671,6 +1682,12 @@ func fits(from, to *Type) (bool, string) {
 		return from.Kind == KChoice && from.Choice == to.Choice && sameArgs(from.Args, to.Args), ""
 	case KParam:
 		return from.Kind == KParam && from.Name == to.Name, ""
+	case KDate, KTime, KDuration, KUUID:
+		if from.Kind == KText {
+			maker := map[Kind]string{KDate: "date(\"2026-11-06\")", KTime: "time.at(\"2026-11-06T10:00:00Z\")", KDuration: "duration(\"1h30m\")", KUUID: "uuid(\"...\")"}[to.Kind]
+			return false, ". To read one from text, write " + maker
+		}
+		return from.Kind == to.Kind, ""
 	case KRule:
 		if from.Kind == KRule {
 			return from.Rule == to.Rule, ""
@@ -1927,4 +1944,84 @@ func sameArgs(a, b []*Type) bool {
 		}
 	}
 	return true
+}
+
+func isClock(t *Type) bool {
+	return t.Kind == KDate || t.Kind == KTime || t.Kind == KDuration
+}
+
+// clockType is the type of an operation on dates, times and durations. ok is
+// false when neither side is one of them; a nil type means the operation isn't allowed.
+func clockType(op string, l, r *Type) (*Type, bool) {
+	if !isClock(l) && !isClock(r) || op == "+" && (l.Kind == KText || r.Kind == KText) {
+		return nil, false
+	}
+	if l.Optional || r.Optional {
+		return nil, false // reported as "might be nothing"
+	}
+	if l.Kind == KJson || l.Kind == KUnknown || r.Kind == KJson || r.Kind == KUnknown {
+		return tJson, true
+	}
+	switch op {
+	case "<", ">", "<=", ">=":
+		if l.Kind == r.Kind {
+			return tFlag, true
+		}
+	case "+":
+		switch {
+		case l.Kind == KDuration && r.Kind == KDuration:
+			return tDuration, true
+		case (l.Kind == KTime || l.Kind == KDate) && r.Kind == KDuration:
+			return l, true
+		case l.Kind == KDuration && r.Kind == KTime:
+			return tTime, true
+		}
+	case "-":
+		switch {
+		case l.Kind == KDuration && r.Kind == KDuration:
+			return tDuration, true
+		case (l.Kind == KTime || l.Kind == KDate) && r.Kind == KDuration:
+			return l, true
+		case l.Kind == r.Kind && (l.Kind == KTime || l.Kind == KDate):
+			return tDuration, true
+		}
+	case "*":
+		if (l.Kind == KDuration && r.Kind == KInt) || (l.Kind == KInt && r.Kind == KDuration) {
+			return tDuration, true
+		}
+	case "/":
+		if l.Kind == KDuration && r.Kind == KInt {
+			return tDuration, true
+		}
+	}
+	return nil, true
+}
+
+func clockMemberType(k Kind, name string) *Type {
+	switch k {
+	case KDate:
+		switch name {
+		case "year", "month", "day":
+			return tInt
+		case "weekday":
+			return tText
+		case "addDays", "addMonths":
+			return &Type{Kind: KBeam, Params: []*Type{tInt}, PNames: []string{"n"}, Result: tDate}
+		}
+	case KTime:
+		switch name {
+		case "date":
+			return tDate
+		case "hour", "minute", "second":
+			return tInt
+		}
+	case KDuration:
+		switch name {
+		case "inSeconds":
+			return tInt
+		case "inMinutes", "inHours", "inDays":
+			return tDecimal
+		}
+	}
+	return nil
 }

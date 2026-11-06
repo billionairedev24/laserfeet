@@ -211,10 +211,22 @@ func filesModule() *Module {
 func timeModule() *Module {
 	return &Module{Name: "time", Members: map[string]Value{
 		"now": builtin("now", func(in *Interp, line int, a []Value) Value {
-			return time.Now().UTC().Format(time.RFC3339)
+			return Moment{time.Now().UTC()}
 		}),
 		"today": builtin("today", func(in *Interp, line int, a []Value) Value {
-			return time.Now().Format("2006-01-02")
+			y, m, d := time.Now().Date() // the date where the program runs
+			return Date{time.Date(y, m, d, 0, 0, 0, 0, time.UTC)}
+		}),
+		"at": builtin("at", func(in *Interp, line int, a []Value) Value {
+			wantArgs(in, line, "time.at", a, 1)
+			if m, ok := a[0].(Moment); ok {
+				return m
+			}
+			m, err := parseMoment(Text(a[0]))
+			if err != nil {
+				in.fail(line, "%v", err)
+			}
+			return m
 		}),
 		"seconds": builtin("seconds", func(in *Interp, line int, a []Value) Value {
 			return float64(time.Now().UnixMilli()) / 1000

@@ -130,6 +130,14 @@ func typeName(v Value) string {
 		return "a job"
 	case *Database:
 		return "a database"
+	case Date:
+		return "a Date"
+	case Moment:
+		return "a Time"
+	case Duration:
+		return "a Duration"
+	case UUID:
+		return "a UUID"
 	}
 	return "a value"
 }
@@ -201,6 +209,8 @@ func toText(v Value, quote bool) string {
 		return "<job>"
 	case *Database:
 		return "<database>"
+	case Date, Moment, Duration, UUID:
+		return fmt.Sprint(x) // not text, so never in quotes
 	case *Store:
 		if x.path == "" {
 			return "<store in memory>"
@@ -253,12 +263,18 @@ func equal(a, b Value) bool {
 		}
 		return true
 	}
+	if c, ok := clockCmp(a, b); ok {
+		return c == 0
+	}
 	defer func() { recover() }() // uncomparable kinds are simply not equal
 	return a == b
 }
 
 func compareValues(in *Interp, line int, a, b Value) int {
 	if c, ok := numberCmp(a, b); ok {
+		return c
+	}
+	if c, ok := clockCmp(a, b); ok {
 		return c
 	}
 	switch x := a.(type) {

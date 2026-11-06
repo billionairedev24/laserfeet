@@ -1,8 +1,10 @@
 package lang
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"laserfeet/pg"
 )
@@ -57,6 +59,10 @@ func toParam(v Value) *string {
 		s = strconv.FormatFloat(x, 'g', -1, 64)
 	case *Decimal:
 		s = x.String()
+	case Date, Moment, UUID:
+		s = fmt.Sprint(x)
+	case Duration: // as an interval
+		s = fmt.Sprintf("%d microseconds", time.Duration(x).Microseconds())
 	default: // lists, maps and objects go in as JSON, for json and jsonb columns
 		s = toJSON(v)
 	}
@@ -92,8 +98,20 @@ func fromColumn(oid uint32, s *string) Value {
 		if j, err := fromJSON(v); err == nil {
 			return j
 		}
+	case 1082: // date
+		if d, err := parseDate(v); err == nil {
+			return d
+		}
+	case 1114, 1184: // timestamp, timestamptz (the connection uses UTC)
+		if m, err := parseMoment(v); err == nil {
+			return m
+		}
+	case 2950: // uuid
+		if u, err := parseUUID(v); err == nil {
+			return u
+		}
 	}
-	return v // text, dates, times, uuids and everything else arrive as Text
+	return v // text, intervals and everything else arrive as Text
 }
 
 func (in *Interp) dbExec(line int, db *Database, what string, a []Value) *pg.Result {

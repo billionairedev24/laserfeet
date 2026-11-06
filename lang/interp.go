@@ -792,6 +792,9 @@ func (in *Interp) binary(x *Binary, env *Env) Value {
 		if ls || rs {
 			return Text(l) + Text(r)
 		}
+		if v, ok := in.clockOp(x.Line, "+", l, r); ok {
+			return v
+		}
 		in.fail(x.Line, "I can't add %s and %s", typeName(l), typeName(r))
 	case "to":
 		a := in.wantInt(x.Line, "the start of a range", l)
@@ -1029,6 +1032,11 @@ func (in *Interp) get(obj Value, name string, line int) Value {
 		in.fail(line, "%s has nothing called '%s' (objects have .from(json) to build one from JSON)", o.Name, name)
 	case *Choice:
 		return in.choiceMember(o, name, line)
+	case Date, Moment, Duration:
+		if v, ok := in.clockMember(o, name); ok {
+			return v
+		}
+		in.fail(line, "%s has nothing called '%s'", typeName(o), name)
 	case *Module:
 		if v, ok := o.Members[name]; ok {
 			return v
