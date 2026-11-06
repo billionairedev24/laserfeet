@@ -248,7 +248,10 @@ func (p *parser) statement() Stmt {
 			return &FailStmt{t.Line, p.expr()}
 		case "use":
 			p.next()
-			return &UseStmt{t.Line, p.expectIdent("a library name after 'use'").Text}
+			if p.peek().Type == STRING {
+				return &UseStmt{Line: t.Line, Path: p.next().Text}
+			}
+			return &UseStmt{Line: t.Line, Name: p.expectIdent("a library name or a \"file.lf\" after 'use'").Text}
 		case "test":
 			p.next()
 			name := p.peek()

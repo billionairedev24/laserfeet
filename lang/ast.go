@@ -186,7 +186,8 @@ type FailStmt struct {
 }
 type UseStmt struct {
 	Line int
-	Name string
+	Name string // a built-in library, like web
+	Path string // or another .lf file, like "helpers.lf"
 }
 type TestStmt struct {
 	Line int

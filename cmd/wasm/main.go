@@ -20,9 +20,32 @@ func promise(work func() string) js.Value {
 	return js.Global().Get("Promise").New(handler)
 }
 
-func run(src string) string {
+// withFiles lets 'use "file.lf"' read from files the page passes in.
+func withFiles(in *lang.Interp, files map[string]string) {
+	in.ReadSource = func(p string) (string, error) {
+		if s, ok := files[p]; ok {
+			return s, nil
+		}
+		return "", fmt.Errorf("the playground only has the files that come with this example")
+	}
+}
+
+func filesArg(args []js.Value) map[string]string {
+	files := map[string]string{}
+	if len(args) > 1 && args[1].Type() == js.TypeObject {
+		keys := js.Global().Get("Object").Call("keys", args[1])
+		for i := 0; i < keys.Length(); i++ {
+			k := keys.Index(i).String()
+			files[k] = args[1].Get(k).String()
+		}
+	}
+	return files
+}
+
+func run(src string, files map[string]string) string {
 	var out bytes.Buffer
 	in := lang.NewInterp(&out)
+	withFiles(in, files)
 	in.MaxSteps = 5_000_000
 	if err := in.Run(src); err != nil {
 		out.WriteString("\n⚠ " + err.Error() + "\n")
@@ -30,9 +53,10 @@ func run(src string) string {
 	return out.String()
 }
 
-func test(src string) string {
+func test(src string, files map[string]string) string {
 	var out bytes.Buffer
 	in := lang.NewInterp(&out)
+	withFiles(in, files)
 	in.MaxSteps = 5_000_000
 	results, err := in.RunTests(src)
 	if err != nil {
@@ -56,12 +80,12 @@ func test(src string) string {
 
 func main() {
 	js.Global().Set("laserRun", js.FuncOf(func(this js.Value, args []js.Value) any {
-		src := args[0].String()
-		return promise(func() string { return run(src) })
+		src, files := args[0].String(), filesArg(args)
+		return promise(func() string { return run(src, files) })
 	}))
 	js.Global().Set("laserTest", js.FuncOf(func(this js.Value, args []js.Value) any {
-		src := args[0].String()
-		return promise(func() string { return test(src) })
+		src, files := args[0].String(), filesArg(args)
+		return promise(func() string { return test(src, files) })
 	}))
 	js.Global().Set("laserReady", true)
 	if cb := js.Global().Get("onLaserReady"); cb.Type() == js.TypeFunction {

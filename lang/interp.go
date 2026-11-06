@@ -41,11 +41,25 @@ type Env struct {
 	obj    *Instance // fields of this object are visible by name
 	// the built-in names live here; your own names can reuse them
 	isBuiltins bool
+	// a beam call, launch, a test or a file: new names made in its blocks live here
+	isScope bool
 }
 
 const smallScope = 8
 
 func newEnv(parent *Env) *Env { return &Env{parent: parent} }
+
+func newScope(parent *Env) *Env { return &Env{parent: parent, isScope: true} }
+
+// scope returns the beam, launch, test or file scope that new names belong to.
+func (e *Env) scope() *Env {
+	for s := e; s != nil; s = s.parent {
+		if s.isScope {
+			return s
+		}
+	}
+	return e
+}
 
 // find returns the binding for name in this scope only, or nil.
 func (e *Env) find(name string) *binding {
@@ -132,25 +146,6 @@ func num(f float64) Value {
 	return f
 }
 
-// needsScope reports whether a block can create new names. Blocks that can't
-// (most when-blocks) run in their parent's scope and skip an allocation.
-func needsScope(stmts []Stmt) bool {
-	for _, s := range stmts {
-		switch s.(type) {
-		case *AssignStmt, *BeamDecl, *UseStmt, *FastStmt:
-			return true
-		}
-	}
-	return false
-}
-
-func (in *Interp) blockEnv(stmts []Stmt, env *Env) *Env {
-	if needsScope(stmts) {
-		return newEnv(env)
-	}
-	return env
-}
-
 type ctrl int
 
 const (
@@ -170,14 +165,20 @@ type Interp struct {
 	fastLive int32
 	steps    int64
 	launch   *LaunchStmt
-	tests    []*TestStmt
-	outMu    sync.Mutex
+	builtins *Env
+	modules  map[string]*Module // loaded .lf files, by path
+	loading  map[string]bool    // files being loaded right now, to catch loops
+	// ReadSource reads another .lf file for 'use "file.lf"'. The path is already
+	// checked to stay inside the program's folder. Nil means files can't be used.
+	ReadSource func(path string) (string, error)
+	tests      []*TestStmt
+	outMu      sync.Mutex
 }
 
 func NewInterp(out io.Writer) *Interp {
 	builtins := newEnv(nil)
 	builtins.isBuiltins = true
-	in := &Interp{Out: out, globals: newEnv(builtins)}
+	in := &Interp{Out: out, globals: newScope(builtins), builtins: builtins}
 	installBuiltins(in, builtins)
 	return in
 }
@@ -193,27 +194,36 @@ func (in *Interp) print(s string) {
 }
 
 // load declares everything at the top level and runs the plain top-level code.
-func (in *Interp) load(prog *Program) {
+func (in *Interp) load(prog *Program) { in.loadInto(prog, in.globals, true) }
+
+// loadInto declares a file's rules, objects and beams in env, then runs its
+// top-level code. Only the main file (main=true) may have launch and test blocks.
+func (in *Interp) loadInto(prog *Program, env *Env, main bool) {
 	// First pass: objects, rules and beams can be used before they appear.
 	for _, s := range prog.Stmts {
 		switch d := s.(type) {
 		case *RuleDecl:
-			in.globals.define(d.Name, &RuleDef{d.Name, d.Methods}, true)
+			env.define(d.Name, &RuleDef{d.Name, d.Methods}, true)
 		}
 	}
 	for _, s := range prog.Stmts {
 		switch d := s.(type) {
 		case *BeamDecl:
-			in.globals.define(d.Name, &Beam{Name: d.Name, Params: d.Params, Body: d.Body, Closure: in.globals}, true)
+			env.define(d.Name, &Beam{Name: d.Name, Params: d.Params, Body: d.Body, Closure: env}, true)
 		case *ObjectDecl:
-			in.declareObject(d)
+			in.declareObject(d, env)
 		case *LaunchStmt:
+			if !main {
+				continue
+			}
 			if in.launch != nil {
 				in.fail(d.Line, "a program can only have one launch block (the first is on line %d)", in.launch.Line)
 			}
 			in.launch = d
 		case *TestStmt:
-			in.tests = append(in.tests, d)
+			if main {
+				in.tests = append(in.tests, d)
+			}
 		}
 	}
 	for _, s := range prog.Stmts {
@@ -221,19 +231,19 @@ func (in *Interp) load(prog *Program) {
 		case *RuleDecl, *BeamDecl, *ObjectDecl, *LaunchStmt, *TestStmt:
 			continue
 		}
-		if c, _ := in.exec(s, in.globals); c != cNone {
+		if c, _ := in.exec(s, env); c != cNone {
 			in.fail(s.Ln(), "'send', 'stop' and 'skip' can't be used here")
 		}
 	}
 }
 
-func (in *Interp) declareObject(d *ObjectDecl) {
-	c := &Class{Name: d.Name, Fields: d.Fields, Methods: map[string]*BeamDecl{}, Follows: d.Follows, Env: in.globals}
+func (in *Interp) declareObject(d *ObjectDecl, env *Env) {
+	c := &Class{Name: d.Name, Fields: d.Fields, Methods: map[string]*BeamDecl{}, Follows: d.Follows, Env: env}
 	for _, m := range d.Methods {
 		c.Methods[m.Name] = m
 	}
 	for _, rn := range d.Follows {
-		rv, ok := in.globals.lookup(rn)
+		rv, ok := env.lookup(rn)
 		r, isRule := rv.(*RuleDef)
 		if !ok || !isRule {
 			in.fail(d.Line, "object %s follows '%s', but there is no rule with that name", d.Name, rn)
@@ -244,7 +254,7 @@ func (in *Interp) declareObject(d *ObjectDecl) {
 			}
 		}
 	}
-	in.globals.define(d.Name, c, true)
+	env.define(d.Name, c, true)
 }
 
 func (in *Interp) catch(err *error) {
@@ -279,7 +289,7 @@ func (in *Interp) Run(src string) (err error) {
 		defer in.catch(&err)
 		in.load(prog)
 		if in.launch != nil {
-			in.execBlock(in.launch.Body, newEnv(in.globals))
+			in.execBlock(in.launch.Body, newScope(in.globals))
 		}
 	}()
 	in.gil.Unlock()
@@ -314,7 +324,7 @@ func (in *Interp) RunTests(src string) (results []TestResult, err error) {
 		var terr error
 		func() {
 			defer in.catch(&terr)
-			in.execBlock(t.Body, newEnv(in.globals))
+			in.execBlock(t.Body, newScope(in.globals))
 		}()
 		r := TestResult{Name: t.Name, Passed: terr == nil}
 		if terr != nil {
@@ -365,9 +375,9 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 		return cSend, in.eval(s.Value, env)
 	case *WhenStmt:
 		if in.truth(s.Cond, env, "when") {
-			return in.execBlock(s.Body, in.blockEnv(s.Body, env))
+			return in.execBlock(s.Body, env)
 		} else if s.Otherwise != nil {
-			return in.execBlock(s.Otherwise, in.blockEnv(s.Otherwise, env))
+			return in.execBlock(s.Otherwise, env)
 		}
 	case *EachStmt:
 		over := in.eval(s.Over, env)
@@ -404,7 +414,7 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 				in.fail(s.Line, "'loop ... times' needs a number")
 			}
 			for i := 0; i < int(n); i++ {
-				c, v := in.execBlock(s.Body, newEnv(env))
+				c, v := in.execBlock(s.Body, env)
 				if c == cStop {
 					break
 				}
@@ -416,7 +426,7 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 		}
 		for in.truth(s.While, env, "loop while") {
 			in.tick(s.Line)
-			c, v := in.execBlock(s.Body, newEnv(env))
+			c, v := in.execBlock(s.Body, env)
 			if c == cStop {
 				break
 			}
@@ -454,9 +464,14 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 		v := in.eval(s.Value, env)
 		panic(&RuntimeError{Line: s.Line, Msg: Text(v), Value: v})
 	case *UseStmt:
+		if s.Path != "" {
+			m := in.loadFile(s.Path, s.Line)
+			env.define(m.Name, m, true)
+			break
+		}
 		m := loadModule(in, s.Name)
 		if m == nil {
-			in.fail(s.Line, "there is no library called '%s' (available: web)", s.Name)
+			in.fail(s.Line, "there is no library called '%s' (available: web, json, files, time, store)", s.Name)
 		}
 		env.define(s.Name, m, true)
 	case *ExpectStmt:
@@ -526,10 +541,11 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 	switch t := s.Target.(type) {
 	case *Ident:
 		if s.Lock {
-			if env.find(t.Name) != nil {
+			sc := env.scope()
+			if sc.find(t.Name) != nil {
 				in.fail(s.Line, "'%s' already exists here, so it can't be locked again", t.Name)
 			}
-			env.define(t.Name, v, true)
+			sc.define(t.Name, v, true)
 			return
 		}
 		for e := env; e != nil && !e.isBuiltins; e = e.parent {
@@ -547,7 +563,7 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 				}
 			}
 		}
-		env.define(t.Name, v, false)
+		env.scope().define(t.Name, v, false)
 	case *Get:
 		obj := in.eval(t.Object, env)
 		switch o := obj.(type) {
@@ -861,7 +877,7 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		if f.Self != nil {
 			parent = &Env{names: []string{"me"}, binds: []binding{{f.Self, true}}, parent: f.Closure, obj: f.Self}
 		}
-		e := &Env{parent: parent}
+		e := &Env{parent: parent, isScope: true}
 		if len(f.Params) <= smallScope {
 			e.names = append(make([]string, 0, len(f.Params)+2), f.Params...)
 			e.binds = make([]binding, len(f.Params), len(f.Params)+2)
@@ -1003,12 +1019,22 @@ func (in *Interp) get(obj Value, name string, line int) Value {
 		if b := serverMethod(in, o, name); b != nil {
 			return b
 		}
+	case *Store:
+		if b := storeMethod(in, o, name); b != nil {
+			return b
+		}
 	case *Response:
 		switch name {
 		case "status":
 			return float64(o.Status)
 		case "body":
 			return o.Body
+		case "json":
+			v, err := fromJSON(o.Body)
+			if err != nil {
+				in.fail(line, "this response isn't JSON")
+			}
+			return v
 		}
 	}
 	in.fail(line, "%s has nothing called '%s'", typeName(obj), name)

@@ -14,11 +14,11 @@ server.get("/square/:n") {
 }
 
 test "hello route answers" {
-    expect server.visit("/hello") is "Hello from Laser Feet"
+    expect server.visit("/hello").body is "Hello from Laser Feet"
 }
 
 test "squares come back as JSON" {
-    expect server.visit("/square/7") is "{\"number\":7,\"square\":49}"
+    expect server.visit("/square/7").json.square is 49
 }
 
 test "unknown pages are 404" {

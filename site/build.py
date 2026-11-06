@@ -14,9 +14,18 @@ meta = [
     ("fast.lf", "Fast work", "Two jobs running at the same time.", False),
     ("web.lf", "Product API", "A small web API with routes, path values and JSON replies.", False),
     ("shop_test.lf", "Shopping cart tests", "Tests for cart totals and discounts.", True),
+    ("todo/app.lf", "To-do API", "A real web API: saves data, reads JSON, checks input with rules from checks.lf, and tests every route.", True),
     ("webapp_test.lf", "Web app tests", "Testing routes without opening a browser.", True),
 ]
-examples = [{"file": f, "title": t, "about": a, "test": test, "src": (ex / f).read_text()} for f, t, a, test in meta]
+def extra_files(f):
+    # other .lf files in the same folder, for examples that 'use' them
+    folder = (ex / f).parent
+    if folder == ex:
+        return {}
+    return {p.name: p.read_text() for p in folder.glob("*.lf") if p.name != pathlib.Path(f).name}
+
+examples = [{"file": f, "title": t, "about": a, "test": test, "src": (ex / f).read_text(), "files": extra_files(f)}
+            for f, t, a, test in meta]
 
 page = (here / "template.html").read_text()
 page = re.sub(r"<lf-code([^>]*)>(.*?)</lf-code>",

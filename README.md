@@ -26,6 +26,19 @@ cd my-app
 lf run app.lf
 ```
 
+## Libraries
+
+| use | What it gives you |
+|---|---|
+| `use web` | Web servers and replies (`request.json` reads JSON bodies) |
+| `use store` | A built-in database saved safely to a JSON file |
+| `use json` | `json.read`, `json.write`, `json.pretty` |
+| `use files` | `files.read`, `files.write`, `files.exists`, `files.list` |
+| `use time` | `time.now`, `time.today`, `time.seconds` |
+| `use "file.lf"` | Your own beams and objects from another file |
+
+`env("PORT", "8080")` reads a setting from the environment. See `examples/todo` for a complete web API that uses all of these, with tests.
+
 ## Share a program
 
 ```
@@ -36,7 +49,7 @@ The built file checks a SHA-256 of the program inside it and refuses to start if
 
 ## Speed
 
-`go test ./lang -bench .` runs the benchmarks in `bench/`. Version 0.2 made the engine about 2.1x faster on function calls (`bench/fib.lf`) and 1.4x faster on loops, lists and objects (`bench/loops.lf`) than 0.1, mainly by cutting memory allocations.
+`go test ./lang -bench .` runs the benchmarks in `bench/`. Compared with 0.1, the engine is now about 2.4x faster on function calls (`bench/fib.lf`: 438 ms → 179 ms) and 1.7x faster on loops, lists and objects (`bench/loops.lf`: 466 ms → 280 ms), mainly by cutting memory allocations.
 
 ## VS Code
 

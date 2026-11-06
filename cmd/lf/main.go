@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"laserfeet/lang"
@@ -83,8 +84,19 @@ func read(path string) string {
 	return string(b)
 }
 
-func run(path string) int {
+// newInterp makes an engine that can 'use' other .lf files next to the program.
+func newInterp(path string) *lang.Interp {
 	in := lang.NewInterp(os.Stdout)
+	dir := filepath.Dir(path)
+	in.ReadSource = func(p string) (string, error) {
+		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p)))
+		return string(b), err
+	}
+	return in
+}
+
+func run(path string) int {
+	in := newInterp(path)
 	if err := in.Run(read(path)); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", path, err)
 		return 1
@@ -93,7 +105,7 @@ func run(path string) int {
 }
 
 func test(path string) int {
-	in := lang.NewInterp(os.Stdout)
+	in := newInterp(path)
 	results, err := in.RunTests(read(path))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", path, err)

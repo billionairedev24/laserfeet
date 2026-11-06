@@ -1,0 +1,18 @@
+-- Rules for what a valid to-do looks like. Used by app.lf with: use "checks.lf"
+
+beam problemWith(todo) {
+    when todo is nothing {
+        send "send the to-do as JSON, like {\"title\": \"Buy milk\"}"
+    }
+    when not todo.has("title") {
+        send "a to-do needs a title"
+    }
+    title = text(todo.title).trim()
+    when title.size() is 0 {
+        send "the title can't be empty"
+    }
+    when title.size() > 200 {
+        send "the title can be at most 200 letters"
+    }
+    send nothing
+}

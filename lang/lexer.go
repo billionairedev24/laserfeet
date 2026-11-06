@@ -100,12 +100,36 @@ func Lex(src string, startLine int) ([]Token, error) {
 			i++
 			var sb strings.Builder
 			closed := false
+			depth := 0 // inside {...}, quotes start inner text instead of ending this one
 			for i < len(rs) {
 				ch := rs[i]
+				if ch == '"' && depth > 0 {
+					// inner text inside {...}: copy it as-is up to its closing quote
+					sb.WriteRune(ch)
+					i++
+					for i < len(rs) && rs[i] != '"' && rs[i] != '\n' {
+						if rs[i] == '\\' && i+1 < len(rs) {
+							sb.WriteRune(rs[i])
+							i++
+						}
+						sb.WriteRune(rs[i])
+						i++
+					}
+					if i < len(rs) && rs[i] == '"' {
+						sb.WriteRune('"')
+						i++
+					}
+					continue
+				}
 				if ch == '"' {
 					closed = true
 					i++
 					break
+				}
+				if ch == '{' {
+					depth++
+				} else if ch == '}' && depth > 0 {
+					depth--
 				}
 				if ch == '\n' {
 					return nil, &SyntaxError{startLine, "this text is missing its closing quote \""}

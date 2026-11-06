@@ -153,6 +153,7 @@ func installBuiltins(in *Interp, g *Env) {
 		in.gil.Lock()
 		return nil
 	}))
+	def(envBuiltin())
 	def(builtin("readFile", func(in *Interp, line int, a []Value) Value {
 		wantArgs(in, line, "readFile", a, 1)
 		data, err := readFile(Text(a[0]))

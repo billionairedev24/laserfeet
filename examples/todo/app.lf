@@ -1,0 +1,105 @@
+-- A to-do list web API built with Laser Feet.
+--
+--   lf run app.lf        then try:  curl localhost:8080/todos
+--   lf test app.lf
+--
+-- Data is saved in todos.json (or the file named by the TODO_DB setting).
+
+use web
+use store
+use time
+use "checks.lf"
+
+db = store.open(env("TODO_DB", "todos.json"))
+port = number(env("PORT", "8080"))
+server = web.open(port)
+
+-- list every to-do, or only open ones with /todos?open=yes
+server.get("/todos") {
+    todos = db.all("todos")
+    when request.query.open is "yes" {
+        todos = todos then keepIf(not done)
+    }
+    send todos
+}
+
+server.get("/todos/:id") {
+    todo = db.find("todos", number(request.params.id))
+    when todo is nothing {
+        send web.status(404, {error: "no to-do with that id"})
+    }
+    send todo
+}
+
+server.post("/todos") {
+    problem = checks.problemWith(request.json)
+    when problem is not nothing {
+        send web.status(400, {error: problem})
+    }
+    todo = db.add("todos", {
+        title: text(request.json.title).trim(),
+        done: no,
+        created: time.now()
+    })
+    send web.status(201, todo)
+}
+
+server.post("/todos/:id/done") {
+    todo = db.update("todos", number(request.params.id), {done: yes})
+    when todo is nothing {
+        send web.status(404, {error: "no to-do with that id"})
+    }
+    send todo
+}
+
+server.on("/todos/:id") {
+    when request.method is not "DELETE" {
+        send web.status(405, {error: "use GET, or DELETE to remove a to-do"})
+    }
+    when not db.remove("todos", number(request.params.id)) {
+        send web.status(404, {error: "no to-do with that id"})
+    }
+    send web.status(204)
+}
+
+launch {
+    show "{db.count("todos")} to-dos saved so far"
+    fast server.start()
+}
+
+-- ---------- tests (these use a fresh in-memory store) ----------
+
+test "a new to-do can be added and read back" {
+    db = store.memory()
+    added = server.visit("/todos", "POST", {title: "Buy milk"}).json
+    expect added.title is "Buy milk"
+    expect added.done is no
+    expect server.visit("/todos/{added.id}").json.title is "Buy milk"
+}
+
+test "titles are required and trimmed" {
+    db = store.memory()
+    expect server.visit("/todos", "POST", {title: "   "}).status is 400
+    expect server.visit("/todos", "POST", {}).status is 400
+    expect server.visit("/todos", "POST", "not json").status is 400
+    added = server.visit("/todos", "POST", {title: "  Call mum  "}).json
+    expect added.title is "Call mum"
+}
+
+test "finishing and filtering" {
+    db = store.memory()
+    server.visit("/todos", "POST", {title: "One"})
+    server.visit("/todos", "POST", {title: "Two"})
+    server.visit("/todos/1/done", "POST")
+    open = server.visit("/todos?open=yes").json
+    expect count(open) is 1
+    expect open[0].title is "Two"
+}
+
+test "deleting" {
+    db = store.memory()
+    server.visit("/todos", "POST", {title: "Temporary"})
+    expect server.visit("/todos/1", "DELETE").status is 204
+    expect server.visit("/todos/1").status is 404
+    expect server.visit("/todos/1", "DELETE").status is 404
+}

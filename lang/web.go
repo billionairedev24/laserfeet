@@ -2,7 +2,6 @@ package lang
 
 import (
 	"encoding/json"
-	"fmt"
 	"html"
 	"net/url"
 	"sort"
@@ -30,9 +29,22 @@ type Response struct {
 }
 
 func loadModule(in *Interp, name string) *Module {
-	if name != "web" {
-		return nil
+	switch name {
+	case "web":
+		return webModule()
+	case "json":
+		return jsonModule()
+	case "files":
+		return filesModule()
+	case "time":
+		return timeModule()
+	case "store":
+		return storeModule()
 	}
+	return nil
+}
+
+func webModule() *Module {
 	return &Module{Name: "web", Members: map[string]Value{
 		"open": builtin("open", func(in *Interp, line int, a []Value) Value {
 			port := 8080.0
@@ -51,7 +63,11 @@ func loadModule(in *Interp, name string) *Module {
 			}
 			r := &Response{Status: int(wantNumber(in, line, "web.status", a[0])), ContentType: "text/plain; charset=utf-8"}
 			if len(a) == 2 {
-				r.Body = Text(a[1])
+				if t, ok := a[1].(string); ok {
+					r.Body = t
+				} else {
+					r.Body, r.ContentType = toJSON(a[1]), "application/json"
+				}
 			}
 			return r
 		}),
@@ -97,18 +113,22 @@ func serverMethod(in *Interp, s *Server, name string) *Builtin {
 	case "visit":
 		// visit pretends to be a browser: handy for tests and the playground.
 		return builtin("visit", func(in *Interp, line int, a []Value) Value {
-			if len(a) < 1 || len(a) > 2 {
-				in.fail(line, "server.visit needs a path, like server.visit(\"/hello\")")
+			if len(a) < 1 || len(a) > 3 {
+				in.fail(line, "server.visit needs a path, and optionally a method and a body, like server.visit(\"/todos\", \"POST\", {title: \"Milk\"})")
 			}
 			method := "GET"
-			if len(a) == 2 {
+			if len(a) >= 2 {
 				method = strings.ToUpper(Text(a[1]))
 			}
-			r := s.handle(in, method, Text(a[0]), "")
-			if r.Status != 200 {
-				return &Response{Status: r.Status, Body: r.Body}
+			body := ""
+			if len(a) == 3 {
+				if t, ok := a[2].(string); ok {
+					body = t
+				} else {
+					body = toJSON(a[2])
+				}
 			}
-			return r.Body
+			return s.handle(in, method, Text(a[0]), body)
 		})
 	case "routes":
 		return builtin("routes", func(in *Interp, line int, a []Value) Value {
@@ -172,6 +192,13 @@ func (s *Server) handle(in *Interp, method, rawPath, body string) (resp *Respons
 		req.Set("params", params)
 		req.Set("query", query)
 		req.Set("body", body)
+		var parsed Value
+		if strings.TrimSpace(body) != "" {
+			if v, err := fromJSON(body); err == nil {
+				parsed = v
+			}
+		}
+		req.Set("json", parsed)
 		return s.run(in, r, req)
 	}
 	return &Response{Status: 404, Body: "Not found: " + u.Path, ContentType: "text/plain; charset=utf-8"}
@@ -235,10 +262,54 @@ func toPlain(v Value) any {
 	return Text(v)
 }
 
+// toJSON writes a value as JSON, keeping fields in the order they were written.
 func toJSON(v Value) string {
-	b, err := json.Marshal(toPlain(v))
-	if err != nil {
-		return fmt.Sprintf("%q", Text(v))
+	var b strings.Builder
+	writeJSON(&b, v)
+	return b.String()
+}
+
+func writeJSON(b *strings.Builder, v Value) {
+	field := func(i int, k string, val Value) {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		kb, _ := json.Marshal(k)
+		b.Write(kb)
+		b.WriteByte(':')
+		writeJSON(b, val)
 	}
-	return string(b)
+	switch x := v.(type) {
+	case *List:
+		b.WriteByte('[')
+		for i, it := range x.Items {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			writeJSON(b, it)
+		}
+		b.WriteByte(']')
+	case *Map:
+		b.WriteByte('{')
+		for i, k := range x.Keys {
+			field(i, k, x.M[k])
+		}
+		b.WriteByte('}')
+	case *Instance:
+		b.WriteByte('{')
+		for i, f := range x.Class.Fields {
+			field(i, f.Name, x.Fields[f.Name])
+		}
+		b.WriteByte('}')
+	case float64, string, bool, nil:
+		out, err := json.Marshal(x)
+		if err != nil { // NaN or infinity have no JSON form
+			b.WriteString("null")
+			return
+		}
+		b.Write(out)
+	default:
+		out, _ := json.Marshal(Text(v))
+		b.Write(out)
+	}
 }

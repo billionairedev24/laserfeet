@@ -48,4 +48,13 @@ The playground page has the SHA-256 checksum of the Laser Feet engine (`laserfee
 | Read, write, header and idle timeouts | Slow-connection (Slowloris) attacks |
 | Errors show visitors only "Something went wrong" | Leaking passwords, paths or internals in error messages. Details go to the server log |
 
-These are checked by `lang/security_test.go` on every push.
+## Data and files
+
+| Default | What it stops |
+|---|---|
+| Store and `files.write` files are written to a temporary file and renamed into place | Half-written, corrupted data after a crash |
+| Store files can only be read by their owner (`0600`) | Other users on the machine reading your app's data |
+| `use "file.lf"` only accepts `.lf` files inside the program's folder, and refuses loops | Loading code from unexpected places |
+| Built programs check a SHA-256 of the code inside them before running | Running a program that was changed or damaged after it was built |
+
+These are checked by `lang/security_test.go`, `lang/stdlib_test.go` and `cmd/lf/bundle_test.go` on every push.

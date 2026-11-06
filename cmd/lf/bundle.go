@@ -32,6 +32,39 @@ type bundle struct {
 	Files   map[string]string `json:"files"`
 }
 
+const mainName = "(main).lf"
+
+// collectFiles parses the program and every .lf file it uses, so they can all be
+// packed into the built program.
+func collectFiles(path, src string) (map[string]string, error) {
+	files := map[string]string{mainName: src}
+	dir := filepath.Dir(path)
+	queue := []struct{ name, src string }{{path, src}}
+	for len(queue) > 0 {
+		f := queue[0]
+		queue = queue[1:]
+		prog, err := lang.Parse(f.src)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %v", f.name, err)
+		}
+		for _, used := range lang.UsedFiles(prog) {
+			if _, done := files[used]; done {
+				continue
+			}
+			if filepath.IsAbs(used) || used == ".." || strings.HasPrefix(used, "../") {
+				return nil, fmt.Errorf("%s: use \"%s\": files must be inside your program's folder", f.name, used)
+			}
+			b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(used)))
+			if err != nil {
+				return nil, fmt.Errorf("%s: use \"%s\": %v", f.name, used, err)
+			}
+			files[used] = string(b)
+			queue = append(queue, struct{ name, src string }{used, string(b)})
+		}
+	}
+	return files, nil
+}
+
 // buildProgram writes a standalone executable for the program in path.
 func buildProgram(path, out string) int {
 	src, err := os.ReadFile(path)
@@ -39,8 +72,9 @@ func buildProgram(path, out string) int {
 		fmt.Fprintf(os.Stderr, "I couldn't open %s: %v\n", path, err)
 		return 2
 	}
-	if _, err := lang.Parse(string(src)); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\nFix this before building.\n", path, err)
+	files, err := collectFiles(path, string(src))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\nFix this before building.\n", err)
 		return 1
 	}
 	if out == "" {
@@ -69,7 +103,7 @@ func buildProgram(path, out string) int {
 		engine = engine[:len(engine)-n]
 	}
 
-	payload, _ := json.Marshal(bundle{Version: version, Main: filepath.Base(path), Files: map[string]string{filepath.Base(path): string(src)}})
+	payload, _ := json.Marshal(bundle{Version: version, Main: mainName, Files: files})
 	sum := sha256.Sum256(payload)
 	var buf bytes.Buffer
 	buf.Write(engine)
@@ -136,8 +170,14 @@ func runAttached() (code int, found bool) {
 		return 1, true
 	}
 	in := lang.NewInterp(os.Stdout)
+	in.ReadSource = func(p string) (string, error) {
+		if src, ok := b.Files[p]; ok && p != b.Main {
+			return src, nil
+		}
+		return "", fmt.Errorf("%s was not packed into this program", p)
+	}
 	if err := in.Run(b.Files[b.Main]); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", b.Main, err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return 1, true
 	}
 	return 0, true

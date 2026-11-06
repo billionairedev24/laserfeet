@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -20,6 +21,47 @@ const (
 func readFile(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	return string(b), err
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func listDir(path string) ([]string, error) {
+	entries, err := os.ReadDir(path)
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names, err
+}
+
+func getenv(name string) (string, bool) { return os.LookupEnv(name) }
+
+// writeFileAtomic writes to a temporary file in the same folder and renames it
+// into place, so readers never see a half-written file.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), perm); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // securityHeaders are sent with every response.
@@ -76,3 +118,6 @@ func startServer(in *Interp, s *Server, line int) {
 	in.gil.Lock()
 	in.fail(line, "the web server stopped: %s", err.Error())
 }
+
+// filesAvailable says whether this platform can save files.
+const filesAvailable = true

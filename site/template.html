@@ -241,7 +241,7 @@ footer .wrap { display: flex; gap: 12px 28px; justify-content: space-between; fl
       <div>
         <div class="hazard" aria-label="Prototype, version 0.1">
           <span><svg width="14" height="13" viewBox="0 0 14 13" aria-hidden="true"><path d="M7 .8 13.3 12H.7z" fill="none" stroke="#111" stroke-width="1.4"/><circle cx="7" cy="8.4" r="1.2" fill="#111"/><path d="M7 8.4 9.6 5.2M7 8.4 4.4 5.2M7 8.4V4.6" stroke="#111" stroke-width=".8"/></svg>Prototype</span>
-          <span>v0.2 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
+          <span>v0.3 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
         </div>
         <h1>Code at the <em>speed of light</em></h1>
         <p class="lede">Laser Feet is a programming language that reads like plain English, mixes objects and functions freely, and comes with a secure web server built in.</p>
@@ -366,9 +366,9 @@ lf test app.lf</lf-code></div></li>
       <p class="lede">Version 0.1 runs your code with an interpreter written in Go. Each step after that makes Laser Feet faster and more independent.</p>
       <ul class="spectrum">
         <li style="--wl: var(--l650)"><span class="ver">0.1</span><strong>Prototype</strong><p>Interpreter, playground, web server, tests, friendly errors, signed builds, VS Code colors.</p></li>
-        <li class="now" style="--wl: var(--l589)"><span class="ver">0.2</span><strong>Standalone programs</strong><p><code>lf build</code> makes one file that runs with nothing installed, on an engine twice as fast.</p></li>
-        <li style="--wl: var(--l532)"><span class="ver">0.3</span><strong>Standard library</strong><p>Databases, JSON, files, dates and the <code>sole</code> package manager.</p></li>
-        <li style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Smarter editors</strong><p>VS Code colors are out now; autocomplete and live error underlines are next.</p></li>
+        <li style="--wl: var(--l589)"><span class="ver">0.2</span><strong>Standalone programs</strong><p><code>lf build</code> makes one file that runs with nothing installed, on an engine twice as fast.</p></li>
+        <li class="now" style="--wl: var(--l532)"><span class="ver">0.3</span><strong>Standard library</strong><p>A built-in store, JSON, files, time, settings, and code split across files.</p></li>
+        <li style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Types and editors</strong><p>Optional types checked by <code>lf check</code>, autocomplete and live error underlines in VS Code, and the <code>sole</code> package manager.</p></li>
         <li style="--wl: var(--l405)"><span class="ver">1.0</span><strong>Independent</strong><p>A true native compiler, written in Laser Feet itself.</p></li>
       </ul>
     </div>
@@ -397,6 +397,9 @@ lf test app.lf</lf-code></div></li>
         <a href="#learn" data-jump="g9">Web apps</a>
         <a href="#learn" data-jump="g10">Testing</a>
         <a href="#learn" data-jump="g11">Sharing your program</a>
+        <a href="#learn" data-jump="g12">Saving data</a>
+        <a href="#learn" data-jump="g13">JSON, files and settings</a>
+        <a href="#learn" data-jump="g14">Splitting code into files</a>
       </nav>
       <article>
         <h2 id="g1"><span class="num">01</span>Your first program</h2>
@@ -613,7 +616,75 @@ test "small orders pay full price" {
 <lf-code>lf build app.lf            -- makes ./app (app.exe on Windows)
 lf build app.lf -o shop    -- picks the name
 ./app</lf-code>
-        <p>The file carries a SHA-256 checksum of your program and refuses to start if it was changed or damaged after you built it. It runs on the same kind of computer you built it on, so build on a Mac for Macs and on Windows for Windows.</p>
+        <p>The file carries a SHA-256 checksum of your program and refuses to start if it was changed or damaged after you built it. Files your program uses with <code>use "file.lf"</code> are packed in too. It runs on the same kind of computer you built it on, so build on a Mac for Macs and on Windows for Windows.</p>
+
+        <h2 id="g12"><span class="num">12</span>Saving data</h2>
+        <p><code>use store</code> gives you a small built-in database. Records are maps with an <code>id</code> that Laser Feet gives them. Everything is saved to a file after each change, so it survives restarts.</p>
+<lf-code data-try>use store
+
+launch {
+    db = store.open("shop.json")   -- in the playground this stays in memory
+
+    db.add("products", {name: "Laser pointer", price: 12.5})
+    shoes = db.add("products", {name: "Running shoes", price: 89})
+
+    db.update("products", shoes.id, {price: 79})
+    show db.find("products", shoes.id)
+    show db.count("products")
+
+    cheap = db.all("products") then keepIf(price < 50)
+    show cheap then turn(name)
+}</lf-code>
+        <div class="tablewrap"><table>
+          <tr><th>Beam</th><th>What it does</th></tr>
+          <tr><td><code>store.open(file)</code></td><td>Open (or create) a store saved in that file</td></tr>
+          <tr><td><code>store.memory()</code></td><td>A store that isn't saved, handy for tests</td></tr>
+          <tr><td><code>db.add(name, record)</code></td><td>Save a record and give back the saved copy with its <code>id</code></td></tr>
+          <tr><td><code>db.all(name)</code> / <code>db.find(name, id)</code></td><td>Every record / one record, or nothing</td></tr>
+          <tr><td><code>db.update(name, id, changes)</code></td><td>Change some fields; gives back the record, or nothing</td></tr>
+          <tr><td><code>db.remove(name, id)</code> / <code>db.count(name)</code></td><td>Delete a record (yes if it existed) / how many there are</td></tr>
+        </table></div>
+        <p class="note"><b>Safe by default:</b> the file is written to a temporary copy first and then swapped in, so a crash never leaves it half-written, and only you can read it. Changing a record you got back doesn't save it; use <code>update</code>.</p>
+
+        <h2 id="g13"><span class="num">13</span>JSON, files and settings</h2>
+<lf-code data-try>use json
+use time
+
+launch {
+    order = json.read("{\"item\": \"lamp\", \"qty\": 2}")
+    show "{order.qty} x {order.item}"
+
+    show json.write({ok: yes, at: time.today()})
+
+    port = env("PORT", "8080")   -- a setting, with a default
+    show "would listen on {port}"
+}</lf-code>
+        <div class="tablewrap"><table>
+          <tr><th>Beam</th><th>What it does</th></tr>
+          <tr><td><code>json.read(text)</code> / <code>json.write(x)</code></td><td>Read JSON into lists and maps / turn a value into JSON</td></tr>
+          <tr><td><code>json.pretty(x)</code></td><td>JSON laid out for people to read</td></tr>
+          <tr><td><code>files.read</code> / <code>files.write</code></td><td>Read or save a text file (saved safely, like the store)</td></tr>
+          <tr><td><code>files.exists</code> / <code>files.list</code></td><td>Check for a file / list a folder</td></tr>
+          <tr><td><code>time.now()</code> / <code>time.today()</code></td><td>The time as <code>2026-11-05T20:40:00Z</code> / the date</td></tr>
+          <tr><td><code>time.seconds()</code></td><td>Seconds since 1970, for measuring time</td></tr>
+          <tr><td><code>env(name, default)</code></td><td>A setting from the environment, like <code>PORT</code></td></tr>
+        </table></div>
+        <p>In a web route, <code>request.json</code> holds the request body already read as JSON (or nothing if it isn't JSON).</p>
+
+        <h2 id="g14"><span class="num">14</span>Splitting code into files</h2>
+        <p>Put beams and objects in another <code>.lf</code> file and bring them in with <code>use</code>. The file's name becomes the name you reach them by.</p>
+<lf-code>-- prices.lf
+beam withTax(amount) {
+    send round(amount * 1.0825, 2)
+}
+
+-- app.lf
+use "prices.lf"
+
+launch {
+    show prices.withTax(100)
+}</lf-code>
+        <p>Paths are relative to your main program's folder, and Laser Feet refuses paths that point outside it. Only the main file runs its <code>launch</code> and <code>test</code> blocks. See the <a href="#examples">To-do API example</a> for a complete app split across two files.</p>
       </article>
     </div>
   </div>
@@ -634,6 +705,7 @@ lf build app.lf -o shop    -- picks the name
         <a href="#reference" data-jump="r3">Built-in beams</a>
         <a href="#reference" data-jump="r4">List, text, map</a>
         <a href="#reference" data-jump="r5">Web library</a>
+        <a href="#reference" data-jump="r7">Libraries</a>
         <a href="#reference" data-jump="r6">The lf command</a>
       </nav>
       <article>
@@ -708,12 +780,23 @@ lf build app.lf -o shop    -- picks the name
           <tr><td><code>web.open(port)</code></td><td>Make a server (port 8080 if left out)</td></tr>
           <tr><td><code>server.get(path) { }</code></td><td>Answer GET requests; also <code>post</code>, and <code>on</code> for any method</td></tr>
           <tr><td><code>server.start()</code></td><td>Start serving; usually <code>fast server.start()</code></td></tr>
-          <tr><td><code>server.visit(path)</code></td><td>Try a route without a browser</td></tr>
-          <tr><td><code>request</code></td><td>Inside a route: <code>method</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>body</code></td></tr>
-          <tr><td><code>web.status(code, text)</code></td><td>Reply with a status code</td></tr>
+          <tr><td><code>server.visit(path, method, body)</code></td><td>Try a route without a browser; gives back <code>.status</code>, <code>.body</code> and <code>.json</code></td></tr>
+          <tr><td><code>request</code></td><td>Inside a route: <code>method</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>body</code>, <code>json</code></td></tr>
+          <tr><td><code>web.status(code, reply)</code></td><td>Reply with a status code; a map or list reply is sent as JSON</td></tr>
           <tr><td><code>web.json(x)</code> / <code>web.page(html)</code></td><td>Reply as JSON / as a web page</td></tr>
           <tr><td><code>web.escape(x)</code></td><td>Make visitor input safe to put inside a web page</td></tr>
           <tr><td>Built-in protection</td><td>Security headers, 1 MB body limit, timeouts, and errors that hide internal details from visitors</td></tr>
+        </table></div>
+
+        <h2 id="r7">Libraries</h2>
+        <div class="tablewrap"><table>
+          <tr><th>use</th><th>What it gives you</th></tr>
+          <tr><td><code>use web</code></td><td>Web servers and replies</td></tr>
+          <tr><td><code>use store</code></td><td>A built-in database saved to a file</td></tr>
+          <tr><td><code>use json</code></td><td>Reading and writing JSON</td></tr>
+          <tr><td><code>use files</code></td><td>Reading, writing and listing files</td></tr>
+          <tr><td><code>use time</code></td><td>The current time and date</td></tr>
+          <tr><td><code>use "file.lf"</code></td><td>Your own code from another file</td></tr>
         </table></div>
 
         <h2 id="r6">The lf command</h2>
@@ -780,7 +863,7 @@ lf build app.lf -o shop    -- picks the name
 
 <footer>
   <div class="wrap">
-    <span>Laser Feet 0.2 · engine written in Go</span>
+    <span>Laser Feet 0.3 · engine written in Go</span>
     <span>engine sha-256 <span id="engineHash"></span> · verified before every load</span>
     <a href="https://github.com/billionairedev24/laserfeet">github.com/billionairedev24/laserfeet</a>
   </div>
@@ -851,7 +934,7 @@ EXAMPLES.forEach((ex, i) => {
   card.innerHTML = `<span class="file">${esc(ex.file)}</span><h3>${esc(ex.title)}</h3><p>${esc(ex.about)}</p>`;
   const b = document.createElement("button");
   b.className = "btn"; b.type = "button"; b.textContent = ex.test ? "Run its tests" : "Open in playground";
-  b.addEventListener("click", () => openInPlayground(ex.src, ex.test));
+  b.addEventListener("click", () => openInPlayground(ex.src, ex.test, ex.files));
   card.appendChild(b);
   cards.appendChild(card);
   const o = document.createElement("option");
@@ -864,7 +947,7 @@ const editor = document.getElementById("editor");
 const hl = document.getElementById("hl");
 const gutter = document.getElementById("gutter");
 const output = document.getElementById("output");
-let wantTest = false;
+let wantTest = false, extraFiles = {};
 function paintEditor() {
   const v = editor.value;
   hl.innerHTML = highlight(v) + "\n";
@@ -908,12 +991,12 @@ try { saved = localStorage.getItem("lf-draft"); } catch (e) {}
 setCode(saved || EXAMPLES[0].src);
 select.addEventListener("change", () => {
   const ex = EXAMPLES[+select.value];
-  wantTest = ex.test; setCode(ex.src);
+  wantTest = ex.test; extraFiles = ex.files || {}; setCode(ex.src);
   output.textContent = ex.test ? "Press Run tests." : "Press Run.";
 });
 
-function openInPlayground(src, test) {
-  wantTest = !!test;
+function openInPlayground(src, test, files) {
+  wantTest = !!test; extraFiles = files || {};
   location.hash = "#playground";
   route();
   setCode(src);
@@ -933,7 +1016,7 @@ async function runCode(test) {
   if (!ready) { output.textContent = "The engine is still charging. Your code will run as soon as it's ready."; pending = test; return; }
   output.textContent = test ? "Running tests…" : "Running…";
   const t0 = performance.now();
-  const res = await (test ? laserTest(editor.value) : laserRun(editor.value));
+  const res = await (test ? laserTest(editor.value, extraFiles) : laserRun(editor.value, extraFiles));
   paint(output, res.trim() === "" ? "(no output)" : res);
   const ps = document.getElementById("playStatus");
   ps.textContent = `done in ${Math.max(1, Math.round(performance.now() - t0))} ms`;

@@ -38,7 +38,7 @@ test "greets people by name" {
 }
 
 test "the home page answers" {
-    expect server.visit("/") is "Hello from {{name}}!"
+    expect server.visit("/").body is "Hello from {{name}}!"
 }
 `
 

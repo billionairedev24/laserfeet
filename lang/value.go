@@ -95,6 +95,8 @@ func typeName(v Value) string {
 		return "a web response"
 	case *Server:
 		return "a web server"
+	case *Store:
+		return "a store"
 	}
 	return "a value"
 }
@@ -157,9 +159,14 @@ func toText(v Value, quote bool) string {
 	case *Module:
 		return "<library " + x.Name + ">"
 	case *Response:
-		return fmt.Sprintf("<response %d>", x.Status)
+		return x.Body
 	case *Server:
 		return fmt.Sprintf("<web server on port %d>", x.Port)
+	case *Store:
+		if x.path == "" {
+			return "<store in memory>"
+		}
+		return "<store " + x.path + ">"
 	}
 	return fmt.Sprint(v)
 }
