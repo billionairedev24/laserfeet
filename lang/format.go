@@ -75,8 +75,12 @@ func splitLines(rs []rune, toks []Token) []fline {
 	return lines
 }
 
-func isOpener(t Token) bool { return t.Type == SYMBOL && (t.Text == "{" || t.Text == "(" || t.Text == "[") }
-func isCloser(t Token) bool { return t.Type == SYMBOL && (t.Text == "}" || t.Text == ")" || t.Text == "]") }
+func isOpener(t Token) bool {
+	return t.Type == SYMBOL && (t.Text == "{" || t.Text == "(" || t.Text == "[")
+}
+func isCloser(t Token) bool {
+	return t.Type == SYMBOL && (t.Text == "}" || t.Text == ")" || t.Text == "]")
+}
 
 func layout(rs []rune, toks []Token, lines []fline) string {
 	// work out each line's indent: one level for every line that leaves
