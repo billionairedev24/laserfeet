@@ -1,0 +1,19 @@
+{use "views/layout.html"}
+<h1>Your shipments</h1>
+<p><a href="/shipments/new">Book a shipment</a></p>
+{when count(shipments) is 0}
+<p class="muted">No shipments yet.</p>
+{otherwise}
+<table>
+  <tr><th>Reference</th><th>Destination</th><th>Weight</th><th>Status</th></tr>
+  {each s in shipments}
+  <tr>
+    <td><a href="/shipments/{s.id}">{s.reference}</a></td>
+    <td>{s.destination}</td>
+    <td>{s.weightKg} kg</td>
+    <td><span class="status">{s.label}</span></td>
+  </tr>
+  {end}
+</table>
+{end}
+{use "views/footer.html"}

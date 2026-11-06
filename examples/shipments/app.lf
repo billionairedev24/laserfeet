@@ -1,0 +1,584 @@
+-- Shipments: a small logistics app with accounts, web pages and a JSON API.
+--
+--   lf migrate                       create the tables (reads DATABASE_URL)
+--   lf run app.lf                    then open http://localhost:8080
+--   lf test app.lf                   the tests (they use their own tables' rows)
+--
+-- Settings (in the environment or a .env file next to this file):
+--   DATABASE_URL     postgres://user:password@localhost/shipments
+--   SESSION_SECRET   at least 32 characters; make one with: lf secret
+
+use web
+use postgres
+use auth
+use log
+use time
+
+-- ---------- what a shipment is ----------
+
+choice Status {
+    Booked
+    InTransit(carrier: Text, eta: Date)
+    Delivered(on: Date)
+    Cancelled(reason: Text)
+}
+
+object Shipment {
+    id: UUID
+    reference: Text
+    destination: Text
+    weightKg: Decimal
+    status: Status
+}
+
+-- a shipment as the database keeps it
+object Row {
+    id: UUID
+    reference: Text
+    destination: Text
+    weightKg: Decimal
+    status: Text
+    carrier: Text?
+    eta: Date?
+    deliveredOn: Date?
+    reason: Text?
+}
+
+object User {
+    id: UUID
+    email: Text
+    passwordHash: Text
+}
+
+-- what the API accepts
+object NewShipment {
+    reference: Text
+    destination: Text
+    weightKg: Decimal
+}
+
+object StatusChange {
+    status: Status
+}
+
+-- ---------- setup ----------
+
+db = postgres.open(env("DATABASE_URL", "postgres://postgres@localhost/shipments"))
+db.migrate("migrations")
+
+server = web.open(int(env("PORT", "8080")))
+server.sessions(env("SESSION_SECRET", ""), days(7))
+server.files("/static", "public")
+server.limit("/login", 10, minutes(1))
+server.limit("/register", 10, minutes(1))
+
+lock columns = "id, reference, destination, weight_kg, status, carrier, eta, delivered_on, reason"
+
+-- ---------- shipments ----------
+
+beam statusOf(r: Row) gives Status {
+    carrier = r.carrier
+    eta = r.eta
+    on = r.deliveredOn
+    reason = r.reason
+    focus r.status {
+        "InTransit" {
+            when carrier is not nothing and eta is not nothing {
+                send Status.InTransit(carrier, eta)
+            }
+        }
+        "Delivered" {
+            when on is not nothing {
+                send Status.Delivered(on)
+            }
+        }
+        "Cancelled" {
+            when reason is not nothing {
+                send Status.Cancelled(reason)
+            }
+        }
+        otherwise {
+        }
+    }
+    send Status.Booked
+}
+
+beam toShipment(r: Row) gives Shipment {
+    send Shipment(r.id, r.reference, r.destination, r.weightKg, statusOf(r))
+}
+
+beam label(s: Status) gives Text {
+    focus s {
+        Booked {
+            send "Booked"
+        }
+        InTransit(carrier, eta) {
+            send "With {carrier}, arriving {eta}"
+        }
+        Delivered(on) {
+            send "Delivered {on}"
+        }
+        Cancelled(reason) {
+            send "Cancelled: {reason}"
+        }
+    }
+}
+
+beam shipmentsOf(owner: UUID) gives List[Shipment] {
+    rows = db.query(Row, "select {columns} from shipments where owner_id = $1 order by created_at desc", [owner])
+    send rows then turn(r => toShipment(r))
+}
+
+beam findShipment(owner: UUID, id: UUID) gives Shipment? {
+    row = db.first(Row, "select {columns} from shipments where owner_id = $1 and id = $2", [owner, id])
+    when row is nothing {
+        send nothing
+    }
+    send toShipment(row)
+}
+
+beam book(owner: UUID, n: NewShipment) gives Shipment {
+    when n.weightKg <= 0 {
+        fail "the weight must be more than 0 kg"
+    }
+    id = uuid()
+    db.run("insert into shipments (id, owner_id, reference, destination, weight_kg) values ($1, $2, $3, $4, $5)",
+        [id, owner, n.reference.trim(), n.destination.trim(), n.weightKg])
+    log.info("shipment booked", {id: text(id), reference: n.reference})
+    send Shipment(id, n.reference.trim(), n.destination.trim(), n.weightKg, Status.Booked)
+}
+
+beam setStatus(owner: UUID, id: UUID, s: Status) gives Flag {
+    sql = "update shipments set status = $3, carrier = $4, eta = $5, delivered_on = $6, reason = $7 where owner_id = $1 and id = $2"
+    changed = 0
+    focus s {
+        Booked {
+            changed = db.run(sql, [owner, id, "Booked", nothing, nothing, nothing, nothing])
+        }
+        InTransit(carrier, eta) {
+            changed = db.run(sql, [owner, id, "InTransit", carrier, eta, nothing, nothing])
+        }
+        Delivered(on) {
+            changed = db.run(sql, [owner, id, "Delivered", nothing, nothing, on, nothing])
+        }
+        Cancelled(reason) {
+            changed = db.run(sql, [owner, id, "Cancelled", nothing, nothing, nothing, reason])
+        }
+    }
+    send changed is 1
+}
+
+beam remove(owner: UUID, id: UUID) gives Flag {
+    send db.run("delete from shipments where owner_id = $1 and id = $2", [owner, id]) is 1
+}
+
+-- ---------- accounts ----------
+
+beam register(email: Text, password: Text) gives User {
+    clean = email.trim().lower()
+    when not clean.has("@") or clean.size() > 254 {
+        fail "that doesn't look like an email address"
+    }
+    when password.size() < 10 {
+        fail "the password must be at least 10 characters"
+    }
+    taken = db.first(User, "select id, email, password_hash from users where email = $1", [clean])
+    when taken is not nothing {
+        fail "there's already an account for {clean}"
+    }
+    u = User(uuid(), clean, auth.hash(password))
+    db.run("insert into users (id, email, password_hash) values ($1, $2, $3)", [u.id, u.email, u.passwordHash])
+    log.info("account created", {user: text(u.id)})
+    send u
+}
+
+beam signIn(email: Text, password: Text) gives User? {
+    u = db.first(User, "select id, email, password_hash from users where email = $1", [email.trim().lower()])
+    when u is nothing {
+        auth.hash(password) -- takes the same time, so nobody learns which emails have accounts
+        send nothing
+    }
+    when not auth.check(password, u.passwordHash) {
+        send nothing
+    }
+    send u
+}
+
+-- the signed-in user's id, from the session
+beam userOf(request: Request) gives UUID? {
+    id = request.session.get("user")
+    when id is nothing {
+        send nothing
+    }
+    send uuid(id)
+}
+
+beam emailOf(request: Request) gives Text? {
+    send request.session.get("email")
+}
+
+-- an id from a path; anything else is nothing
+beam idFrom(t: Text?) gives UUID? {
+    when t is nothing {
+        send nothing
+    }
+    attempt {
+        send uuid(t)
+    } fails problem {
+        send nothing
+    }
+}
+
+-- ---------- pages ----------
+
+-- only signed-in visitors reach shipments and the API
+server.before() as request {
+    protected = request.path.startsWith("/shipments") or request.path.startsWith("/api")
+    when protected and userOf(request) is nothing {
+        when request.path.startsWith("/api") {
+            send web.status(401, {error: "sign in first"})
+        }
+        send web.redirect("/login")
+    }
+}
+
+server.get("/") as request {
+    when userOf(request) is nothing {
+        send web.redirect("/login")
+    }
+    send web.redirect("/shipments")
+}
+
+beam loginPage(action: Text, error: Text?, status: Int) gives Response {
+    title = "Sign in"
+    when action is "/register" {
+        title = "Create an account"
+    }
+    send web.render("views/login.html", {title: title, action: action, error: error, email: nothing}, status)
+}
+
+server.get("/login") {
+    send loginPage("/login", nothing, 200)
+}
+
+server.get("/register") {
+    send loginPage("/register", nothing, 200)
+}
+
+beam startSession(request: Request, u: User) gives Response {
+    request.session.clear()
+    request.session.set("user", text(u.id))
+    request.session.set("email", u.email)
+    send web.redirect("/shipments")
+}
+
+server.post("/register") as request {
+    email = request.form.email
+    password = request.form.password
+    when email is nothing or password is nothing {
+        send loginPage("/register", "Enter an email and a password", 400)
+    }
+    attempt {
+        u = register(email, password)
+        send startSession(request, u)
+    } fails problem {
+        send loginPage("/register", text(problem), 400)
+    }
+}
+
+server.post("/login") as request {
+    email = request.form.email
+    password = request.form.password
+    when email is nothing or password is nothing {
+        send loginPage("/login", "Enter your email and password", 400)
+    }
+    u = signIn(email, password)
+    when u is nothing {
+        send loginPage("/login", "That email and password don't match an account", 401)
+    }
+    send startSession(request, u)
+}
+
+server.post("/logout") as request {
+    request.session.clear()
+    send web.redirect("/login")
+}
+
+object Line {
+    id: Text
+    reference: Text
+    destination: Text
+    weightKg: Decimal
+    label: Text
+}
+
+beam lineOf(s: Shipment) gives Line {
+    send Line(text(s.id), s.reference, s.destination, s.weightKg, label(s.status))
+}
+
+server.get("/shipments") as request {
+    owner = userOf(request)
+    when owner is nothing {
+        send web.redirect("/login")
+    }
+    lines = shipmentsOf(owner) then turn(s => lineOf(s))
+    send web.render("views/list.html", {title: "Shipments", email: emailOf(request), shipments: lines})
+}
+
+server.get("/shipments/new") as request {
+    send web.render("views/new.html", {title: "Book a shipment", email: emailOf(request), error: nothing})
+}
+
+server.post("/shipments") as request {
+    owner = userOf(request)
+    when owner is nothing {
+        send web.redirect("/login")
+    }
+    f = request.form
+    attempt {
+        n = NewShipment.from({reference: f.reference, destination: f.destination, weightKg: decimal(text(f.weightKg))})
+        s = book(owner, n)
+        send web.redirect("/shipments/{s.id}")
+    } fails problem {
+        send web.render("views/new.html", {title: "Book a shipment", email: emailOf(request), error: text(problem)}, 400)
+    }
+}
+
+server.get("/shipments/:id") as request {
+    owner = userOf(request)
+    id = idFrom(request.params.id)
+    when owner is nothing or id is nothing {
+        send web.status(404, "No such shipment")
+    }
+    s = findShipment(owner, id)
+    when s is nothing {
+        send web.status(404, "No such shipment")
+    }
+    send web.render("views/shipment.html", {title: s.reference, email: emailOf(request), s: lineOf(s)})
+}
+
+-- a status from the form on the shipment page
+beam statusFromForm(f: Map[Text]) gives Status {
+    kind = f.status
+    focus kind {
+        "InTransit" {
+            carrier = f.carrier
+            eta = f.eta
+            when carrier is nothing or carrier.trim() is "" or eta is nothing {
+                fail "a shipment in transit needs a carrier and an arrival date"
+            }
+            send Status.InTransit(carrier.trim(), date(eta))
+        }
+        "Delivered" {
+            send Status.Delivered(time.today())
+        }
+        "Cancelled" {
+            reason = f.reason
+            when reason is nothing or reason.trim() is "" {
+                fail "say why the shipment was cancelled"
+            }
+            send Status.Cancelled(reason.trim())
+        }
+        otherwise {
+            fail "choose a status"
+        }
+    }
+}
+
+server.post("/shipments/:id/status") as request {
+    owner = userOf(request)
+    id = idFrom(request.params.id)
+    when owner is nothing or id is nothing {
+        send web.status(404, "No such shipment")
+    }
+    attempt {
+        setStatus(owner, id, statusFromForm(request.form))
+    } fails problem {
+        send web.status(400, text(problem))
+    }
+    send web.redirect("/shipments/{id}")
+}
+
+server.post("/shipments/:id/delete") as request {
+    owner = userOf(request)
+    id = idFrom(request.params.id)
+    when owner is not nothing and id is not nothing {
+        remove(owner, id)
+    }
+    send web.redirect("/shipments")
+}
+
+-- ---------- JSON API (signed-in, same site) ----------
+
+server.get("/api/shipments") as request {
+    owner = userOf(request)
+    when owner is nothing {
+        send web.status(401, {error: "sign in first"})
+    }
+    send shipmentsOf(owner)
+}
+
+server.post("/api/shipments") as request {
+    owner = userOf(request)
+    when owner is nothing {
+        send web.status(401, {error: "sign in first"})
+    }
+    n = NewShipment.from(request.json)
+    attempt {
+        send web.status(201, book(owner, n))
+    } fails problem {
+        send web.status(400, {error: text(problem)})
+    }
+}
+
+server.get("/api/shipments/:id") as request {
+    owner = userOf(request)
+    id = idFrom(request.params.id)
+    when owner is nothing or id is nothing {
+        send web.status(404, {error: "no such shipment"})
+    }
+    s = findShipment(owner, id)
+    when s is nothing {
+        send web.status(404, {error: "no such shipment"})
+    }
+    send s
+}
+
+server.put("/api/shipments/:id/status") as request {
+    owner = userOf(request)
+    id = idFrom(request.params.id)
+    when owner is nothing or id is nothing {
+        send web.status(404, {error: "no such shipment"})
+    }
+    change = StatusChange.from(request.json)
+    when not setStatus(owner, id, change.status) {
+        send web.status(404, {error: "no such shipment"})
+    }
+    send findShipment(owner, id)
+}
+
+server.delete("/api/shipments/:id") as request {
+    owner = userOf(request)
+    id = idFrom(request.params.id)
+    when owner is nothing or id is nothing or not remove(owner, id) {
+        send web.status(404, {error: "no such shipment"})
+    }
+    send web.status(204)
+}
+
+launch {
+    fast server.start()
+}
+
+-- ---------- tests ----------
+-- They need DATABASE_URL and SESSION_SECRET, and use accounts they create.
+
+beam form() gives Map[Text] {
+    send {"Content-Type": "application/x-www-form-urlencoded"}
+}
+
+-- a form body, like a browser sends
+beam encode(fields: Map[Text]) gives Text {
+    parts: List[Text] = []
+    each k in fields.keys() {
+        v = fields[k]
+        when v is not nothing {
+            parts.add("{k}={web.urlEncode(v)}")
+        }
+    }
+    send parts then join("&")
+}
+
+-- signs up a new account and gives its session cookie
+beam newAccount() gives Text {
+    email = "test-{auth.token()}@example.com"
+    r = server.visit("/register", "POST", encode({email: email, password: "a long password"}), form())
+    expect r.status is 303
+    send r.cookies[0].split(";")[0]
+}
+
+beam asUser(cookie: Text) gives Map[Text] {
+    send {Cookie: cookie, Host: "shipments.test", Origin: "https://shipments.test", "Content-Type": "application/json"}
+}
+
+test "pages need an account" {
+    expect server.visit("/shipments").header("Location") is "/login"
+    expect server.visit("/api/shipments").status is 401
+    expect server.visit("/login").status is 200
+}
+
+test "signing up, out and in" {
+    email = "ada-{auth.token()}@example.com"
+    up = server.visit("/register", "POST", encode({email: email, password: "a long password"}), form())
+    expect up.status is 303
+    expect up.header("Location") is "/shipments"
+    again = server.visit("/register", "POST", encode({email: email, password: "a long password"}), form())
+    expect again.status is 400
+    expect again.body.has("already an account")
+    short = server.visit("/register", "POST", encode({email: "b@example.com", password: "short"}), form())
+    expect short.status is 400
+    wrong = server.visit("/login", "POST", encode({email: email, password: "the wrong password"}), form())
+    expect wrong.status is 401
+    good = server.visit("/login", "POST", encode({email: email.upper(), password: "a long password"}), form())
+    expect good.status is 303
+    cookie = good.cookies[0].split(";")[0]
+    page = server.visit("/shipments", "GET", nothing, {Cookie: cookie})
+    expect page.status is 200
+    expect page.body.has(email.lower())
+}
+
+test "booking and tracking a shipment through the API" {
+    mine = asUser(newAccount())
+    made = server.visit("/api/shipments", "POST", {reference: "LF-001", destination: "Lagos", weightKg: 12.5}, mine)
+    expect made.status is 201
+    id = made.json.id
+    expect made.json.status is "Booked"
+    moving = server.visit("/api/shipments/{id}/status", "PUT", {status: {kind: "InTransit", carrier: "DHL", eta: "2026-11-20"}}, mine)
+    expect moving.status is 200
+    expect moving.json.status.carrier is "DHL"
+    done = server.visit("/api/shipments/{id}/status", "PUT", {status: {kind: "Delivered", on: "2026-11-19"}}, mine)
+    expect done.json.status.on is "2026-11-19"
+    expect count(server.visit("/api/shipments", "GET", nothing, mine).json) is 1
+    bad = server.visit("/api/shipments", "POST", {reference: "X", destination: "Y", weightKg: "heavy"}, mine)
+    expect bad.status is 400
+    expect server.visit("/api/shipments/{id}", "DELETE", nothing, mine).status is 204
+    expect server.visit("/api/shipments/{id}", "GET", nothing, mine).status is 404
+}
+
+test "the web pages book and update shipments" {
+    cookie = newAccount()
+    headers = {Cookie: cookie, "Content-Type": "application/x-www-form-urlencoded"}
+    made = server.visit("/shipments", "POST", encode({reference: "<b>LF-2</b>", destination: "Accra", weightKg: "3"}), headers)
+    expect made.status is 303
+    page = made.header("Location")
+    expect page is not nothing
+    when page is not nothing {
+        view = server.visit(page, "GET", nothing, {Cookie: cookie})
+        expect view.body.has("&lt;b&gt;LF-2&lt;/b&gt;")     -- escaped, never HTML
+        moved = server.visit("{page}/status", "POST", encode({status: "InTransit", carrier: "Maersk", eta: "2026-12-01"}), headers)
+        expect moved.status is 303
+        expect server.visit(page, "GET", nothing, {Cookie: cookie}).body.has("With Maersk, arriving 2026-12-01")
+        expect server.visit("{page}/status", "POST", encode({status: "InTransit"}), headers).status is 400
+    }
+}
+
+test "nobody sees or changes another account's shipments" {
+    alice = asUser(newAccount())
+    bob = asUser(newAccount())
+    made = server.visit("/api/shipments", "POST", {reference: "A-1", destination: "Abuja", weightKg: 1}, alice)
+    id = made.json.id
+    expect server.visit("/api/shipments/{id}", "GET", nothing, bob).status is 404
+    expect server.visit("/api/shipments/{id}", "DELETE", nothing, bob).status is 404
+    expect server.visit("/api/shipments/{id}/status", "PUT", {status: "Booked"}, bob).status is 404
+    expect count(server.visit("/api/shipments", "GET", nothing, bob).json) is 0
+    expect server.visit("/api/shipments/{id}", "GET", nothing, alice).status is 200
+}
+
+test "other sites can't act for a signed-in visitor" {
+    cookie = newAccount()
+    attack = server.visit("/api/shipments", "POST", {reference: "X", destination: "Y", weightKg: 1},
+        {Cookie: cookie, Host: "shipments.test", Origin: "https://evil.example"})
+    expect attack.status is 403
+    forged = server.visit("/api/shipments", "GET", nothing, {Cookie: "lf_session=eyJkIjp7InVzZXIiOiJ4In19.forged"})
+    expect forged.status is 401
+}

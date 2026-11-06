@@ -17,7 +17,7 @@ import (
 // lf_migrations records which ran, with a checksum: changing a file that has
 // already run is refused, because the database wouldn't match it.
 
-const migrationsTable = `create table if not exists lf_migrations (
+const migrationsTable = `create table if not exists %s (
     name       text primary key,
     checksum   text not null,
     applied_at timestamptz not null default now()
@@ -33,10 +33,14 @@ type Migration struct {
 
 // Migrate applies the steps that haven't run yet and returns their names.
 func Migrate(pool *pg.Pool, steps []Migration) ([]string, error) {
-	if _, err := pool.Exec(migrationsTable, nil); err != nil {
+	return migrateWith(pool, "lf_migrations", steps)
+}
+
+func migrateWith(pool *pg.Pool, table string, steps []Migration) ([]string, error) {
+	if _, err := pool.Exec(fmt.Sprintf(migrationsTable, table), nil); err != nil {
 		return nil, err
 	}
-	res, err := pool.Exec("select name, checksum from lf_migrations", nil)
+	res, err := pool.Exec("select name, checksum from "+table, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +60,7 @@ func Migrate(pool *pg.Pool, steps []Migration) ([]string, error) {
 			}
 			continue
 		}
-		ran, err := applyMigration(pool, m, check)
+		ran, err := applyMigration(pool, table, m, check)
 		if err != nil {
 			return applied, fmt.Errorf("%s: %v (nothing from this file was kept)", m.Name, err)
 		}
@@ -67,7 +71,7 @@ func Migrate(pool *pg.Pool, steps []Migration) ([]string, error) {
 	return applied, nil
 }
 
-func applyMigration(pool *pg.Pool, m Migration, check string) (ran bool, err error) {
+func applyMigration(pool *pg.Pool, table string, m Migration, check string) (ran bool, err error) {
 	cn, err := pool.Get()
 	if err != nil {
 		return false, err
@@ -82,7 +86,7 @@ func applyMigration(pool *pg.Pool, m Migration, check string) (ran bool, err err
 		}
 	}()
 	name := m.Name
-	res, err := cn.Exec("select 1 from lf_migrations where name = $1", []*string{&name})
+	res, err := cn.Exec("select 1 from "+table+" where name = $1", []*string{&name})
 	if err != nil {
 		return false, err
 	}
@@ -92,7 +96,7 @@ func applyMigration(pool *pg.Pool, m Migration, check string) (ran bool, err err
 	if err := cn.Script(m.SQL); err != nil {
 		return false, err
 	}
-	if _, err := cn.Exec("insert into lf_migrations (name, checksum) values ($1, $2)", []*string{&name, &check}); err != nil {
+	if _, err := cn.Exec("insert into "+table+" (name, checksum) values ($1, $2)", []*string{&name, &check}); err != nil {
 		return false, err
 	}
 	return true, cn.Script("commit")

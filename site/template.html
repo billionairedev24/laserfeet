@@ -371,7 +371,8 @@ lf test app.lf</lf-code></div></li>
         <li style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Types</strong><p>Required types, exact Decimal money, <code>lf check</code> before every run, objects 3.7x smaller.</p></li>
         <li style="--wl: var(--l405)"><span class="ver">0.5 – 0.6</span><strong>Editors, jobs, data, packages</strong><p>Live errors in VS Code, <code>fast</code> jobs, Docker, Laser Feet's own PostgreSQL driver, and <code>sole</code> packages from git.</p></li>
         <li style="--wl: var(--l405)"><span class="ver">0.7</span><strong>Foundations</strong><p>A written <a href="https://github.com/billionairedev24/laserfeet/blob/main/docs/spec.md">language specification</a> with a conformance suite, <code>lf fmt</code>, <code>lf fix</code>, named blocks and nightly fuzzing.</p></li>
-        <li class="now" style="--wl: var(--l405)"><span class="ver">0.8</span><strong>A complete language</strong><p>Choices and <code>focus</code>, generics, typed database rows, private members, typed problems, and <code>Date</code>, <code>Time</code>, <code>Duration</code> and <code>UUID</code>. Next: the web toolkit.</p></li>
+        <li style="--wl: var(--l405)"><span class="ver">0.8</span><strong>A complete language</strong><p>Choices and <code>focus</code>, generics, typed database rows, private members, typed problems, and <code>Date</code>, <code>Time</code>, <code>Duration</code> and <code>UUID</code>. </p></li>
+        <li class="now" style="--wl: var(--l405)"><span class="ver">0.9</span><strong>The web toolkit</strong><p>Sessions, Argon2id passwords, templates, cookies, uploads, CORS, rate limits, migrations and graceful shutdown, proven by a complete shipments app tested end to end. Next: a faster engine on every core.</p></li>
       </ul>
     </div>
   </div>
@@ -746,6 +747,36 @@ launch {
 }</lf-code>
         <p>What a route sends decides the reply. Text is always sent as plain text, so nothing a visitor types can turn into a web page. Lists, maps and objects become JSON. <code>web.page(html)</code> sends HTML on purpose, with visitor input cleaned by <code>web.escape(x)</code>, and <code>web.status(404, "Not found")</code> sends an error code. <code>server.visit</code> tries a route without a browser, which is handy in tests.</p>
         <p class="note"><b>In the playground</b>, <code>start</code> lists your routes instead of opening a port. On your computer, <code>lf run app.lf</code> serves real pages at <code>http://localhost:8080</code>.</p>
+        <h3>Accounts, sessions and pages</h3>
+        <p>Everything a real web app needs is built in. <code>server.sessions(secret)</code> remembers each visitor in a signed cookie, <code>use auth</code> hashes passwords with Argon2id, <code>server.before</code> guards pages, and <code>web.render</code> fills in HTML templates, escaping every value so visitor input can never become HTML. Once sessions are on, other sites can't submit forms on a signed-in visitor's behalf.</p>
+<lf-code>use web
+use auth
+
+server = web.open(8080)
+server.sessions(env("SESSION_SECRET", ""))     -- make one with: lf secret
+server.files("/static", "public")              -- CSS, images, scripts
+server.limit("/login", 10, minutes(1))         -- slow down password guessing
+
+server.before() as request {
+    when request.path.startsWith("/account") and not request.session.has("user") {
+        send web.redirect("/login")
+    }
+}
+
+server.post("/login") as request {
+    email = request.form.email
+    password = request.form.password
+    when email is nothing or password is nothing {
+        send web.status(400, "Enter your email and password")
+    }
+    user = findUser(email)                     -- your own beam
+    when user is nothing or not auth.check(password, user.passwordHash) {
+        send web.render("views/login.html", {error: "Wrong email or password"}, 401)
+    }
+    request.session.set("user", text(user.id))
+    send web.redirect("/account")
+}</lf-code>
+        <p>A template is HTML with Laser Feet in braces: <code>{name}</code>, <code>{each p in products} … {end}</code>, <code>{when user is nothing} … {otherwise} … {end}</code> and <code>{use "views/header.html"}</code>. <code>lf check</code> reads your templates too. Replies can carry headers and cookies: <code>web.reply(data).header("Cache-Control", "no-store").cookie("theme", "dark", days(30))</code>. The complete example in <a href="https://github.com/billionairedev24/laserfeet/tree/main/examples/shipments">examples/shipments</a> has sign-up, sign-in, pages, a JSON API and PostgreSQL, with tests.</p>
 
         <h2 id="g10"><span class="num">11</span>Testing</h2>
         <p>A <code>test</code> block holds <code>expect</code> checks. <code>lf test file.lf</code> runs every test and reports which passed. In the playground, press Run tests.</p>
@@ -1022,10 +1053,19 @@ launch {
         <div class="tablewrap"><table>
           <tr><th>Call</th><th>What it does</th></tr>
           <tr><td><code>web.open(port)</code></td><td>Make a server (port 8080 if left out)</td></tr>
-          <tr><td><code>server.get(path) as request { }</code></td><td>Answer GET requests; also <code>post</code>, and <code>on</code> for any method. Leave out <code>as request</code> if the route doesn't use it</td></tr>
+          <tr><td><code>server.get(path) as request { }</code></td><td>Answer GET requests; also <code>post</code>, <code>put</code>, <code>patch</code>, <code>delete</code>, and <code>on</code> for any method. Leave out <code>as request</code> if the route doesn't use it</td></tr>
+          <tr><td><code>server.before() as request { }</code></td><td>Runs before every route; whatever it sends is the reply instead</td></tr>
+          <tr><td><code>server.sessions(secret, days(7))</code></td><td>Signed session cookies; then <code>request.session.get/set/has/remove/clear</code></td></tr>
+          <tr><td><code>server.files("/static", "public")</code></td><td>Serve a folder's files (never hidden files, never outside the folder)</td></tr>
+          <tr><td><code>server.limit(100, minutes(1))</code></td><td>Requests allowed per visitor; add a path first to limit just that part</td></tr>
+          <tr><td><code>server.allow("https://site")</code></td><td>Let another site's pages call this server (CORS)</td></tr>
+          <tr><td><code>server.bodyLimit(mb)</code> / <code>server.quiet()</code></td><td>Allow bigger uploads / stop the JSON request log</td></tr>
           <tr><td><code>server.start()</code></td><td>Start serving; usually <code>fast server.start()</code></td></tr>
-          <tr><td><code>server.visit(path, method, body)</code></td><td>Try a route without a browser; gives back <code>.status</code>, <code>.body</code> and <code>.json</code></td></tr>
-          <tr><td><code>request</code></td><td>The named request: <code>method</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>body</code>, <code>json</code></td></tr>
+          <tr><td><code>server.visit(path, method, body, headers)</code></td><td>Try a route without a browser; gives back <code>.status</code>, <code>.body</code>, <code>.json</code>, <code>.header(name)</code> and <code>.cookies</code></td></tr>
+          <tr><td><code>request</code></td><td>The named request: <code>method</code>, <code>path</code>, <code>params</code>, <code>query</code>, <code>body</code>, <code>json</code>, <code>form</code>, <code>files</code>, <code>ip</code>, <code>header(name)</code>, <code>cookie(name)</code>, <code>session</code></td></tr>
+          <tr><td><code>web.render(file, values, status)</code></td><td>A web page from a template; every value is escaped</td></tr>
+          <tr><td><code>web.reply(x)</code></td><td>Any value as a reply, then <code>.header(name, value)</code>, <code>.cookie(name, value, days(30))</code>, <code>.forget(name)</code></td></tr>
+          <tr><td><code>web.redirect(path)</code></td><td>Send the browser to another page of this site</td></tr>
           <tr><td><code>web.status(code, reply)</code></td><td>Reply with a status code; a map or list reply is sent as JSON</td></tr>
           <tr><td><code>web.json(x)</code> / <code>web.page(html)</code></td><td>Reply as JSON / as a web page</td></tr>
           <tr><td><code>web.escape(x)</code></td><td>Make visitor input safe to put inside a web page</td></tr>
@@ -1041,7 +1081,9 @@ launch {
           <tr><td><code>use json</code></td><td>Reading and writing JSON</td></tr>
           <tr><td><code>use files</code></td><td>Reading, writing and listing files</td></tr>
           <tr><td><code>use time</code></td><td>The current time and date</td></tr>
-          <tr><td><code>use postgres</code></td><td>PostgreSQL databases, with Laser Feet's own driver</td></tr>
+          <tr><td><code>use postgres</code></td><td>PostgreSQL databases, with Laser Feet's own driver; <code>db.migrate("migrations")</code></td></tr>
+          <tr><td><code>use auth</code></td><td><code>auth.hash(password)</code>, <code>auth.check(password, hash)</code> (Argon2id), <code>auth.token()</code></td></tr>
+          <tr><td><code>use log</code></td><td><code>log.info(message, {details})</code>, <code>log.warn</code>, <code>log.error</code>: JSON lines for log tools</td></tr>
           <tr><td><code>use "file.lf"</code></td><td>Your own code from another file</td></tr>
           <tr><td><code>use "host/owner/repo"</code></td><td>A package installed with <code>lf get</code></td></tr>
         </table></div>
@@ -1056,6 +1098,8 @@ launch {
           <tr><td><code>lf build app.lf</code></td><td>Make a standalone program file (<code>-o name</code> picks its name)</td></tr>
           <tr><td><code>lf fmt</code></td><td>Lay out every <code>.lf</code> file in the folder the standard way (<code>--check</code> only reports, for CI). VS Code does this on save</td></tr>
           <tr><td><code>lf fix</code></td><td>Update code written for an older Laser Feet, without changing what it does</td></tr>
+          <tr><td><code>lf migrate</code></td><td>Run new <code>.sql</code> files from <code>migrations/</code> on <code>DATABASE_URL</code></td></tr>
+          <tr><td><code>lf secret</code></td><td>Print a new random secret for <code>server.sessions</code></td></tr>
           <tr><td><code>lf get</code> / <code>lf remove</code></td><td>Add, install or remove packages (see the Packages chapter)</td></tr>
           <tr><td><code>lf lsp</code></td><td>The language server that gives editors live errors, autocomplete and hover</td></tr>
           <tr><td><code>lf version</code></td><td>Show the version</td></tr>

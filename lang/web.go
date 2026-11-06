@@ -3,6 +3,7 @@ package lang
 import (
 	"encoding/json"
 	"html"
+	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -116,20 +117,31 @@ func webModule() *Module {
 			}
 			return r
 		}),
+		"urlEncode": builtin("urlEncode", func(in *Interp, line int, a []Value) Value {
+			wantArgs(in, line, "web.urlEncode", a, 1)
+			return url.QueryEscape(Text(a[0]))
+		}),
 		"escape": builtin("escape", func(in *Interp, line int, a []Value) Value {
 			wantArgs(in, line, "web.escape", a, 1)
 			return html.EscapeString(Text(a[0]))
 		}),
 		"reply": builtin("reply", webReply),
 		"render": builtin("render", func(in *Interp, line int, a []Value) Value {
-			if len(a) < 1 || len(a) > 2 {
-				in.fail(line, "web.render takes a template and its values, like web.render(\"views/home.html\", {title: \"Shop\"})")
+			if len(a) < 1 || len(a) > 3 {
+				in.fail(line, "web.render takes a template, its values and optionally a status, like web.render(\"views/home.html\", {title: \"Shop\"})")
 			}
 			var values Value
-			if len(a) == 2 {
+			if len(a) >= 2 {
 				values = a[1]
 			}
-			return &Response{Status: 200, Body: in.render(line, Text(a[0]), values, 0), ContentType: "text/html; charset=utf-8"}
+			status := int64(200)
+			if len(a) == 3 {
+				status = in.wantInt(line, "the status code", a[2])
+				if status < 100 || status > 599 {
+					in.fail(line, "a status code must be between 100 and 599")
+				}
+			}
+			return &Response{Status: int(status), Body: in.render(line, Text(a[0]), values, 0), ContentType: "text/html; charset=utf-8"}
 		}),
 		"trusted": builtin("trusted", func(in *Interp, line int, a []Value) Value {
 			wantArgs(in, line, "web.trusted", a, 1)

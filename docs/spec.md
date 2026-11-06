@@ -1,6 +1,6 @@
 # The Laser Feet Language Specification
 
-Version 0.8. This document says exactly what Laser Feet code means. Where the
+Version 0.9. This document says exactly what Laser Feet code means. Where the
 website explains, this specification decides. Every section has matching
 programs in `conformance/<section>/`: each one prints exactly its `.out` file,
 or is refused with exactly the message in its `.err` file. `go test ./lang -run
@@ -112,8 +112,11 @@ fields always state their type. Values inside a beam take the type of what is
 put in them; a type may be written anyway (`total: Decimal = 0`).
 
 **Nothing-safety:** a value of type `T?` must be checked before it is used as a
-`T`. After `when x is not nothing { ... }`, and after
-`when x is nothing { send ... }`, `x` is a `T`.
+`T`. Inside `when x is not nothing { ... }`, after `when x is nothing { send ...
+}`, and on the right of `x is not nothing and ...` or `x is nothing or ...`,
+`x` is a `T`. Checks combine: after `when a is nothing or b is nothing { send
+... }` both are known, and so are both inside `when a is not nothing and b is
+not nothing { ... }`.
 
 **Checking:** `lf run`, `lf test` and `lf build` check every type before
 running anything. If there is a problem, nothing runs.
@@ -366,17 +369,87 @@ server.get("/products/:id") as request {
 }
 ```
 
-- `server.get`, `server.post` and `server.on` (any method) add routes. Parts
-  of the path written `:name` arrive in `request.params.name`; the checker
-  refuses a name the path doesn't have.
-- A route that uses its request **names it**: `as request` (or any name)
-  before the block. A route that doesn't need it leaves it out.
-- What the route sends becomes the reply: Text as plain text, `web.page(html)`
-  as a web page, `web.status(code, body)` with a status, anything else as JSON.
-- `request.json` is the body read as JSON; `request.body` the raw text;
-  `request.query` the `?a=b` values; `request.method` and `request.path`.
-- `server.visit(path)` (and `server.visit(path, method, body)`) calls a route
-  without a network, for tests. `server.start()` serves.
+**Routes.** `server.get`, `server.post`, `server.put`, `server.patch`,
+`server.delete` and `server.on` (any method) add routes. A GET route also
+answers HEAD. Parts of the path written `:name` arrive in
+`request.params.name`; the checker refuses a name the path doesn't have. A
+route that uses its request **names it** with `as request` (or any name); one
+that doesn't need it leaves the name out.
+
+**Requests** have `method`, `path`, `params`, `query` (the `?a=b` values),
+`body` (the raw text), `json` (the body read as JSON), `form` (the fields of
+a form post, as a `Map[Text]`), `files` (uploaded files), `ip`,
+`header(name)` and `cookie(name)` (both `Text?`), and `session` (below).
+
+**Replies.** What a route sends becomes the reply: Text as plain text (never
+as HTML), `web.page(html)` and `web.render(...)` as web pages,
+`web.status(code, body)` with a status, `nothing` as 204, anything else as
+JSON. `web.reply(value)` makes any value a reply, so `.header(name, value)`,
+`.cookie(name, value, days(30))` and `.forget(name)` can be added; each gives
+the reply back, so they chain. `web.redirect(path)` sends the browser to
+another page of the same site; any other address is refused, so a link can't
+send visitors to another site.
+
+**Cookies** are always `HttpOnly` and `SameSite=Lax`, and `Secure` unless the
+server is on localhost.
+
+**Before every route.** `server.before() as request { ... }` runs before each
+route. If it sends anything, that is the reply and the route doesn't run.
+
+**Sessions.** `server.sessions(secret)` (at least 32 characters; `lf secret`
+makes one), optionally with how long they last (`days(7)` by default), keeps a
+small signed cookie per visitor. `request.session` has `get(name)` (`Text?`),
+`set(name, value)`, `has(name)`, `remove(name)` and `clear()`. A session that
+was changed or made up is treated as empty. With sessions on, a request that
+changes something (POST, PUT, PATCH, DELETE) is refused with 403 when the
+browser says it came from another site, so other sites can't act for a
+signed-in visitor.
+
+**Other sites calling the API.** `server.allow("https://shop.example")` lets
+that site's pages call this server from a browser (CORS), including with
+sessions.
+
+**Files and limits.**
+
+- `server.files("/static", "public")` serves the files of a folder next to the
+  program. Files whose names start with a dot are never served, and nothing
+  outside the folder can be reached.
+- `server.limit(100, minutes(1))` allows each visitor (by address) that many
+  requests in that time, and replies 429 after that.
+  `server.limit("/login", 10, minutes(1))` limits only paths starting there.
+- Request bodies are limited to 1 MB; `server.bodyLimit(megabytes)` changes
+  this.
+- `GET /health` replies `{"ok":true}` unless a route uses that path.
+
+**Templates.** `web.render(file, values)` (and optionally a status) fills in an
+HTML template from a folder next to the program:
+
+```
+<h1>{title}</h1>
+{each p in products}
+  <li>{p.name}: {fixed(p.price, 2)}</li>
+{end}
+{when user is nothing}<a href="/login">Sign in</a>{otherwise}Hi {user}{end}
+{use "views/footer.html"}
+```
+
+- `{expression}` is any Laser Feet expression over the values (a map or an
+  object). Its value is always escaped for HTML; in an attribute that holds a
+  link (`href`, `src`, `action`), `javascript:` links are replaced.
+  `web.trusted(html)` marks HTML that the program made itself.
+- `{each x in list} ... {end}`, `{when ...} ... {otherwise when ...} ...
+  {otherwise} ... {end}` and `{use "other.html"}` (another template, with the
+  same values).
+- Braces that don't hold an expression (CSS, JSON) stay as written; `\{` is
+  always a brace. A tag alone on its line leaves no blank line.
+- `lf check` reads every template named in the code and reports its mistakes,
+  with the template's line number.
+
+**Running.** `server.start()` serves; each request is logged as one line of
+JSON on standard error (`server.quiet()` turns this off). Ctrl-C or a stop
+signal lets requests in progress finish (for up to 10 seconds) before the
+program ends. `server.visit(path, method, body, headers)` calls the server
+without a network, for tests; everything above applies to visits too.
 
 ## 13. Databases
 
@@ -402,11 +475,26 @@ transaction with db as tx {
 - `transaction with db as tx { ... }`: everything the block does through `tx`
   happens, or, if anything fails, none of it does. `db.transaction() as tx { }`
   means the same.
+- Every statement stops after 30 seconds; `?timeout=10s` in the address
+  changes this.
+- **Migrations.** `db.migrate("migrations")` (or `lf migrate`) runs each `.sql`
+  file of the folder that hasn't run yet, in name order, each in its own
+  transaction, and gives the names it ran. A table called `lf_migrations`
+  records them with a checksum; a file that changed after it ran is refused.
+  Two copies of a program can't migrate at the same time.
 
 ## 14. Programs and files
 
 - `use name` brings in a library: `web`, `store`, `json`, `files`, `time`,
-  `postgres`. `time` has `now()`, `today()`, `at(text)` and `seconds()` (seconds
+  `postgres`, `auth` and `log`.
+- `auth.hash(password)` hashes a password with Argon2id (19 MiB, 2 passes) into
+  text to store; `auth.check(password, hash)` gives `yes` when they match,
+  comparing in constant time; `auth.token()` gives 32 random bytes as URL-safe
+  text.
+- `log.info(message, details)`, `log.warn` and `log.error` write one line of
+  JSON to standard error.
+- `lf run`, `lf test` and `lf build` read settings from a `.env` file next to the
+  program (`NAME=value` lines); settings already in the environment win. `time` has `now()`, `today()`, `at(text)` and `seconds()` (seconds
   since 1970, for measuring).
 - `use "file.lf"` brings in the beams, objects and rules of another file, under
   the file's name (`use "tools.lf"` gives `tools.slug(...)`).

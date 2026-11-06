@@ -1,0 +1,25 @@
+beam describe(name: Text?, city: Text?) gives Text {
+    when name is nothing or city is nothing {
+        send "someone, somewhere"
+    }
+    send "{name.upper()} from {city}"
+}
+
+beam greet(name: Text?) gives Text {
+    when name is not nothing and name.size() > 3 {
+        send "hello, {name}"
+    }
+    when name is nothing or name.trim() is "" {
+        send "hello, stranger"
+    }
+    send "hi, {name}"
+}
+
+launch {
+    show describe("ada", "Lagos")
+    show describe("ada", nothing)
+    show greet("Tobiloba")
+    show greet(" ")
+    show greet(nothing)
+    show greet("Bo")
+}

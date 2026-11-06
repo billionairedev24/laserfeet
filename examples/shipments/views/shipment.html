@@ -1,0 +1,16 @@
+{use "views/layout.html"}
+<h1>{s.reference}</h1>
+<p>To {s.destination}, {s.weightKg} kg. <span class="status">{s.label}</span></p>
+<h2>Update</h2>
+<form method="post" action="/shipments/{s.id}/status">
+  <select name="status">
+    <option>InTransit</option>
+    <option>Delivered</option>
+    <option>Cancelled</option>
+  </select>
+  <input name="carrier" placeholder="Carrier (in transit)">
+  <input name="eta" placeholder="Arrives (YYYY-MM-DD)">
+  <input name="reason" placeholder="Reason (cancelled)">
+  <button>Save</button>
+</form>
+{use "views/footer.html"}

@@ -1,0 +1,12 @@
+{use "views/layout.html"}
+<h1>{title}</h1>
+{when error is not nothing}
+<p class="error">{error}</p>
+{end}
+<form method="post" action="{action}">
+  <label>Email <input name="email" type="email" required></label>
+  <label>Password <input name="password" type="password" minlength="10" required></label>
+  <button>{title}</button>
+</form>
+<p class="muted">{when action is "/login"}New here? <a href="/register">Create an account</a>{otherwise}Have an account? <a href="/login">Sign in</a>{end}</p>
+{use "views/footer.html"}

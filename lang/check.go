@@ -569,9 +569,10 @@ func alwaysExits(stmts []Stmt) bool {
 func (c *checker) block(stmts []Stmt, sc *cscope) {
 	for i, s := range stmts {
 		c.stmt(s, sc)
-		// "when x is nothing { send ... }" means x is known to be there afterwards
+		// "when x is nothing or y is nothing { send ... }" means x and y are
+		// known to be there afterwards
 		if w, ok := s.(*WhenStmt); ok && w.Otherwise == nil && alwaysExits(w.Body) {
-			if name, isNothing := nothingTest(w.Cond); isNothing {
+			for _, name := range presentWhenFalse(w.Cond) {
 				c.narrow(name, sc)
 			}
 		}
@@ -590,6 +591,44 @@ func nothingTest(e Expr) (string, bool) {
 		return "", false
 	}
 	return id.Name, b.Op == "is"
+}
+
+// presentWhenTrue lists the names known not to be nothing when e is yes:
+// "x is not nothing", and both sides of an "and".
+func presentWhenTrue(e Expr) []string {
+	switch x := e.(type) {
+	case *Binary:
+		if x.Op == "and" {
+			return append(presentWhenTrue(x.Left), presentWhenTrue(x.Right)...)
+		}
+		if name, isNothing := nothingTest(x); name != "" && !isNothing {
+			return []string{name}
+		}
+	case *Unary:
+		if x.Op == "not" {
+			return presentWhenFalse(x.Operand)
+		}
+	}
+	return nil
+}
+
+// presentWhenFalse lists the names known not to be nothing when e is no:
+// "x is nothing", and both sides of an "or".
+func presentWhenFalse(e Expr) []string {
+	switch x := e.(type) {
+	case *Binary:
+		if x.Op == "or" {
+			return append(presentWhenFalse(x.Left), presentWhenFalse(x.Right)...)
+		}
+		if name, isNothing := nothingTest(x); name != "" && isNothing {
+			return []string{name}
+		}
+	case *Unary:
+		if x.Op == "not" {
+			return presentWhenTrue(x.Operand)
+		}
+	}
+	return nil
 }
 
 func (c *checker) narrow(name string, sc *cscope) {
@@ -617,16 +656,15 @@ func (c *checker) stmt(s Stmt, sc *cscope) {
 		c.focus(s, sc)
 	case *WhenStmt:
 		c.flag(s.Cond, sc, "when")
-		name, isNothing := nothingTest(s.Cond)
 		then := &cscope{vars: map[string]*cvar{}, parent: sc}
-		if name != "" && !isNothing {
+		for _, name := range presentWhenTrue(s.Cond) {
 			c.narrow(name, then)
 		}
 		c.block(s.Body, then)
 		c.merge(then, sc)
 		if s.Otherwise != nil {
 			other := &cscope{vars: map[string]*cvar{}, parent: sc}
-			if name != "" && isNothing {
+			for _, name := range presentWhenFalse(s.Cond) {
 				c.narrow(name, other)
 			}
 			c.block(s.Otherwise, other)
@@ -1193,7 +1231,20 @@ func (c *checker) binary(x *Binary, sc *cscope) *Type {
 	switch x.Op {
 	case "and", "or":
 		c.flag(x.Left, sc, x.Op)
-		c.flag(x.Right, sc, x.Op)
+		// the right side runs only when the left allows: in "x is not nothing
+		// and x.size() > 0", x is there by the time x.size() runs
+		known := presentWhenTrue(x.Left)
+		if x.Op == "or" {
+			known = presentWhenFalse(x.Left)
+		}
+		right := sc
+		if len(known) > 0 {
+			right = &cscope{vars: map[string]*cvar{}, parent: sc}
+			for _, n := range known {
+				c.narrow(n, right)
+			}
+		}
+		c.flag(x.Right, right, x.Op)
 		return tFlag
 	case "is", "is not":
 		l := c.expr(x.Left, sc, nil)

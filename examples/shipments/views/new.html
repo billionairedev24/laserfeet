@@ -1,0 +1,12 @@
+{use "views/layout.html"}
+<h1>Book a shipment</h1>
+{when error is not nothing}
+<p class="error">{error}</p>
+{end}
+<form method="post" action="/shipments">
+  <label>Reference <input name="reference" required></label>
+  <label>Destination <input name="destination" required></label>
+  <label>Weight (kg) <input name="weightKg" required></label>
+  <button>Book</button>
+</form>
+{use "views/footer.html"}

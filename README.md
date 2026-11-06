@@ -34,10 +34,30 @@ lf run app.lf
 | `use store` | A built-in database saved safely to a JSON file |
 | `use json` | `json.read`, `json.write`, `json.pretty` |
 | `use files` | `files.read`, `files.write`, `files.exists`, `files.list` |
+| `use auth` | `auth.hash(password)`, `auth.check(password, hash)` (Argon2id, our own, RFC-tested), `auth.token()` |
+| `use log` | `log.info(message, {details})`: JSON lines on standard error |
 | `use time` | `time.now()` (a `Time`), `time.today()` (a `Date`), `time.at(text)`, `time.seconds()` |
 | `use "file.lf"` | Your own beams and objects from another file |
 
 `env("PORT", "8080")` reads a setting from the environment. See `examples/todo` for a complete web API that uses all of these, with tests.
+
+## Web apps
+
+```
+use web
+use auth
+
+server = web.open(8080)
+server.sessions(env("SESSION_SECRET", ""))   -- lf secret makes one
+server.files("/static", "public")
+server.limit("/login", 10, minutes(1))
+
+server.get("/products/:id") as request {
+    send web.render("views/product.html", {product: find(request.params.id)})
+}
+```
+
+Routes for every method, `server.before` guards, signed session cookies, Argon2id passwords (`use auth`), templates that escape every value, cookies and headers on replies, form posts and uploads, CORS, rate limits, a `/health` check, JSON request logs and graceful shutdown. With sessions on, other sites can't act for a signed-in visitor. `examples/shipments` is a complete app (sign-up, sign-in, pages, a JSON API, PostgreSQL), tested end to end over real HTTP in CI.
 
 ## Databases
 
@@ -51,7 +71,7 @@ transaction with db as tx {
 }
 ```
 
-Values are always sent separately from SQL; logins use SCRAM-SHA-256 with the server's proof checked; remote databases use TLS with certificate checks by default. See `examples/inventory`.
+Values are always sent separately from SQL; logins use SCRAM-SHA-256 with the server's proof checked; remote databases use TLS with certificate checks by default; statements stop after 30 seconds (`?timeout=`). `db.migrate("migrations")` or `lf migrate` runs new `.sql` files in order, each once, with checksums. See `examples/inventory` and `examples/shipments`.
 
 ## Formatting and updating code
 
@@ -178,6 +198,8 @@ Changing the `VERSION` file on `main` runs the release workflow, which tags the 
 | `cmd/lf/lsp.go` | The language server behind live errors and autocomplete |
 | `docker` | The official image |
 | `pg` | The PostgreSQL driver |
+| `auth` | Argon2id and BLAKE2b, checked against the RFC test vectors |
+| `examples/shipments` | The reference web app |
 | `docs/spec.md` | The language specification |
 | `conformance` | Programs that check the engine follows the spec |
 | `lang/format.go` | `lf fmt` |

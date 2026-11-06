@@ -353,12 +353,16 @@ func (p *parser) statement() Stmt {
 		p.expectSym("=", "after the type, like total: Decimal = 0")
 		return &AssignStmt{Line: t.Line, Target: &Ident{t.Line, t.Text}, Value: p.expr(), Type: te}
 	}
+	first := p.peek()
 	x := p.expr()
 	if p.isSym("=") {
 		eq := p.next()
 		switch x.(type) {
 		case *Ident, *Get, *Index:
 		default:
+			if first.Type == KEYWORD && p.toks[p.pos-2] == first {
+				p.fail(eq.Line, "'%s' is one of Laser Feet's own words, so it can't be a name. Pick another, like '%sValue'", first.Text, first.Text)
+			}
 			p.fail(eq.Line, "the left side of '=' must be a name, like 'total = 5'")
 		}
 		return &AssignStmt{Line: eq.Line, Target: x, Value: p.expr()}

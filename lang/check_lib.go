@@ -21,7 +21,7 @@ func builtinType(name string) *Type {
 
 func libraryModule(name string) *Type {
 	members := map[string][]string{
-		"web":      {"open", "json", "status", "page", "escape", "fetch", "reply", "redirect", "render", "trusted"},
+		"web":      {"open", "json", "status", "page", "escape", "fetch", "reply", "redirect", "render", "trusted", "urlEncode"},
 		"json":     {"read", "write", "pretty"},
 		"files":    {"read", "write", "exists", "list"},
 		"time":     {"now", "today", "seconds", "at"},
@@ -557,8 +557,11 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 		}
 		return lib("Response")
 	case "web.render":
-		if c.argCount(line, "web.render", a, 1, 2) {
+		if c.argCount(line, "web.render", a, 1, 3) {
 			c.need(line, a[0], tText, "the template")
+			if len(a) == 3 {
+				c.need(line, a[2], tInt, "the status code")
+			}
 			if len(a) == 2 && a[1] != nil && a[1].Kind != KMap && a[1].Kind != KObject && a[1].Kind != KJson && a[1].Kind != KUnknown {
 				c.report(line, "a template's values must be a map, like {title: \"Shop\"}, or an object")
 			}
@@ -567,6 +570,11 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 			c.checkTemplate(line, exprs[0])
 		}
 		return lib("Response")
+	case "web.urlEncode":
+		if c.argCount(line, "web.urlEncode", a, 1, 1) {
+			c.need(line, a[0], tText, "the text")
+		}
+		return tText
 	case "web.trusted":
 		if c.argCount(line, "web.trusted", a, 1, 1) {
 			c.need(line, a[0], tText, "the HTML")
