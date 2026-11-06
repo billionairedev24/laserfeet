@@ -218,10 +218,13 @@ Beam inputs, results (`gives`) and object fields always say their type; values i
 | `Decimal` | Exact decimals, for money (`0.1 + 0.2` is exactly `0.3`); `19.99` written in code is a Decimal |
 | `Float` | Fast approximate decimals; Float and Decimal never mix without `float()` / `decimal()` |
 | `Text`, `Flag`, `Json` | Text, yes/no, data from outside |
+| `Date`, `Time`, `Duration`, `UUID` | `date("2026-11-06")`, `time.now()`, `hours(2)`, `uuid()`; `time + hours(2)` and `later - earlier` work |
+| `choice Status { Pending, Shipped(on: Date) }` | A value that is exactly one option; `focus` runs the matching arm and checks every option is handled |
+| `Page[T]`, `beam first[T](...)` | Generic objects, choices and beams |
 | `List[T]`, `Map[T]`, `T?` | Lists, named entries, and values that may be `nothing` (which must be checked before use) |
 | `Beam(A) gives B`, rule names | Beams as values; any object that follows a rule |
 
-`Item.from(json)` builds a checked object from JSON; in web routes a mismatch becomes a 400 reply naming the field.
+`Item.from(json)` builds a checked object from JSON; in web routes a mismatch becomes a 400 reply naming the field. `db.query(Product, sql, values)` does the same for database rows. `private` keeps a field or beam inside its object (and out of JSON), and `fails p: PayProblem { }` catches only one kind of problem.
 
 ## Memory
 

@@ -370,7 +370,8 @@ lf test app.lf</lf-code></div></li>
         <li style="--wl: var(--l532)"><span class="ver">0.3</span><strong>Standard library</strong><p>A built-in store, JSON, files, time, settings, and code split across files.</p></li>
         <li style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Types</strong><p>Required types, exact Decimal money, <code>lf check</code> before every run, objects 3.7x smaller.</p></li>
         <li style="--wl: var(--l405)"><span class="ver">0.5 – 0.6</span><strong>Editors, jobs, data, packages</strong><p>Live errors in VS Code, <code>fast</code> jobs, Docker, Laser Feet's own PostgreSQL driver, and <code>sole</code> packages from git.</p></li>
-        <li class="now" style="--wl: var(--l405)"><span class="ver">0.7</span><strong>Foundations</strong><p>A written <a href="https://github.com/billionairedev24/laserfeet/blob/main/docs/spec.md">language specification</a> with a conformance suite, <code>lf fmt</code>, <code>lf fix</code>, named blocks and nightly fuzzing. Next: enums, generics and typed database rows.</p></li>
+        <li style="--wl: var(--l405)"><span class="ver">0.7</span><strong>Foundations</strong><p>A written <a href="https://github.com/billionairedev24/laserfeet/blob/main/docs/spec.md">language specification</a> with a conformance suite, <code>lf fmt</code>, <code>lf fix</code>, named blocks and nightly fuzzing.</p></li>
+        <li class="now" style="--wl: var(--l405)"><span class="ver">0.8</span><strong>A complete language</strong><p>Choices and <code>focus</code>, generics, typed database rows, private members, typed problems, and <code>Date</code>, <code>Time</code>, <code>Duration</code> and <code>UUID</code>. Next: the web toolkit.</p></li>
       </ul>
     </div>
   </div>
@@ -523,6 +524,25 @@ launch {
     show double(21)
 }</lf-code>
         <p><code>x => x * 2</code> is a one-line beam, handy for passing to other beams. It takes its types from where it's used, so it doesn't need them written.</p>
+        <p><b>Generics.</b> A beam, object or choice can work with any type by naming it in brackets. Laser Feet works out what the name stands for at each use and checks everything against it.</p>
+<lf-code data-try>beam firstOr[T](items: List[T], fallback: T) gives T {
+    when count(items) is 0 {
+        send fallback
+    }
+    send items[0]
+}
+
+object Page[T] {
+    items: List[T]
+    total: Int
+}
+
+launch {
+    show firstOr([3, 4], 0) + 1          -- T is Int
+    show firstOr(["a"], "z").upper()     -- T is Text
+    page = Page(["Lamp", "Bulb"], 2)     -- a Page[Text]
+    show page.items then join(", ")
+}</lf-code>
 
         <h2 id="g4"><span class="num">05</span>Objects and rules</h2>
         <p>An <code>object</code> is a blueprint listing fields and the beams that work on them. Inside its beams, fields are used by name and <code>me</code> means the object itself. A <code>rule</code> lists beams an object promises to have; <code>follows</code> makes the promise and Laser Feet checks it.</p>
@@ -553,7 +573,35 @@ launch {
     tobi = User("Tobi", 12)
     show tobi
 }</lf-code>
-        <p>Every field has a type. Make an object by calling its name, filling fields in order or by name. Fields with a default, like <code>visits: Int = 0</code>, can be left out.</p>
+        <p>Every field has a type. Make an object by calling its name, filling fields in order or by name. Fields with a default, like <code>visits: Int = 0</code>, can be left out. Put <code>private</code> before a field or beam to keep it inside the object: only the object's own beams can use it, and private fields are never sent as JSON or filled from it.</p>
+        <h3>Choices and focus</h3>
+        <p>A <code>choice</code> is a value that is exactly one of a few options, and options can carry data. <code>focus</code> runs the arm that matches, and Laser Feet checks that every option has an arm, so adding an option later points you at every place that needs to handle it.</p>
+<lf-code data-try>choice Shipment {
+    Waiting
+    OnTheWay(carrier: Text, eta: Date)
+    Delivered(on: Date)
+}
+
+beam track(s: Shipment) gives Text {
+    focus s {
+        Waiting {
+            send "packing your order"
+        }
+        OnTheWay(carrier, eta) {
+            send "with {carrier}, arriving {eta}"
+        }
+        Delivered(on) {
+            send "delivered on {on.weekday}"
+        }
+    }
+}
+
+launch {
+    show track(Shipment.Waiting)
+    show track(Shipment.OnTheWay("DHL", date("2026-11-10")))
+    show track(Shipment.Delivered(date("2026-11-06")))
+}</lf-code>
+        <p>As JSON, an option without data is just its name (<code>"Waiting"</code>) and one with data says which it is: <code>{"kind": "Delivered", "on": "2026-11-06"}</code>. <code>focus</code> also works on plain values: <code>focus code { 200 { … } 404 { … } otherwise { … } }</code>.</p>
 
         <h2 id="g5"><span class="num">06</span>Decisions and loops</h2>
         <p><code>when</code> runs a block if the answer is <code>yes</code>; chain more checks with <code>otherwise when</code>. Compare with <code>is</code>, <code>is not</code>, <code>&lt;</code> and <code>&gt;</code>, and combine answers with <code>and</code>, <code>or</code> and <code>not</code>.</p>
@@ -617,6 +665,35 @@ launch {
         show "Caught: {problem}"
     }
     show "Still running"
+}</lf-code>
+        <p>Fail with a choice to say exactly what went wrong, and catch just that kind of problem with <code>fails p: Type</code>. An attempt can have several <code>fails</code>, tried in order; a problem none of them matches carries on outwards.</p>
+<lf-code data-try>choice PayProblem {
+    Declined(reason: Text)
+    TooBig(limit: Decimal)
+}
+
+beam pay(amount: Decimal) gives Text {
+    when amount > 100 {
+        fail PayProblem.TooBig(100)
+    }
+    send "paid {amount}"
+}
+
+launch {
+    attempt {
+        show pay(500)
+    } fails p: PayProblem {
+        focus p {
+            TooBig(limit) {
+                show "the limit is {limit}"
+            }
+            Declined(reason) {
+                show reason
+            }
+        }
+    } fails problem {
+        show "something else: {problem}"
+    }
 }</lf-code>
 
         <h2 id="g8"><span class="num">09</span>Doing things at the same time</h2>
@@ -745,7 +822,8 @@ launch {
           <tr><td><code>json.pretty(x)</code></td><td>JSON laid out for people to read</td></tr>
           <tr><td><code>files.read</code> / <code>files.write</code></td><td>Read or save a text file (saved safely, like the store)</td></tr>
           <tr><td><code>files.exists</code> / <code>files.list</code></td><td>Check for a file / list a folder</td></tr>
-          <tr><td><code>time.now()</code> / <code>time.today()</code></td><td>The time as <code>2026-11-05T20:40:00Z</code> / the date</td></tr>
+          <tr><td><code>time.now()</code> / <code>time.today()</code></td><td>The current <code>Time</code> (shown as <code>2026-11-05T20:40:00Z</code>) / today's <code>Date</code></td></tr>
+          <tr><td><code>time.at(text)</code></td><td>Read a <code>Time</code> from text like <code>2026-11-06T10:00:00Z</code></td></tr>
           <tr><td><code>time.seconds()</code></td><td>Seconds since 1970, for measuring time</td></tr>
           <tr><td><code>env(name, default)</code></td><td>A setting from the environment, like <code>PORT</code></td></tr>
         </table></div>
@@ -781,7 +859,15 @@ db.run("""
 
 db.run("insert into products values ($1, $2, $3)", ["LAMP-1", "Desk lamp", 19.99])
 cheap = db.query("select name, price from products where price < $1", [50])
-lamp = db.first("select * from products where sku = $1", ["LAMP-1"])   -- Json? (nothing if not found)
+lamp = db.first("select * from products where sku = $1", ["LAMP-1"])   -- a row, or nothing
+
+object Product {
+    sku: Text
+    name: Text
+    price: Decimal
+}
+products = db.query(Product, "select * from products order by name")   -- List[Product], every field checked
+one = db.first(Product, "select * from products where sku = $1", ["LAMP-1"])   -- Product?
 
 transaction with db as tx {
     tx.run("update products set price = price * 0.9 where price > $1", [100])
@@ -791,12 +877,12 @@ transaction with db as tx {
         <div class="tablewrap"><table>
           <tr><th>Beam</th><th>What it does</th></tr>
           <tr><td><code>postgres.open(url)</code></td><td>Connect, like <code>postgres://user:password@host:5432/shop</code>; keeps a pool of up to 10 connections</td></tr>
-          <tr><td><code>db.query(sql, values)</code></td><td>Every row, as a list of maps</td></tr>
-          <tr><td><code>db.first(sql, values)</code></td><td>The first row, or nothing</td></tr>
+          <tr><td><code>db.query(sql, values)</code></td><td>Every row, as a list of maps; <code>db.query(Product, sql, values)</code> gives a <code>List[Product]</code></td></tr>
+          <tr><td><code>db.first(sql, values)</code></td><td>The first row, or nothing; <code>db.first(Product, …)</code> gives a <code>Product?</code></td></tr>
           <tr><td><code>db.run(sql, values)</code></td><td>Change data; gives how many rows changed</td></tr>
           <tr><td><code>transaction with db as tx { }</code></td><td>All or nothing; any problem undoes the whole block</td></tr>
         </table></div>
-        <p class="note"><b>Secure by default:</b> a remote database is reached over TLS with its certificate checked (<code>sslmode=verify-full</code>); a database on the same machine doesn't need TLS. Login uses SCRAM-SHA-256, which also proves the server is real. <code>sslmode=prefer</code> is refused because it can quietly drop encryption. Turn rows into typed objects with <code>Product.from(row)</code>. A complete API is in <a href="https://github.com/billionairedev24/laserfeet/tree/main/examples/inventory">examples/inventory</a>.</p>
+        <p class="note"><b>Secure by default:</b> a remote database is reached over TLS with its certificate checked (<code>sslmode=verify-full</code>); a database on the same machine doesn't need TLS. Login uses SCRAM-SHA-256, which also proves the server is real. <code>sslmode=prefer</code> is refused because it can quietly drop encryption. Put an object first, <code>db.query(Product, …)</code>, and every row comes back as a checked <code>Product</code>; column names like <code>created_at</code> fill fields like <code>createdAt</code>. Dates, times and UUIDs arrive as <code>Date</code>, <code>Time</code> and <code>UUID</code>. A complete API is in <a href="https://github.com/billionairedev24/laserfeet/tree/main/examples/inventory">examples/inventory</a>.</p>
 
         <h2 id="g16"><span class="num">17</span>Packages</h2>
         <p>A package is Laser Feet code in a git repository, or a folder inside one, with a <code>package.lf</code> file. <code>lf get</code> adds it to your project; then <code>use</code> it by its address.</p>
@@ -860,6 +946,8 @@ launch {
           <tr><td><code>loop while</code> / <code>loop … times</code></td><td>Repeat</td></tr>
           <tr><td><code>skip</code> / <code>stop</code></td><td>Next item / leave the loop</td></tr>
           <tr><td><code>then</code></td><td>Pass a result into the next beam</td></tr>
+          <tr><td><code>choice</code> / <code>focus</code></td><td>A value that is one of several options / run the arm that matches a value</td></tr>
+          <tr><td><code>private</code></td><td>Keep a field or beam inside its object, or a beam inside its file</td></tr>
           <tr><td><code>fast</code></td><td>Start work at the same time; gives a job</td></tr>
           <tr><td><code>wait</code></td><td>Get a job's result: <code>wait job</code>, or <code>wait job for 5 seconds</code></td></tr>
           <tr><td><code>fast each … in</code></td><td>Run a block for every item at once and collect what each sends</td></tr>
@@ -877,6 +965,9 @@ launch {
           <tr><td><code>price: Decimal = 0</code></td><td>A field with a type and a default; also works for a value inside a beam</td></tr>
           <tr><td><code>Int</code> <code>Float</code> <code>Decimal</code></td><td>Whole numbers, fast approximate decimals, exact decimals</td></tr>
           <tr><td><code>Text</code> <code>Flag</code> <code>Json</code></td><td>Text, yes/no, data from outside</td></tr>
+          <tr><td><code>Date</code> <code>Time</code> <code>Duration</code> <code>UUID</code></td><td>A day (<code>date("2026-11-06")</code>), a moment in UTC (<code>time.now()</code>), a length of time (<code>hours(2)</code>, <code>minutes(90)</code>), an identifier (<code>uuid()</code>). <code>time + hours(2)</code>, <code>day + days(30)</code> and <code>later - earlier</code> work as you'd expect</td></tr>
+          <tr><td><code>choice Status { A, B(x: T) }</code></td><td>A value that is exactly one option; look inside with <code>focus</code></td></tr>
+          <tr><td><code>Page[T]</code></td><td>A generic object, choice or beam, with the types it holds</td></tr>
           <tr><td><code>List[T]</code> <code>Map[T]</code> <code>T?</code></td><td>A list, named entries, or a value that may be nothing</td></tr>
           <tr><td><code>Beam(A, B) gives C</code></td><td>A beam as a value</td></tr>
           <tr><td><code>Server</code> <code>Request</code> <code>Response</code> <code>Store</code> <code>Database</code></td><td>Library types</td></tr>

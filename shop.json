@@ -1,0 +1,19 @@
+{
+  "collections": {
+    "products": [
+      {
+        "id": 1,
+        "name": "Laser pointer",
+        "price": 12.5
+      },
+      {
+        "id": 2,
+        "name": "Running shoes",
+        "price": 79
+      }
+    ]
+  },
+  "next": {
+    "products": 2
+  }
+}

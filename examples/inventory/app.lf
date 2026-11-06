@@ -2,6 +2,9 @@
 --
 --   DATABASE_URL=postgres://user:password@localhost/shop lf run app.lf
 --   DATABASE_URL=... lf test app.lf
+--
+-- Every row comes back as a checked Product, stock levels are a choice, and a
+-- failed transfer says exactly what went wrong.
 
 use web
 use postgres
@@ -11,6 +14,29 @@ object Product {
     name: Text
     price: Decimal
     stock: Int = 0
+}
+
+-- what a customer sees about stock
+choice StockLevel {
+    Plenty
+    Low(left: Int)
+    Out
+}
+
+-- what can go wrong when moving stock
+choice TransferProblem {
+    UnknownProduct(sku: Text)
+    NotEnough(sku: Text, has: Int)
+}
+
+object Transfer {
+    source: Text
+    target: Text
+    amount: Int
+}
+
+object Total {
+    total: Decimal
 }
 
 db = postgres.open(env("DATABASE_URL", "postgres://postgres@localhost/postgres"))
@@ -24,18 +50,66 @@ db.run("""
     )
 """)
 
+beam find(sku: Text) gives Product? {
+    send db.first(Product, "select sku, name, price, stock from products where sku = $1", [sku])
+}
+
+beam level(p: Product) gives StockLevel {
+    when p.stock is 0 {
+        send StockLevel.Out
+    }
+    when p.stock < 5 {
+        send StockLevel.Low(p.stock)
+    }
+    send StockLevel.Plenty
+}
+
+-- move stock between two products: both changes happen, or neither does
+beam transfer(t: Transfer) {
+    transaction with db as tx {
+        source = tx.first(Product, "select sku, name, price, stock from products where sku = $1 for update", [t.source])
+        when source is nothing {
+            fail TransferProblem.UnknownProduct(t.source)
+        }
+        when source.stock < t.amount {
+            fail TransferProblem.NotEnough(t.source, source.stock)
+        }
+        tx.run("update products set stock = stock - $1 where sku = $2", [t.amount, t.source])
+        moved = tx.run("update products set stock = stock + $1 where sku = $2", [t.amount, t.target])
+        when moved is 0 {
+            fail TransferProblem.UnknownProduct(t.target)
+        }
+    }
+}
+
+beam stockValue() gives Decimal {
+    row = db.first(Total, "select coalesce(sum(price * stock), 0) as total from products")
+    when row is nothing {
+        send 0
+    }
+    send row.total
+}
+
 server = web.open(int(env("PORT", "8080")))
 
 server.get("/products") {
-    send db.query("select sku, name, price, stock from products order by name")
+    send db.query(Product, "select sku, name, price, stock from products order by name")
 }
 
 server.get("/products/:sku") as request {
-    found = db.first("select sku, name, price, stock from products where sku = $1", [request.params.sku])
+    found = find(request.params.sku)
     when found is nothing {
         send web.status(404, {error: "no product with that sku"})
     }
     send found
+}
+
+server.get("/products/:sku/stock") as request {
+    found = find(request.params.sku)
+    when found is nothing {
+        send web.status(404, {error: "no product with that sku"})
+    }
+    send {sku: found.sku, level: level(found)}
 }
 
 server.post("/products") as request {
@@ -45,29 +119,21 @@ server.post("/products") as request {
     send web.status(201, p)
 }
 
--- move stock between two products: both changes happen, or neither does
-beam transfer(source: Text, target: Text, amount: Int) {
-    transaction with db as tx {
-        taken = tx.run("update products set stock = stock - $1 where sku = $2", [amount, source])
-        when taken is 0 {
-            fail "no product {source}"
-        }
-        tx.run("update products set stock = stock + $1 where sku = $2", [amount, target])
-    }
-}
-
 server.post("/transfer") as request {
-    t = request.json
-    transfer(t.from, t.to, int(text(t.amount)))
-    send {ok: yes}
-}
-
-beam stockValue() gives Decimal {
-    row = db.first("select coalesce(sum(price * stock), 0) as total from products")
-    when row is nothing {
-        send 0
+    t = Transfer.from(request.json)
+    attempt {
+        transfer(t)
+    } fails p: TransferProblem {
+        focus p {
+            UnknownProduct(sku) {
+                send web.status(404, {error: "no product {sku}"})
+            }
+            NotEnough(sku, has) {
+                send web.status(409, {error: "{sku} has only {has} in stock"})
+            }
+        }
     }
-    send decimal(text(row.total))
+    send {ok: yes}
 }
 
 launch {
@@ -80,13 +146,24 @@ beam fresh() {
     db.run("truncate products")
 }
 
+beam add(sku: Text, stock: Int) {
+    server.visit("/products", "POST", {sku: sku, name: sku, price: 1, stock: stock})
+}
+
+beam stockOf(sku: Text) gives Int {
+    p = find(sku)
+    when p is nothing {
+        fail "no product {sku}"
+    }
+    send p.stock
+}
+
 test "adding and reading products" {
     fresh()
     added = server.visit("/products", "POST", {sku: "LAMP-1", name: "Desk lamp", price: 19.99, stock: 3})
     expect added.status is 201
-    lamp = server.visit("/products/LAMP-1").json
-    expect lamp.name is "Desk lamp"
-    expect lamp.price is 19.99
+    expect stockOf("LAMP-1") is 3
+    expect server.visit("/products/LAMP-1").json.price is 19.99
     expect server.visit("/products/NOPE").status is 404
 }
 
@@ -99,8 +176,8 @@ test "bad input is refused with a clear message" {
 
 test "SQL in values is just text" {
     fresh()
-    server.visit("/products", "POST", {sku: "Z'; drop table products; --", name: "Sneaky", price: 1})
-    expect count(server.visit("/products").json) is 1
+    add("Z'; drop table products; --", 1)
+    expect count(db.query(Product, "select sku, name, price, stock from products")) is 1
 }
 
 test "money stays exact" {
@@ -110,16 +187,26 @@ test "money stays exact" {
     expect stockValue() is 0.90
 }
 
-test "a failed transfer changes nothing" {
+test "stock levels" {
     fresh()
-    server.visit("/products", "POST", {sku: "A", name: "A", price: 1, stock: 5})
-    server.visit("/products", "POST", {sku: "B", name: "B", price: 1, stock: 0})
-    transfer("A", "B", 2)
-    expect db.first("select stock from products where sku = 'B'").stock is 2
-    attempt {
-        transfer("A", "B", 10)      -- more than A has: the database refuses
-    } fails problem {
-    }
-    expect db.first("select stock from products where sku = 'A'").stock is 3
-    expect db.first("select stock from products where sku = 'B'").stock is 2
+    add("A", 20)
+    add("B", 2)
+    add("C", 0)
+    expect server.visit("/products/A/stock").json.level is "Plenty"
+    expect server.visit("/products/B/stock").json.level.left is 2
+    expect server.visit("/products/C/stock").json.level is "Out"
+}
+
+test "transfers move stock, or explain why not" {
+    fresh()
+    add("A", 5)
+    add("B", 0)
+    expect server.visit("/transfer", "POST", {source: "A", target: "B", amount: 2}).status is 200
+    expect stockOf("A") is 3
+    expect stockOf("B") is 2
+    tooMany = server.visit("/transfer", "POST", {source: "A", target: "B", amount: 10})
+    expect tooMany.status is 409
+    expect tooMany.json.error is "A has only 3 in stock"
+    expect server.visit("/transfer", "POST", {source: "A", target: "NOPE", amount: 1}).status is 404
+    expect stockOf("A") is 3     -- the failed transfers changed nothing
 }

@@ -392,6 +392,12 @@ transaction with db as tx {
 
 - `db.query(sql, values)` gives a list of rows, `db.first(sql, values)` one row
   or `nothing`, and `db.run(sql, values)` the number of rows changed.
+- With an object first, rows become checked objects:
+  `db.query(Product, sql, values)` gives a `List[Product]` and
+  `db.first(Product, sql, values)` a `Product?`. Column names match field names
+  without regard to case or underscores (`created_at` fills `createdAt`). A
+  missing field, a value of the wrong type, or a column with no field is a
+  problem that names it.
 - Values are always sent separately from the SQL, never pasted into it.
 - `transaction with db as tx { ... }`: everything the block does through `tx`
   happens, or, if anything fails, none of it does. `db.transaction() as tx { }`
