@@ -6,7 +6,7 @@ Version 0.1 is a prototype: an interpreter written in Go.
 
 ## Build and run
 
-You need Go 1.22 or newer.
+You need Go 1.24 or newer. Releases are built with the newest supported Go (1.26).
 
 ```
 go build -o lf ./cmd/lf
