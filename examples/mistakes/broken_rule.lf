@@ -1,7 +1,7 @@
 rule Greeter {
-    beam greet()
+    beam greet() gives Text
 }
 
 object Robot follows Greeter {
-    model
+    model: Text
 }

@@ -1,12 +1,12 @@
 -- Benchmark: loops, lists, objects and text
 object Point {
-    x
-    y
+    x: Int
+    y: Int
 }
 
 launch {
     total = 0
-    points = []
+    points: List[Point] = []
     each i in 1 to 200000 {
         points.add(Point(i, i * 2))
     }

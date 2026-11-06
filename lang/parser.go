@@ -181,8 +181,12 @@ func (p *parser) statement() Stmt {
 		case "lock":
 			p.next()
 			name := p.expectIdent("a name after 'lock'")
+			var te *TypeExpr
+			if p.acceptSym(":") {
+				te = p.typeExpr()
+			}
 			p.expectSym("=", "after the name of a locked value")
-			return &AssignStmt{t.Line, &Ident{name.Line, name.Text}, p.expr(), true}
+			return &AssignStmt{Line: t.Line, Target: &Ident{name.Line, name.Text}, Value: p.expr(), Lock: true, Type: te}
 		case "object":
 			return p.objectDecl()
 		case "rule":
@@ -269,6 +273,13 @@ func (p *parser) statement() Stmt {
 			p.fail(t.Line, "'fails' must come right after an 'attempt' block")
 		}
 	}
+	if t.Type == IDENT && p.toks[p.pos+1].Type == SYMBOL && p.toks[p.pos+1].Text == ":" {
+		p.next()
+		p.next()
+		te := p.typeExpr()
+		p.expectSym("=", "after the type, like total: Decimal = 0")
+		return &AssignStmt{Line: t.Line, Target: &Ident{t.Line, t.Text}, Value: p.expr(), Type: te}
+	}
 	x := p.expr()
 	if p.isSym("=") {
 		eq := p.next()
@@ -277,34 +288,85 @@ func (p *parser) statement() Stmt {
 		default:
 			p.fail(eq.Line, "the left side of '=' must be a name, like 'total = 5'")
 		}
-		return &AssignStmt{eq.Line, x, p.expr(), false}
+		return &AssignStmt{Line: eq.Line, Target: x, Value: p.expr()}
 	}
 	return &ExprStmt{x.Ln(), x}
 }
 
-func (p *parser) params() []string {
-	var ps []string
+// typeExpr reads a type: Int, Text?, List[Item], Map[Decimal], Beam(Int, Text) gives Flag.
+func (p *parser) typeExpr() *TypeExpr {
+	t := p.peek()
+	if t.Type != IDENT {
+		p.fail(t.Line, "I expected a type here, like Int, Text or List[Text], but found %s", describe(t))
+	}
+	p.next()
+	te := &TypeExpr{Line: t.Line, Name: t.Text}
+	if te.Name == "Beam" && p.acceptSym("(") {
+		for !p.isSym(")") {
+			te.Params = append(te.Params, p.typeExpr())
+			if !p.acceptSym(",") {
+				break
+			}
+		}
+		p.expectSym(")", "to close the Beam's input types")
+		if p.acceptKw("gives") {
+			te.Result = p.typeExpr()
+		}
+	} else if p.acceptSym("[") {
+		for {
+			te.Args = append(te.Args, p.typeExpr())
+			if !p.acceptSym(",") {
+				break
+			}
+		}
+		p.expectSym("]", "to close the [ ] of the type")
+	}
+	if p.acceptSym("?") {
+		te.Optional = true
+	}
+	return te
+}
+
+// params reads a beam's inputs. Named beams must give each input a type.
+func (p *parser) params(typed bool, what string) ([]string, []*TypeExpr) {
+	var names []string
+	var types []*TypeExpr
 	if !p.acceptSym("(") {
-		return ps
+		return names, types
 	}
 	for !p.isSym(")") {
-		ps = append(ps, p.expectIdent("a name for each input").Text)
-		if p.acceptSym(":") { // optional type, ignored for now
-			p.expectIdent("a type name")
+		n := p.expectIdent("a name for each input")
+		names = append(names, n.Text)
+		if p.acceptSym(":") {
+			types = append(types, p.typeExpr())
+		} else if typed {
+			p.fail(n.Line, "give the input '%s' of %s a type, like %s: Text", n.Text, what, n.Text)
+		} else {
+			types = append(types, nil)
 		}
 		if !p.acceptSym(",") {
 			break
 		}
 	}
 	p.expectSym(")", "to close the list of inputs")
-	return ps
+	return names, types
+}
+
+// signature reads the inputs and the optional 'gives Type' of a beam.
+func (p *parser) signature(typed bool, what string) ([]string, *Sig) {
+	names, types := p.params(typed, what)
+	sig := &Sig{Params: types}
+	if p.acceptKw("gives") {
+		sig.Result = p.typeExpr()
+	}
+	return names, sig
 }
 
 func (p *parser) beamDecl() *BeamDecl {
 	t := p.next() // beam
 	name := p.expectIdent("a name for the beam")
-	ps := p.params()
-	return &BeamDecl{t.Line, name.Text, ps, p.block("beam " + name.Text)}
+	ps, sig := p.signature(true, "beam "+name.Text)
+	return &BeamDecl{Line: t.Line, Name: name.Text, Params: ps, Sig: sig, Body: p.block("beam " + name.Text)}
 }
 
 func (p *parser) objectDecl() Stmt {
@@ -329,10 +391,11 @@ func (p *parser) objectDecl() Stmt {
 			d.Methods = append(d.Methods, p.beamDecl())
 		} else {
 			f := p.expectIdent("a field name or a beam inside the object")
-			fd := FieldDecl{Name: f.Text}
-			if p.acceptSym(":") {
-				p.expectIdent("a type name")
+			fd := FieldDecl{Name: f.Text, Line: f.Line}
+			if !p.acceptSym(":") {
+				p.fail(f.Line, "give the field '%s' a type, like %s: Text", f.Text, f.Text)
 			}
+			fd.Type = p.typeExpr()
 			if p.acceptSym("=") {
 				fd.Default = p.expr()
 			}
@@ -352,11 +415,14 @@ func (p *parser) ruleDecl() Stmt {
 		if p.acceptSym("}") {
 			return d
 		}
+		bt := p.peek()
 		if !p.acceptKw("beam") {
-			p.fail(p.peek().Line, "a rule can only list beams, like 'beam greet()'")
+			p.fail(bt.Line, "a rule can only list beams, like 'beam greet() gives Text'")
 		}
-		d.Methods = append(d.Methods, p.expectIdent("a beam name").Text)
-		p.params()
+		mname := p.expectIdent("a beam name").Text
+		ps, sig := p.signature(true, "beam "+mname)
+		d.Methods = append(d.Methods, mname)
+		d.Sigs = append(d.Sigs, &BeamDecl{Line: bt.Line, Name: mname, Params: ps, Sig: sig})
 		p.endOfStatement()
 	}
 }
@@ -577,12 +643,12 @@ func (p *parser) primary() Expr {
 			return &MeExpr{t.Line}
 		case "beam":
 			p.next()
-			ps := p.params()
+			ps, sig := p.signature(false, "this beam")
 			saved := p.noTrail
 			p.noTrail = 0
 			body := p.block("the beam")
 			p.noTrail = saved
-			return &Lambda{Line: t.Line, Params: ps, Body: body}
+			return &Lambda{Line: t.Line, Params: ps, Sig: sig, Body: body}
 		}
 		p.fail(t.Line, "I didn't expect the keyword '%s' here", t.Text)
 	case SYMBOL:

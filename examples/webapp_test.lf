@@ -9,7 +9,7 @@ server.get("/hello") {
 }
 
 server.get("/square/:n") {
-    n = number(request.params.n)
+    n = int(request.params.n)
     send {number: n, square: n * n}
 }
 

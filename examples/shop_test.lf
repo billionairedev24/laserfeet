@@ -1,20 +1,20 @@
 -- Tests live right next to your code. Run them with: lf test shop_test.lf
 
 object Item {
-    name
-    price
-    quantity = 1
+    name: Text
+    price: Decimal
+    quantity: Int = 1
 }
 
-beam cartTotal(items) {
-    total = 0
+beam cartTotal(items: List[Item]) gives Decimal {
+    total: Decimal = 0
     each item in items {
         total = total + item.price * item.quantity
     }
     send total
 }
 
-beam discount(total) {
+beam discount(total: Decimal) gives Decimal {
     when total >= 100 {
         send total * 0.9
     }
@@ -26,7 +26,7 @@ test "an empty cart costs nothing" {
 }
 
 test "totals add up price times quantity" {
-    cart = [Item("Shoes", 50, 2), Item("Socks", 5)]
+    cart = [Item("Shoes", 49.99, 2), Item("Socks", 5.02)]
     expect cartTotal(cart) is 105
 }
 

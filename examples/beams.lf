@@ -1,14 +1,14 @@
 -- Beams are functions: inputs go in, 'send' shoots the result out
 
-beam add(a, b) {
+beam add(a: Int, b: Int) gives Int {
     send a + b
 }
 
-beam greet(name) {
+beam greet(name: Text) gives Text {
     send "Welcome, {name}!"
 }
 
-beam factorial(n) {
+beam factorial(n: Int) gives Int {
     when n <= 1 {
         send 1
     }

@@ -136,7 +136,9 @@ func (a *Decimal) Mod(b *Decimal) (*Decimal, error) {
 	return &Decimal{coef: new(big.Int).Rem(x, y), scale: s}, nil
 }
 
-func (a *Decimal) Neg() *Decimal { return &Decimal{coef: new(big.Int).Neg(a.coef), scale: a.scale, literal: a.literal} }
+func (a *Decimal) Neg() *Decimal {
+	return &Decimal{coef: new(big.Int).Neg(a.coef), scale: a.scale, literal: a.literal}
+}
 
 func (a *Decimal) Cmp(b *Decimal) int {
 	x, y, _ := align(a, b)

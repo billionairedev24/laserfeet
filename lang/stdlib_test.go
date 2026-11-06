@@ -67,7 +67,7 @@ show db.add("notes", {text: "new"}).id`)
 
 func TestUseFiles(t *testing.T) {
 	files := map[string]string{
-		"helpers.lf": "beam twice(x) {\n    send x * 2\n}\n",
+		"helpers.lf": "beam twice(x: Int) gives Int {\n    send x * 2\n}\n",
 		"loop_a.lf":  "use \"loop_b.lf\"\n",
 		"loop_b.lf":  "use \"loop_a.lf\"\n",
 	}

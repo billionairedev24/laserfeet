@@ -319,8 +319,8 @@ func copyRecord(in *Interp, line int, v Value) *Map {
 			m.Set(k, x.M[k])
 		}
 	case *Instance:
-		for _, f := range x.Class.Fields {
-			m.Set(f.Name, x.Fields[f.Name])
+		for i, f := range x.Class.Fields {
+			m.Set(f.Name, x.Slots[i])
 		}
 	default:
 		in.fail(line, "a store can only save maps and objects, not %s", typeName(v))

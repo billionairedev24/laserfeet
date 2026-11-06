@@ -1,5 +1,5 @@
 -- Benchmark: recursive calls and arithmetic
-beam fib(n) {
+beam fib(n: Int) gives Int {
     when n < 2 {
         send n
     }

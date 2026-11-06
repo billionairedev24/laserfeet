@@ -1,8 +1,8 @@
 -- 'then' passes a result to the next step, like a beam of light through lenses
 
 object User {
-    name
-    age
+    name: Text
+    age: Int
 }
 
 launch {

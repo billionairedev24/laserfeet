@@ -29,6 +29,7 @@ func (m *Map) Set(k string, v Value) {
 type Beam struct {
 	Name    string
 	Params  []string
+	Sig     *Sig
 	Body    []Stmt
 	Expr    Expr
 	Closure *Env
@@ -49,16 +50,33 @@ type Class struct {
 	Methods map[string]*BeamDecl
 	Follows []string
 	Env     *Env
+	index   map[string]int // field name -> slot
+	types   []*Type        // field types, by slot
 }
 
 type RuleDef struct {
 	Name    string
 	Methods []string
+	Sigs    []*BeamDecl
 }
 
+// Instance is one object. Its fields live in fixed slots in the order the object
+// declares them, which takes far less memory than a map per object.
 type Instance struct {
-	Class  *Class
-	Fields map[string]Value
+	Class *Class
+	Slots []Value
+}
+
+func (o *Instance) field(name string) (Value, bool) {
+	if i, ok := o.Class.index[name]; ok {
+		return o.Slots[i], true
+	}
+	return nil, false
+}
+
+func (o *Instance) hasField(name string) bool {
+	_, ok := o.Class.index[name]
+	return ok
 }
 
 type Module struct {
@@ -141,8 +159,8 @@ func toText(v Value, quote bool) string {
 		return "{" + strings.Join(parts, ", ") + "}"
 	case *Instance:
 		parts := []string{}
-		for _, f := range x.Class.Fields {
-			parts = append(parts, f.Name+": "+toText(x.Fields[f.Name], true))
+		for i, f := range x.Class.Fields {
+			parts = append(parts, f.Name+": "+toText(x.Slots[i], true))
 		}
 		return x.Class.Name + "(" + strings.Join(parts, ", ") + ")"
 	case *Beam:
@@ -207,8 +225,8 @@ func equal(a, b Value) bool {
 		if x == y {
 			return true
 		}
-		for _, f := range x.Class.Fields {
-			if !equal(x.Fields[f.Name], y.Fields[f.Name]) {
+		for i := range x.Class.Fields {
+			if !equal(x.Slots[i], y.Slots[i]) {
 				return false
 			}
 		}

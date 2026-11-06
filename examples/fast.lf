@@ -1,6 +1,6 @@
 -- 'fast' runs work at the same time as the rest of the program
 
-beam brew(drink, seconds) {
+beam brew(drink: Text, seconds: Decimal) {
     pause(seconds)
     show "{drink} is ready"
 }

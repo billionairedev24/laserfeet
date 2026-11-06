@@ -25,7 +25,7 @@ server.get("/hello/:name") {
     send greet(request.params.name)
 }
 
-beam greet(name) {
+beam greet(name: Text) gives Text {
     send "Hello, {name}!"
 }
 

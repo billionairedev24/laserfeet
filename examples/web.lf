@@ -4,9 +4,9 @@
 use web
 
 object Product {
-    id
-    name
-    price
+    id: Int
+    name: Text
+    price: Decimal
 }
 
 products = [
@@ -30,7 +30,7 @@ server.get("/products") {
 }
 
 server.get("/products/:id") {
-    wanted = number(request.params.id)
+    wanted = int(request.params.id)
     found = products then findFirst(id is wanted)
     when found is nothing {
         send web.status(404, "No product with id {wanted}")

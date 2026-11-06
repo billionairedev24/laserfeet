@@ -214,6 +214,11 @@ func (s *Server) handle(in *Interp, method, rawPath, body string) (resp *Respons
 func (s *Server) run(in *Interp, r *route, req *Map) (resp *Response) {
 	defer func() {
 		if x := recover(); x != nil {
+			if re, ok := x.(*RuntimeError); ok && re.Status == 400 {
+				// the visitor sent something that doesn't fit: tell them what (it's about their input)
+				resp = &Response{Status: 400, Body: toJSON(mapOf("error", re.Msg)), ContentType: "application/json"}
+				return
+			}
 			if re, ok := x.(*RuntimeError); ok {
 				in.print("Problem while handling " + r.pattern + ": " + re.Error())
 				// details go to the server log only, never to the visitor
@@ -259,8 +264,8 @@ func toPlain(v Value) any {
 		return out
 	case *Instance:
 		out := map[string]any{}
-		for k, it := range x.Fields {
-			out[k] = toPlain(it)
+		for i, f := range x.Class.Fields {
+			out[f.Name] = toPlain(x.Slots[i])
 		}
 		return out
 	case int64, float64, string, bool, nil:
@@ -307,7 +312,7 @@ func writeJSON(b *strings.Builder, v Value) {
 	case *Instance:
 		b.WriteByte('{')
 		for i, f := range x.Class.Fields {
-			field(i, f.Name, x.Fields[f.Name])
+			field(i, f.Name, x.Slots[i])
 		}
 		b.WriteByte('}')
 	case *Decimal:
@@ -323,4 +328,10 @@ func writeJSON(b *strings.Builder, v Value) {
 		out, _ := json.Marshal(Text(v))
 		b.Write(out)
 	}
+}
+
+func mapOf(k string, v Value) *Map {
+	m := NewMap()
+	m.Set(k, v)
+	return m
 }

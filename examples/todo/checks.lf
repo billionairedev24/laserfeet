@@ -1,6 +1,6 @@
 -- Rules for what a valid to-do looks like. Used by app.lf with: use "checks.lf"
 
-beam problemWith(todo) {
+beam problemWith(todo: Json) gives Text? {
     when todo is nothing {
         send "send the to-do as JSON, like {\"title\": \"Buy milk\"}"
     }

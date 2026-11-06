@@ -1,6 +1,6 @@
 -- Handling problems with attempt / fails
 
-beam divide(a, b) {
+beam divide(a: Int, b: Int) gives Decimal {
     when b is 0 {
         fail "can't split {a} into zero parts"
     }

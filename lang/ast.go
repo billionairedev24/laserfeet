@@ -75,8 +75,19 @@ type Then struct {
 type Lambda struct {
 	Line   int
 	Params []string
+	Sig    *Sig   // types, when written (beam(x: Int) gives Int { ... })
 	Body   []Stmt // block body
 	Expr   Expr   // or single expression body
+}
+
+// Sig holds the written types of a beam's inputs and result, and their resolved
+// form once the beam has been used (resolved once, then reused for every call).
+type Sig struct {
+	Params   []*TypeExpr // nil entries for inputs without a written type
+	Result   *TypeExpr   // nil when the beam gives nothing
+	resolved bool
+	params   []*Type
+	result   *Type
 }
 
 func (e *NumberLit) Ln() int  { return e.Line }
@@ -113,6 +124,7 @@ type AssignStmt struct {
 	Target Expr
 	Value  Expr
 	Lock   bool
+	Type   *TypeExpr // optional, as in: names: List[Text] = []
 }
 type ExprStmt struct {
 	Line int
@@ -122,6 +134,7 @@ type BeamDecl struct {
 	Line   int
 	Name   string
 	Params []string
+	Sig    *Sig
 	Body   []Stmt
 }
 type SendStmt struct {
@@ -130,7 +143,9 @@ type SendStmt struct {
 }
 type FieldDecl struct {
 	Name    string
+	Type    *TypeExpr
 	Default Expr
+	Line    int
 }
 type ObjectDecl struct {
 	Line    int
@@ -143,6 +158,7 @@ type RuleDecl struct {
 	Line    int
 	Name    string
 	Methods []string
+	Sigs    []*BeamDecl // the promised beams, with their types and no body
 }
 type WhenStmt struct {
 	Line      int

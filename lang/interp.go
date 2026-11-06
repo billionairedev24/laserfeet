@@ -12,9 +12,10 @@ import (
 
 // RuntimeError is a problem that happens while the program runs.
 type RuntimeError struct {
-	Line  int
-	Msg   string
-	Value Value // what was passed to `fail`, if anything
+	Line   int
+	Msg    string
+	Value  Value // what was passed to `fail`, if anything
+	Status int   // for bad input from outside (like Item.from), 400; web replies use it
 }
 
 func (e *RuntimeError) Error() string { return fmt.Sprintf("Problem on line %d: %s", e.Line, e.Msg) }
@@ -27,6 +28,7 @@ type testFailure struct {
 type binding struct {
 	v      Value
 	locked bool
+	t      *Type // set when the name was given a type, like total: Decimal = 0
 }
 
 // Env holds the names visible at one point in the program.
@@ -79,12 +81,12 @@ func (e *Env) define(name string, v Value, locked bool) {
 		return
 	}
 	if e.big != nil {
-		e.big[name] = &binding{v, locked}
+		e.big[name] = &binding{v: v, locked: locked}
 		return
 	}
 	if len(e.names) < smallScope {
 		e.names = append(e.names, name)
-		e.binds = append(e.binds, binding{v, locked})
+		e.binds = append(e.binds, binding{v: v, locked: locked})
 		return
 	}
 	e.big = make(map[string]*binding, 2*smallScope)
@@ -93,7 +95,7 @@ func (e *Env) define(name string, v Value, locked bool) {
 		e.big[n] = &b
 	}
 	e.names, e.binds = nil, nil
-	e.big[name] = &binding{v, locked}
+	e.big[name] = &binding{v: v, locked: locked}
 }
 
 func (e *Env) lookup(name string) (Value, bool) {
@@ -102,11 +104,11 @@ func (e *Env) lookup(name string) (Value, bool) {
 			return b.v, true
 		}
 		if s.obj != nil {
-			if v, ok := s.obj.Fields[name]; ok {
+			if v, ok := s.obj.field(name); ok {
 				return v, true
 			}
 			if m, ok := s.obj.Class.Methods[name]; ok {
-				return &Beam{Name: m.Name, Params: m.Params, Body: m.Body, Closure: s.obj.Class.Env, Self: s.obj}, true
+				return &Beam{Name: m.Name, Params: m.Params, Sig: m.Sig, Body: m.Body, Closure: s.obj.Class.Env, Self: s.obj}, true
 			}
 		}
 	}
@@ -121,8 +123,8 @@ func (e *Env) names_() []string {
 			out = append(out, k)
 		}
 		if s.obj != nil {
-			for k := range s.obj.Fields {
-				out = append(out, k)
+			for _, f := range s.obj.Class.Fields {
+				out = append(out, f.Name)
 			}
 		}
 	}
@@ -186,13 +188,13 @@ func (in *Interp) loadInto(prog *Program, env *Env, main bool) {
 	for _, s := range prog.Stmts {
 		switch d := s.(type) {
 		case *RuleDecl:
-			env.define(d.Name, &RuleDef{d.Name, d.Methods}, true)
+			env.define(d.Name, &RuleDef{Name: d.Name, Methods: d.Methods, Sigs: d.Sigs}, true)
 		}
 	}
 	for _, s := range prog.Stmts {
 		switch d := s.(type) {
 		case *BeamDecl:
-			env.define(d.Name, &Beam{Name: d.Name, Params: d.Params, Body: d.Body, Closure: env}, true)
+			env.define(d.Name, &Beam{Name: d.Name, Params: d.Params, Sig: d.Sig, Body: d.Body, Closure: env}, true)
 		case *ObjectDecl:
 			in.declareObject(d, env)
 		case *LaunchStmt:
@@ -221,7 +223,13 @@ func (in *Interp) loadInto(prog *Program, env *Env, main bool) {
 }
 
 func (in *Interp) declareObject(d *ObjectDecl, env *Env) {
-	c := &Class{Name: d.Name, Fields: d.Fields, Methods: map[string]*BeamDecl{}, Follows: d.Follows, Env: env}
+	c := &Class{Name: d.Name, Fields: d.Fields, Methods: map[string]*BeamDecl{}, Follows: d.Follows, Env: env, index: map[string]int{}}
+	for i, f := range d.Fields {
+		if _, dup := c.index[f.Name]; dup {
+			in.fail(d.Line, "object %s has two fields called '%s'", d.Name, f.Name)
+		}
+		c.index[f.Name] = i
+	}
 	for _, m := range d.Methods {
 		c.Methods[m.Name] = m
 	}
@@ -231,9 +239,13 @@ func (in *Interp) declareObject(d *ObjectDecl, env *Env) {
 		if !ok || !isRule {
 			in.fail(d.Line, "object %s follows '%s', but there is no rule with that name", d.Name, rn)
 		}
-		for _, m := range r.Methods {
-			if _, ok := c.Methods[m]; !ok {
+		for i, m := range r.Methods {
+			got, ok := c.Methods[m]
+			if !ok {
 				in.fail(d.Line, "object %s follows the rule %s, so it must have a beam called '%s'", d.Name, r.Name, m)
+			}
+			if i < len(r.Sigs) && len(got.Params) != len(r.Sigs[i].Params) {
+				in.fail(got.Line, "the rule %s says %s takes %d input(s), but %s's %s takes %d", r.Name, m, len(r.Sigs[i].Params), d.Name, m, len(got.Params))
 			}
 		}
 	}
@@ -457,7 +469,7 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 	case *ExpectStmt:
 		in.expect(s, env)
 	case *BeamDecl:
-		env.define(s.Name, &Beam{Name: s.Name, Params: s.Params, Body: s.Body, Closure: env}, true)
+		env.define(s.Name, &Beam{Name: s.Name, Params: s.Params, Sig: s.Sig, Body: s.Body, Closure: env}, true)
 	case *ObjectDecl, *RuleDecl:
 		in.fail(s.Ln(), "objects and rules must be created at the top of the file, not inside a block")
 	case *LaunchStmt:
@@ -520,12 +532,21 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 	v := in.eval(s.Value, env)
 	switch t := s.Target.(type) {
 	case *Ident:
-		if s.Lock {
+		var declared *Type
+		if s.Type != nil {
+			declared = in.resolveType(s.Type, env)
+			v = in.mustConform(s.Line, v, declared, "'"+t.Name+"'")
+		}
+		if s.Lock || s.Type != nil {
 			sc := env.scope()
-			if sc.find(t.Name) != nil {
-				in.fail(s.Line, "'%s' already exists here, so it can't be locked again", t.Name)
+			if b := sc.find(t.Name); b != nil {
+				if s.Lock {
+					in.fail(s.Line, "'%s' already exists here, so it can't be locked again", t.Name)
+				}
+				in.fail(s.Line, "'%s' already exists here; give a name its type the first time you set it", t.Name)
 			}
-			sc.define(t.Name, v, true)
+			sc.define(t.Name, v, s.Lock)
+			sc.find(t.Name).t = declared
 			return
 		}
 		for e := env; e != nil && !e.isBuiltins; e = e.parent {
@@ -533,12 +554,15 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 				if b.locked {
 					in.fail(s.Line, "'%s' is locked, so it can't be changed", t.Name)
 				}
+				if b.t != nil {
+					v = in.mustConform(s.Line, v, b.t, "'"+t.Name+"'")
+				}
 				b.v = v
 				return
 			}
 			if e.obj != nil {
-				if _, ok := e.obj.Fields[t.Name]; ok {
-					e.obj.Fields[t.Name] = v
+				if i, ok := e.obj.Class.index[t.Name]; ok {
+					e.obj.Slots[i] = in.fieldValue(s.Line, e.obj.Class, i, v)
 					return
 				}
 			}
@@ -548,10 +572,11 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 		obj := in.eval(t.Object, env)
 		switch o := obj.(type) {
 		case *Instance:
-			if _, ok := o.Fields[t.Name]; !ok {
+			i, ok := o.Class.index[t.Name]
+			if !ok {
 				in.fail(s.Line, "%s has no field called '%s'", o.Class.Name, t.Name)
 			}
-			o.Fields[t.Name] = v
+			o.Slots[i] = in.fieldValue(s.Line, o.Class, i, v)
 		case *Map:
 			o.Set(t.Name, v)
 		default:
@@ -662,7 +687,7 @@ func (in *Interp) eval(x Expr, env *Env) Value {
 		}
 		in.fail(x.Line, "I can't use [ ] on %s", typeName(obj))
 	case *Lambda:
-		return &Beam{Params: x.Params, Body: x.Body, Expr: x.Expr, Closure: env}
+		return &Beam{Params: x.Params, Sig: x.Sig, Body: x.Body, Expr: x.Expr, Closure: env}
 	case *Call:
 		return in.callExpr(x, env, nil, false)
 	case *Then:
@@ -824,7 +849,13 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		vals := in.matchArgs(label, f.Params, args, names, line)
 		parent := f.Closure
 		if f.Self != nil {
-			parent = &Env{names: []string{"me"}, binds: []binding{{f.Self, true}}, parent: f.Closure, obj: f.Self}
+			parent = &Env{names: []string{"me"}, binds: []binding{{v: f.Self, locked: true}}, parent: f.Closure, obj: f.Self}
+		}
+		ptypes, rtype := in.sigTypes(f)
+		for i, pt := range ptypes {
+			if pt != nil && i < len(vals) {
+				vals[i] = in.mustConform(line, vals[i], pt, fmt.Sprintf("the input '%s' of %s", f.Params[i], label))
+			}
 		}
 		e := &Env{parent: parent, isScope: true}
 		if len(f.Params) <= smallScope {
@@ -848,43 +879,44 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		if c == cStop || c == cSkip {
 			in.fail(line, "'stop' and 'skip' only work inside a loop")
 		}
+		if rtype != nil {
+			out, ok := conform(v, rtype)
+			if !ok {
+				if v == nil {
+					in.fail(line, "%s must send %s, but it finished without sending one", label, rtype.Describe())
+				}
+				in.fail(line, "%s must send %s, but it sent %s", label, rtype.Describe(), describeValue(v))
+			}
+			return out
+		}
 		return v
 	case *Class:
-		fieldNames := make([]string, len(f.Fields))
-		for i, fd := range f.Fields {
-			fieldNames[i] = fd.Name
-		}
-		inst := &Instance{Class: f, Fields: map[string]Value{}}
-		given := make([]bool, len(fieldNames))
+		inst := &Instance{Class: f, Slots: make([]Value, len(f.Fields))}
+		given := make([]bool, len(f.Fields))
 		pos := 0
 		for i, a := range args {
 			if names == nil || names[i] == "" {
-				if pos >= len(fieldNames) {
-					in.fail(line, "%s only has %d fields, but got more values", f.Name, len(fieldNames))
+				if pos >= len(f.Fields) {
+					in.fail(line, "%s only has %d fields, but got more values", f.Name, len(f.Fields))
 				}
-				inst.Fields[fieldNames[pos]] = a
+				inst.Slots[pos] = in.fieldValue(line, f, pos, a)
 				given[pos] = true
 				pos++
 				continue
 			}
-			found := false
-			for j, fname := range fieldNames {
-				if fname == names[i] {
-					inst.Fields[fname] = a
-					given[j] = true
-					found = true
-				}
-			}
-			if !found {
+			j, ok := f.index[names[i]]
+			if !ok {
 				in.fail(line, "%s has no field called '%s'", f.Name, names[i])
 			}
+			inst.Slots[j] = in.fieldValue(line, f, j, a)
+			given[j] = true
 		}
 		for j, fd := range f.Fields {
 			if given[j] {
 				continue
 			}
 			if fd.Default != nil {
-				inst.Fields[fd.Name] = in.eval(fd.Default, f.Env)
+				inst.Slots[j] = in.fieldValue(line, f, j, in.eval(fd.Default, f.Env))
 			} else {
 				in.fail(line, "making a %s needs a value for '%s'", f.Name, fd.Name)
 			}
@@ -936,13 +968,29 @@ func (in *Interp) matchArgs(label string, params []string, args []Value, names [
 func (in *Interp) get(obj Value, name string, line int) Value {
 	switch o := obj.(type) {
 	case *Instance:
-		if v, ok := o.Fields[name]; ok {
+		if v, ok := o.field(name); ok {
 			return v
 		}
 		if m, ok := o.Class.Methods[name]; ok {
-			return &Beam{Name: m.Name, Params: m.Params, Body: m.Body, Closure: o.Class.Env, Self: o}
+			return &Beam{Name: m.Name, Params: m.Params, Sig: m.Sig, Body: m.Body, Closure: o.Class.Env, Self: o}
 		}
 		in.fail(line, "%s has no field or beam called '%s'", o.Class.Name, name)
+	case *Class:
+		if name == "from" {
+			return builtin(o.Name+".from", func(in *Interp, line int, a []Value) Value {
+				wantArgs(in, line, o.Name+".from", a, 1)
+				m, ok := a[0].(*Map)
+				if !ok {
+					panic(&RuntimeError{Line: line, Msg: fmt.Sprintf("expected %s as a JSON object, but got %s", o.Name, typeName(a[0])), Status: 400})
+				}
+				v, problem := in.objectFrom(o, m, "")
+				if problem != "" {
+					panic(&RuntimeError{Line: line, Msg: problem, Status: 400})
+				}
+				return v
+			})
+		}
+		in.fail(line, "%s has nothing called '%s' (objects have .from(json) to build one from JSON)", o.Name, name)
 	case *Module:
 		if v, ok := o.Members[name]; ok {
 			return v
@@ -1027,4 +1075,43 @@ func distance(a, b string) int {
 		prev = cur
 	}
 	return prev[len(rb)]
+}
+
+// fieldValue checks a value against a field's type (if the object declares types)
+// and converts it where that's safe, like an Int into a Decimal field.
+func (in *Interp) fieldValue(line int, c *Class, slot int, v Value) Value {
+	in.classTypes(c)
+	if c.types[slot] == nil {
+		return v
+	}
+	out, ok := conform(v, c.types[slot])
+	if !ok {
+		in.fail(line, "%s.%s must be %s, but got %s", c.Name, c.Fields[slot].Name, c.types[slot].Describe(), describeValue(v))
+	}
+	return out
+}
+
+func (in *Interp) mustConform(line int, v Value, t *Type, what string) Value {
+	out, ok := conform(v, t)
+	if !ok {
+		in.fail(line, "%s must be %s, but got %s", what, t.Describe(), describeValue(v))
+	}
+	return out
+}
+
+// sigTypes resolves a beam's written types once and remembers them.
+func (in *Interp) sigTypes(f *Beam) ([]*Type, *Type) {
+	sig := f.Sig
+	if sig == nil {
+		return nil, nil
+	}
+	if !sig.resolved {
+		env := f.Closure
+		ps := make([]*Type, len(sig.Params))
+		for i, te := range sig.Params {
+			ps[i] = in.resolveType(te, env)
+		}
+		sig.params, sig.result, sig.resolved = ps, in.resolveType(sig.Result, env), true
+	}
+	return sig.params, sig.result
 }
