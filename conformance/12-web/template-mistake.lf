@@ -1,0 +1,5 @@
+use web
+
+launch {
+    show web.render("views/broken.html", {title: "x"}).body
+}

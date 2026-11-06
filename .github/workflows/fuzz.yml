@@ -24,6 +24,7 @@ jobs:
           - { pkg: ./lang, name: FuzzFormat }
           - { pkg: ./lang, name: FuzzJSON }
           - { pkg: ./lang, name: FuzzWebRequests }
+          - { pkg: ./lang, name: FuzzTemplate }
           - { pkg: ./pg, name: FuzzServerReplies }
           - { pkg: ./pg, name: FuzzLogin }
           - { pkg: ./pg, name: FuzzParseURL }

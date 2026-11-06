@@ -1,0 +1,16 @@
+use web
+object Product {
+    name: Text
+    price: Decimal
+}
+launch {
+    r = web.render("views/products.html", {
+        shop: "Laser <Shop>",
+        title: "<script>alert(1)</script>",
+        link: "javascript:alert(1)",
+        products: [Product("Lamp & Bulb", 19.99), Product("Pin", 0.5)],
+        note: web.trusted("<b>bold</b>")
+    })
+    show r.body
+    show r.header("Content-Type")
+}

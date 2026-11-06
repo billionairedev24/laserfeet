@@ -211,6 +211,8 @@ func toText(v Value, quote bool) string {
 		return "<database>"
 	case Date, Moment, Duration, UUID:
 		return fmt.Sprint(x) // not text, so never in quotes
+	case Trusted:
+		return string(x)
 	case *Store:
 		if x.path == "" {
 			return "<store in memory>"

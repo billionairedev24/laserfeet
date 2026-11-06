@@ -1,0 +1,16 @@
+{use "views/layout.html"}
+<style> body { color: red } </style>
+<h1>{title}</h1>
+<a href="{link}">link</a>
+{when count(products) is 0}
+  <p>Nothing yet</p>
+{otherwise}
+<ul>
+{each p in products}
+  <li>{p.name} — {fixed(p.price, 2)}{when p.price > 10} (big){end}</li>
+{end}
+</ul>
+{end}
+<p>{note}</p>
+<p>\{literal\}</p>
+<script>var data = {"a": 1};</script>

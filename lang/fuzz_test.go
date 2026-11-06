@@ -120,3 +120,13 @@ func FuzzWebRequests(f *testing.F) {
 		}
 	})
 }
+
+// Templates give HTML or a TemplateError, never a crash.
+func FuzzTemplate(f *testing.F) {
+	for _, s := range []string{"<h1>{title}</h1>", "{each p in ps}{p.name}{end}", "{when x}a{otherwise when y}b{otherwise}c{end}", "<style>a { b: c }</style>", `{use "x.html"}`, `\{x\}`} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, src string) {
+		parseTemplate("t.html", src)
+	})
+}

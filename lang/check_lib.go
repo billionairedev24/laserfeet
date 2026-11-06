@@ -21,7 +21,7 @@ func builtinType(name string) *Type {
 
 func libraryModule(name string) *Type {
 	members := map[string][]string{
-		"web":      {"open", "json", "status", "page", "escape", "fetch", "reply", "redirect"},
+		"web":      {"open", "json", "status", "page", "escape", "fetch", "reply", "redirect", "render", "trusted"},
 		"json":     {"read", "write", "pretty"},
 		"files":    {"read", "write", "exists", "list"},
 		"time":     {"now", "today", "seconds", "at"},
@@ -554,6 +554,22 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 			c.need(line, a[0], tText, "the cookie name")
 		}
 		return lib("Response")
+	case "web.render":
+		if c.argCount(line, "web.render", a, 1, 2) {
+			c.need(line, a[0], tText, "the template")
+			if len(a) == 2 && a[1] != nil && a[1].Kind != KMap && a[1].Kind != KObject && a[1].Kind != KJson && a[1].Kind != KUnknown {
+				c.report(line, "a template's values must be a map, like {title: \"Shop\"}, or an object")
+			}
+		}
+		if len(exprs) > 0 {
+			c.checkTemplate(line, exprs[0])
+		}
+		return lib("Response")
+	case "web.trusted":
+		if c.argCount(line, "web.trusted", a, 1, 1) {
+			c.need(line, a[0], tText, "the HTML")
+		}
+		return tText
 	case "web.reply":
 		c.argCount(line, "web.reply", a, 1, 1)
 		return lib("Response")
@@ -653,7 +669,7 @@ func builtinWant(name string, i int) *Type {
 	switch {
 	case i == 1 && name == "database.run", (i == 1 || i == 2) && (name == "database.query" || name == "database.first"):
 		return listOf(tJson)
-	case i == 1 && (name == "store.add" || name == "web.status"):
+	case i == 1 && (name == "store.add" || name == "web.status" || name == "web.render"):
 		return tJson
 	case i == 2 && (name == "store.update" || name == "server.visit" || name == "web.fetch"):
 		return tJson
@@ -676,4 +692,48 @@ func (c *checker) needOneOf(line int, t *Type, what string, options ...*Type) {
 		names[i] = o.name()
 	}
 	c.report(line, "%s must be %s, but this is %s", what, joinOr(names), t.name())
+}
+
+// checkTemplate reads a template named in the code and reports mistakes in it,
+// so they're found before the program runs.
+func (c *checker) checkTemplate(line int, e Expr) {
+	lit, ok := e.(*TextLit)
+	if !ok || c.read == nil || c.file != "" {
+		return
+	}
+	seen := map[string]bool{}
+	var check func(path string, from int)
+	check = func(path string, from int) {
+		if seen[path] {
+			return
+		}
+		seen[path] = true
+		src, err := c.read(path)
+		if err != nil {
+			c.report(from, "I can't find the template %s", path)
+			return
+		}
+		nodes, err := parseTemplate(path, src)
+		if err != nil {
+			c.report(from, "%v", err)
+			return
+		}
+		var walk func([]tnode)
+		walk = func(ns []tnode) {
+			for _, n := range ns {
+				switch x := n.(type) {
+				case *tuse:
+					check(x.path, from)
+				case *teach:
+					walk(x.body)
+				case *twhen:
+					for _, b := range x.bodies {
+						walk(b)
+					}
+				}
+			}
+		}
+		walk(nodes)
+	}
+	check(lit.Value, line)
 }

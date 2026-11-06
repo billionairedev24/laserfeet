@@ -1,0 +1,13 @@
+<header>Laser &lt;Shop&gt;</header>
+<style> body { color: red } </style>
+<h1>&lt;script&gt;alert(1)&lt;/script&gt;</h1>
+<a href="#unsafe-link">link</a>
+<ul>
+  <li>Lamp &amp; Bulb — 19.99 (big)</li>
+  <li>Pin — 0.50</li>
+</ul>
+<p><b>bold</b></p>
+<p>{literal}</p>
+<script>var data = {"a": 1};</script>
+
+text/html; charset=utf-8

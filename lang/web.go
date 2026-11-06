@@ -116,7 +116,21 @@ func webModule() *Module {
 			wantArgs(in, line, "web.escape", a, 1)
 			return html.EscapeString(Text(a[0]))
 		}),
-		"reply":    builtin("reply", webReply),
+		"reply": builtin("reply", webReply),
+		"render": builtin("render", func(in *Interp, line int, a []Value) Value {
+			if len(a) < 1 || len(a) > 2 {
+				in.fail(line, "web.render takes a template and its values, like web.render(\"views/home.html\", {title: \"Shop\"})")
+			}
+			var values Value
+			if len(a) == 2 {
+				values = a[1]
+			}
+			return &Response{Status: 200, Body: in.render(line, Text(a[0]), values, 0), ContentType: "text/html; charset=utf-8"}
+		}),
+		"trusted": builtin("trusted", func(in *Interp, line int, a []Value) Value {
+			wantArgs(in, line, "web.trusted", a, 1)
+			return Trusted(Text(a[0]))
+		}),
 		"redirect": builtin("redirect", webRedirect),
 		"page": builtin("page", func(in *Interp, line int, a []Value) Value {
 			wantArgs(in, line, "web.page", a, 1)
