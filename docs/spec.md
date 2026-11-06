@@ -1,6 +1,6 @@
 # The Laser Feet Language Specification
 
-Version 0.10. This document says exactly what Laser Feet code means. Where the
+Version 0.11. This document says exactly what Laser Feet code means. Where the
 website explains, this specification decides. Every section has matching
 programs in `conformance/<section>/`: each one prints exactly its `.out` file,
 or is refused with exactly the message in its `.err` file. `go test ./lang -run
@@ -363,9 +363,17 @@ a position outside the list is a problem. Methods: `add(x)`, `remove(x)`,
   even from inside a beam an item calls, is a problem that says so. Items make
   and change their own values freely. `fast` work started inside an item runs
   in parallel too, and finishes before the `fast each` does.
-- A single `fast` job, and web requests, take turns with other work on the
-  engine; each lets others run while it waits for a database, the network, a
-  timer or `wait`.
+- **Web requests use every core too.** Requests run at the same time as each
+  other, truly in parallel, under the same rule as `fast each` items: a
+  request can't change a list, map, object or name made before it started
+  (the checker refuses it in a route block, and the engine refuses it through
+  a beam the route calls, with a 500 reply and the reason in the log). A
+  request makes and changes its own values freely. Data that requests share
+  lives in a store or a database. `server.visit` runs a route the same way,
+  so tests catch the mistake too.
+- Other code (`launch`, a single `fast` job) runs between requests, never
+  during one, and takes turns with other jobs; each lets others run while it
+  waits for a database, the network, a timer or `wait`.
 
 ## 12. Web
 
