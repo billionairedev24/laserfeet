@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"laserfeet/auth"
 	"laserfeet/lang"
 )
 
@@ -19,6 +20,7 @@ Usage:
   lf run <file.lf>     run a program
   lf test <file.lf>    run the test blocks in a file
   lf check <file.lf>   find type mistakes without running anything
+  lf secret            print a new random secret (for server.sessions)
   lf fmt [files]       lay out code the standard way (--check: only report)
   lf fix [files]       update code written for an older Laser Feet
   lf get <package>     add a package, like: lf get github.com/someone/greetings@v1.2.0
@@ -57,6 +59,10 @@ func main() {
 		os.Exit(soleGet(args[1:]))
 	case "remove":
 		os.Exit(soleRemove(args[1:]))
+	case "secret":
+		// a secret for server.sessions: 48 random bytes, URL-safe
+		fmt.Println(auth.Token(48))
+		return
 	case "fmt":
 		os.Exit(formatFiles(args[1:]))
 	case "fix":

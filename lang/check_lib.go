@@ -27,6 +27,7 @@ func libraryModule(name string) *Type {
 		"time":     {"now", "today", "seconds", "at"},
 		"store":    {"open", "memory"},
 		"postgres": {"open"},
+		"auth":     {"hash", "check", "token"},
 	}[name]
 	if members == nil {
 		return nil
@@ -569,6 +570,20 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 		if c.argCount(line, "web.trusted", a, 1, 1) {
 			c.need(line, a[0], tText, "the HTML")
 		}
+		return tText
+	case "auth.hash":
+		if c.argCount(line, "auth.hash", a, 1, 1) {
+			c.need(line, a[0], tText, "the password")
+		}
+		return tText
+	case "auth.check":
+		if c.argCount(line, "auth.check", a, 2, 2) {
+			c.need(line, a[0], tText, "the password")
+			c.need(line, a[1], tText, "the stored hash")
+		}
+		return tFlag
+	case "auth.token":
+		c.argCount(line, "auth.token", a, 0, 0)
 		return tText
 	case "web.reply":
 		c.argCount(line, "web.reply", a, 1, 1)
