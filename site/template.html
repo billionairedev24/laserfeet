@@ -374,7 +374,8 @@ lf test app.lf</lf-code></div></li>
         <li style="--wl: var(--l405)"><span class="ver">0.8</span><strong>A complete language</strong><p>Choices and <code>focus</code>, generics, typed database rows, private members, typed problems, and <code>Date</code>, <code>Time</code>, <code>Duration</code> and <code>UUID</code>. </p></li>
         <li style="--wl: var(--l405)"><span class="ver">0.9</span><strong>The web toolkit</strong><p>Sessions, Argon2id passwords, templates, cookies, uploads, CORS, rate limits, migrations and graceful shutdown, proven by a complete shipments app tested end to end.</p></li>
         <li style="--wl: var(--l405)"><span class="ver">0.10</span><strong>A faster engine</strong><p>Beams compile to closures (about 2&times; faster), <code>fast each</code> runs on every core, and a fuzzer checks the new engine always agrees with the old.</p></li>
-        <li class="now" style="--wl: var(--l405)"><span class="ver">0.11</span><strong>Every core for the web</strong><p>Web requests run in parallel on every core, safely: a request can't change what other requests use. Calls and loops are about 4&times; faster than 0.9. Next: editor tools and packages that use packages.</p></li>
+        <li style="--wl: var(--l405)"><span class="ver">0.11</span><strong>Every core for the web</strong><p>Web requests run in parallel on every core, safely: a request can't change what other requests use. Calls and loops are about 4&times; faster than 0.9.</p></li>
+        <li class="now" style="--wl: var(--l405)"><span class="ver">0.12</span><strong>Tools for bigger code</strong><p>Go to definition, find references, rename and an outline in VS Code, and packages that use packages, each installed once and locked.</p></li>
       </ul>
     </div>
   </div>
@@ -936,7 +937,7 @@ launch {
           <tr><td><code>lf remove host/owner/repo</code></td><td>Stop using a package</td></tr>
         </table></div>
         <p class="note"><b>Safe by default:</b> installing never runs any code, and only <code>.lf</code> files are installed. The lock pins exact commits, so a moved tag or a branch with new commits can't change what you get. Before every <code>run</code>, <code>test</code> and <code>build</code>, each package is checked against its SHA-256, and changed code is refused. A package can only use its own files and other packages, never your project's files.</p>
-        <p><b>Making a package</b> is just a repository with a <code>package.lf</code>; its beams and objects are what users reach through its name. Tag releases as <code>v1.0.0</code>, <code>v1.1.0</code>, and so on.</p>
+        <p><b>Making a package</b> is just a repository with a <code>package.lf</code>; its beams and objects are what users reach through its name. Tag releases as <code>v1.0.0</code>, <code>v1.1.0</code>, and so on. A package that needs other packages lists them in its own <code>sole.list</code> (<code>need github.com/someone/words v1.2.0</code>); <code>lf get</code> installs them too. Each package is installed once: when two ask for different versions, the newer one is used, so keep newer versions working for code written for older ones.</p>
       </article>
     </div>
   </div>

@@ -12,6 +12,22 @@ type Analysis struct {
 	Facts    map[int]map[string]*Type // line -> name -> type
 	Starts   []int                    // lines where top-level statements start
 	Globals  map[string]*Type         // names usable everywhere in the file
+	Refs     []Ref                    // each use of a name, and where it was made
+}
+
+// Place is where something was made: a line of this file (File "") or of a
+// file it uses (File is its path, as written for use).
+type Place struct {
+	File string
+	Line int
+}
+
+// Ref is a name on a line, and the place it means.
+type Ref struct {
+	Line   int
+	Name   string
+	Def    Place
+	Member bool // written after a dot, like the x of p.x
 }
 
 // Analyze checks a program and records what editors need. It never runs the program.
@@ -24,7 +40,7 @@ func Analyze(src string, read func(string) (string, error)) *Analysis {
 		}
 		return a
 	}
-	c := &checker{seen: map[string]bool{}, read: read, modules: map[string]*Type{}, loading: map[string]bool{}, info: a}
+	c := &checker{seen: map[string]bool{}, read: read, modules: map[string]*Type{}, loading: map[string]bool{}, info: a, declAt: map[any]Place{}}
 	top := c.checkProgram(prog, true)
 	for k, v := range top.vars {
 		a.Globals[k] = v.t

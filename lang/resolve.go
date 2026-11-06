@@ -83,3 +83,6 @@ func validIdent(s string) bool {
 	}
 	return !keywords[s]
 }
+
+// IsName reports whether s can be a name in Laser Feet code.
+func IsName(s string) bool { return validIdent(s) }

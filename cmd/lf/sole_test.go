@@ -184,3 +184,126 @@ func TestPackagesStayInTheirLane(t *testing.T) {
 		}
 	}
 }
+
+// Packages can need packages: each is installed once, at the newest vX.Y.Z
+// anything asks for; everything is locked and checked; and what nothing needs
+// any more is taken away.
+func TestPackagesThatNeedPackages(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git isn't installed")
+	}
+	repos := t.TempDir()
+	project := t.TempDir()
+	t.Setenv("LF_SOLE_BASE", "file://"+repos)
+	base := filepath.Join(repos, "example.com", "acme")
+
+	// words: v1.0.0 says "hello", v1.2.0 also has "bye"
+	makeRepo(t, filepath.Join(base, "words"), "v1.0.0", map[string]string{
+		"package.lf": "beam hello() gives Text {\n    send \"hello\"\n}\n",
+	})
+	makeRepo(t, filepath.Join(base, "words"), "v1.2.0", map[string]string{
+		"package.lf": "beam hello() gives Text {\n    send \"hello\"\n}\n\nbeam bye() gives Text {\n    send \"bye\"\n}\n",
+	})
+	// greet needs words v1.0.0; farewell needs words v1.2.0
+	makeRepo(t, filepath.Join(base, "greet"), "v1.0.0", map[string]string{
+		"sole.list":  "need example.com/acme/words v1.0.0\n",
+		"package.lf": "use \"example.com/acme/words\"\n\nbeam greet(n: Text) gives Text {\n    send \"{words.hello()}, {n}\"\n}\n",
+	})
+	makeRepo(t, filepath.Join(base, "farewell"), "v1.0.0", map[string]string{
+		"sole.list":  "need example.com/acme/words v1.2.0\n",
+		"package.lf": "use \"example.com/acme/words\"\n\nbeam part(n: Text) gives Text {\n    send \"{words.bye()}, {n}\"\n}\n",
+	})
+	// clash needs words at a branch, which can't be compared with a version
+	sh(t, filepath.Join(base, "words"), "git", "branch", "-f", "edge")
+	makeRepo(t, filepath.Join(base, "clash"), "v1.0.0", map[string]string{
+		"sole.list":  "need example.com/acme/words edge\n",
+		"package.lf": "beam x() gives Int {\n    send 1\n}\n",
+	})
+
+	write(t, filepath.Join(project, "app.lf"), "use \"example.com/acme/greet\"\nuse \"example.com/acme/farewell\"\n\nshow greet.greet(\"Ada\")\nshow farewell.part(\"Ada\")\n")
+	old, _ := os.Getwd()
+	os.Chdir(project)
+	defer os.Chdir(old)
+
+	if code := soleGet([]string{"example.com/acme/greet@v1.0.0"}); code != 0 {
+		t.Fatal("lf get greet failed")
+	}
+	lock, _ := readLock(".")
+	if lock["example.com/acme/words"].Version != "v1.0.0" {
+		t.Fatalf("greet's own need must be installed and locked: %v", lock)
+	}
+	if code := soleGet([]string{"example.com/acme/farewell@v1.0.0"}); code != 0 {
+		t.Fatal("lf get farewell failed")
+	}
+	lock, _ = readLock(".")
+	if lock["example.com/acme/words"].Version != "v1.2.0" {
+		t.Fatalf("the newer of v1.0.0 and v1.2.0 must be used: %v", lock)
+	}
+	if list, _ := os.ReadFile(listFile); strings.Contains(string(list), "words") {
+		t.Errorf("sole.list lists only what the project itself needs:\n%s", list)
+	}
+
+	run := func() (string, error) {
+		if err := verifyPackages("app.lf"); err != nil {
+			return "", err
+		}
+		src, _ := os.ReadFile("app.lf")
+		read := func(p string) (string, error) {
+			b, err := os.ReadFile(filepath.FromSlash(p))
+			return string(b), err
+		}
+		if problems := lang.Check(string(src), read); len(problems) > 0 {
+			return "", problems[0]
+		}
+		var out bytes.Buffer
+		in := lang.NewInterp(&out)
+		in.ReadSource = read
+		err := in.Run(string(src))
+		return out.String(), err
+	}
+	if out, err := run(); err != nil || out != "hello, Ada\nbye, Ada\n" {
+		t.Fatalf("running: %q %v", out, err)
+	}
+
+	// a package's own list is covered by the lock: changing it is caught
+	write(t, filepath.Join(lang.SoleDir, "example.com/acme/greet/sole.list"), "need example.com/acme/clash v1.0.0\n")
+	if err := verifyPackages("app.lf"); err == nil {
+		t.Error("changing an installed package's sole.list must be caught")
+	}
+	if code := soleGet(nil); code != 0 {
+		t.Fatal("lf get (restore) failed")
+	}
+
+	// removing farewell: words stays (greet still needs it), at the version
+	// installed, since a newer one still does for greet
+	if code := soleRemove([]string{"example.com/acme/farewell"}); code != 0 {
+		t.Fatal("lf remove farewell failed")
+	}
+	lock, _ = readLock(".")
+	if _, ok := lock["example.com/acme/farewell"]; ok {
+		t.Error("farewell must leave the lock")
+	}
+	if _, ok := lock["example.com/acme/words"]; !ok {
+		t.Error("words is still needed by greet")
+	}
+	// removing greet: nothing needs words, so it goes too
+	if code := soleRemove([]string{"example.com/acme/greet"}); code != 0 {
+		t.Fatal("lf remove greet failed")
+	}
+	lock, _ = readLock(".")
+	if len(lock) != 0 {
+		t.Errorf("nothing is needed any more, but the lock has %v", lock)
+	}
+	if _, err := os.Stat(filepath.Join(lang.SoleDir, "example.com/acme/words")); err == nil {
+		t.Error("words should be uninstalled")
+	}
+
+	// versions that can't be compared are a conflict, explained
+	soleGet([]string{"example.com/acme/greet@v1.0.0"})
+	if code := soleGet([]string{"example.com/acme/clash@v1.0.0"}); code == 0 {
+		t.Error("words v1.0.0 and words edge must conflict")
+	}
+	if list, _ := os.ReadFile(listFile); strings.Contains(string(list), "clash") {
+		t.Error("a failed lf get must not change sole.list")
+	}
+}

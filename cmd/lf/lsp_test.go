@@ -120,3 +120,95 @@ func TestLanguageServerRefusesHugeMessages(t *testing.T) {
 		t.Error("a message claiming to be enormous must be refused")
 	}
 }
+
+const navDoc = `use "helpers.lf"
+
+object Point {
+    x: Int
+    y: Int
+}
+
+beam total(p: Point) gives Int {
+    x = p.x + p.y
+    send x
+}
+
+x = 10
+
+server.get("/hi") {
+    send "hi"
+}
+
+launch {
+    p = Point(1, 2)
+    show total(p) + x
+    show helpers.twice(x)
+}
+`
+
+func TestLanguageServerNavigation(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir+"/helpers.lf", "-- helpers\n\nbeam twice(n: Int) gives Int {\n    send n * 2\n}\n")
+	c := startServer(t)
+	c.write("initialize", 1, map[string]any{})
+	c.read()
+	uri := "file://" + dir + "/app.lf"
+	c.write("textDocument/didOpen", 0, map[string]any{"textDocument": map[string]any{"uri": uri, "text": navDoc}})
+	c.read() // problems (server isn't defined; that's fine here)
+	at := func(line, char int) map[string]any {
+		return map[string]any{"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": line, "character": char}}
+	}
+	ask := func(id int, method string, params map[string]any) any {
+		c.write(method, id, params)
+		r := c.read()
+		if r["error"] != nil {
+			return r["error"]
+		}
+		return r["result"]
+	}
+
+	// total(p) on line 21 goes to beam total on line 8
+	def := ask(2, "textDocument/definition", at(20, 10)).(map[string]any)
+	if fmt.Sprint(def["range"]) != "map[end:map[character:10 line:7] start:map[character:5 line:7]]" {
+		t.Errorf("definition of total: %v", def)
+	}
+	// p.x goes to the field x of Point, not the name x
+	def = ask(3, "textDocument/definition", at(8, 11)).(map[string]any)
+	if fmt.Sprint(def["range"]) != "map[end:map[character:5 line:3] start:map[character:4 line:3]]" {
+		t.Errorf("definition of p.x: %v", def)
+	}
+	// helpers.twice goes into helpers.lf
+	def = ask(4, "textDocument/definition", at(21, 18)).(map[string]any)
+	if !strings.HasSuffix(fmt.Sprint(def["uri"]), "/helpers.lf") || !strings.Contains(fmt.Sprint(def["range"]), "line:2") {
+		t.Errorf("definition of helpers.twice: %v", def)
+	}
+	// the x inside total is its own: two uses there, none outside
+	refs := ask(5, "textDocument/references", at(9, 9)).([]any)
+	if len(refs) != 2 {
+		t.Errorf("x inside total has 2 appearances, got %v", refs)
+	}
+	// the top-level x: made on line 13, used twice in launch
+	refs = ask(6, "textDocument/references", at(12, 0)).([]any)
+	if len(refs) != 3 {
+		t.Errorf("the top-level x has 3 appearances, got %v", refs)
+	}
+	// renaming the top-level x leaves total's x alone
+	ren := ask(7, "textDocument/rename", map[string]any{"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 12, "character": 0}, "newName": "start"}).(map[string]any)
+	edits := ren["changes"].(map[string]any)[uri].([]any)
+	if len(edits) != 3 {
+		t.Errorf("rename should change 3 places, got %v", edits)
+	}
+	if e := ask(8, "textDocument/rename", map[string]any{"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 12, "character": 0}, "newName": "launch"}); !strings.Contains(fmt.Sprint(e), "can't be a name") {
+		t.Errorf("a keyword can't be a new name: %v", e)
+	}
+	if e := ask(9, "textDocument/rename", map[string]any{"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 21, "character": 18}, "newName": "double"}); !strings.Contains(fmt.Sprint(e), "rename it there") {
+		t.Errorf("a name from another file is renamed there: %v", e)
+	}
+	// the outline
+	syms := fmt.Sprint(ask(10, "textDocument/documentSymbol", map[string]any{"textDocument": map[string]any{"uri": uri}}))
+	for _, want := range []string{"name:Point", "name:x", "name:total", "name:GET /hi"} {
+		if !strings.Contains(syms, want) {
+			t.Errorf("the outline is missing %s: %s", want, syms)
+		}
+	}
+}

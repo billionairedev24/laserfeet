@@ -2,7 +2,8 @@ package main
 
 // lf lsp: a language server for editors (VS Code and any other editor that
 // speaks the Language Server Protocol). It reports lf check problems as you
-// type, completes names, fields and keywords, and shows types on hover.
+// type, completes names, fields and keywords, shows types on hover, goes to
+// definitions, finds references, renames, and outlines each file.
 // It reads code and never runs it.
 
 import (
@@ -139,6 +140,10 @@ func (s *server) handle(m *rpcMessage) {
 				"completionProvider":         map[string]any{"triggerCharacters": []string{"."}},
 				"hoverProvider":              true,
 				"documentFormattingProvider": true, // lf fmt, for format on save
+				"definitionProvider":         true,
+				"referencesProvider":         true,
+				"renameProvider":             true,
+				"documentSymbolProvider":     true,
 			},
 			"serverInfo": map[string]any{"name": "Laser Feet", "version": version},
 		})
@@ -191,6 +196,22 @@ func (s *server) handle(m *rpcMessage) {
 	case "textDocument/hover":
 		uri, pos := docPosition(m.Params)
 		s.reply(m.ID, s.hover(uri, pos))
+	case "textDocument/definition":
+		uri, pos := docPosition(m.Params)
+		s.reply(m.ID, s.definition(uri, pos))
+	case "textDocument/references":
+		uri, pos := docPosition(m.Params)
+		s.reply(m.ID, s.references(uri, pos))
+	case "textDocument/rename":
+		uri, pos := docPosition(m.Params)
+		var p struct {
+			NewName string `json:"newName"`
+		}
+		json.Unmarshal(m.Params, &p)
+		s.rename(m.ID, uri, pos, p.NewName)
+	case "textDocument/documentSymbol":
+		uri, _ := docPosition(m.Params)
+		s.reply(m.ID, s.symbols(uri))
 	case "textDocument/formatting":
 		uri, _ := docPosition(m.Params)
 		s.reply(m.ID, s.format(uri))

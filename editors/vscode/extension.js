@@ -1,5 +1,6 @@
 // Laser Feet for VS Code: connects the editor to `lf lsp`, the Laser Feet
-// language server, for live errors, autocomplete and hover. No third-party
+// language server, for live errors, autocomplete, hover, go to definition,
+// references, rename and the outline. No third-party
 // packages: it speaks the Language Server Protocol directly over stdin/stdout.
 "use strict";
 
@@ -177,8 +178,56 @@ function activate(context) {
           new vscode.Range(e.range.start.line, e.range.start.character, e.range.end.line, e.range.end.character), e.newText));
       },
     }),
+    vscode.languages.registerDefinitionProvider(LANG, {
+      async provideDefinition(doc, pos) {
+        flush(doc);
+        const loc = await client.request("textDocument/definition", at(doc, pos)).catch(() => null);
+        return loc ? location(loc) : null;
+      },
+    }),
+    vscode.languages.registerReferenceProvider(LANG, {
+      async provideReferences(doc, pos) {
+        flush(doc);
+        const locs = await client.request("textDocument/references", at(doc, pos)).catch(() => []);
+        return (locs || []).map(location);
+      },
+    }),
+    vscode.languages.registerRenameProvider(LANG, {
+      async provideRenameEdits(doc, pos, newName) {
+        flush(doc);
+        // a refusal (a keyword, or a name made in another file) is shown to the person
+        const r = await client.request("textDocument/rename", Object.assign(at(doc, pos), { newName }));
+        const edit = new vscode.WorkspaceEdit();
+        for (const [uri, edits] of Object.entries((r && r.changes) || {})) {
+          for (const e of edits) edit.replace(vscode.Uri.parse(uri), range(e.range), e.newText);
+        }
+        return edit;
+      },
+    }),
+    vscode.languages.registerDocumentSymbolProvider(LANG, {
+      async provideDocumentSymbols(doc) {
+        flush(doc);
+        const syms = await client.request("textDocument/documentSymbol", { textDocument: { uri: doc.uri.toString() } }).catch(() => []);
+        const make = (s) => {
+          const ds = new vscode.DocumentSymbol(s.name, s.detail || "", (s.kind || 13) - 1, range(s.range), range(s.selectionRange));
+          ds.children = (s.children || []).map(make);
+          return ds;
+        };
+        return (syms || []).map(make);
+      },
+    }),
     { dispose: () => client.stop() }
   );
+
+  function at(doc, pos) {
+    return { textDocument: { uri: doc.uri.toString() }, position: { line: pos.line, character: pos.character } };
+  }
+  function range(r) {
+    return new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character);
+  }
+  function location(l) {
+    return new vscode.Location(vscode.Uri.parse(l.uri), range(l.range));
+  }
 
   // send any change still waiting, so completion sees the latest text
   function flush(doc) {

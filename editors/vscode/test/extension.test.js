@@ -4,7 +4,7 @@
 const Module = require("module");
 const assert = require("assert");
 
-const state = { diagnostics: new Map(), completion: null, hover: null, format: null, warnings: [], listeners: {} };
+const state = { diagnostics: new Map(), completion: null, hover: null, format: null, definition: null, references: null, rename: null, symbols: null, warnings: [], listeners: {} };
 class Range { constructor(a, b, c, d) { this.start = { line: a, character: b }; this.end = { line: c, character: d }; } }
 const fakeVscode = {
   Range,
@@ -16,6 +16,9 @@ const fakeVscode = {
   Hover: class { constructor(md) { this.contents = md; } },
   MarkdownString: class { constructor(v) { this.value = v; } },
   Uri: { parse: (s) => ({ toString: () => s }) },
+  Location: class { constructor(uri, range) { this.uri = uri; this.range = range; } },
+  WorkspaceEdit: class { constructor() { this.edits = []; } replace(uri, range, text) { this.edits.push({ uri: uri.toString(), range, text }); } },
+  DocumentSymbol: class { constructor(name, detail, kind, range, sel) { Object.assign(this, { name, detail, kind, range, selectionRange: sel, children: [] }); } },
   window: {
     createOutputChannel: () => ({ appendLine() {}, dispose() {} }),
     showWarningMessage: (m) => state.warnings.push(m),
@@ -33,6 +36,10 @@ const fakeVscode = {
     registerCompletionItemProvider: (lang, p) => { state.completion = p; return { dispose() {} }; },
     registerHoverProvider: (lang, p) => { state.hover = p; return { dispose() {} }; },
     registerDocumentFormattingEditProvider: (lang, p) => { state.format = p; return { dispose() {} }; },
+    registerDefinitionProvider: (lang, p) => { state.definition = p; return { dispose() {} }; },
+    registerReferenceProvider: (lang, p) => { state.references = p; return { dispose() {} }; },
+    registerRenameProvider: (lang, p) => { state.rename = p; return { dispose() {} }; },
+    registerDocumentSymbolProvider: (lang, p) => { state.symbols = p; return { dispose() {} }; },
   },
 };
 const realLoad = Module._load;
@@ -78,7 +85,20 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const edits = await state.format.provideDocumentFormattingEdits(messy);
   assert.ok(edits.length === 1 && edits[0].newText === "launch {\n    show 1 + 2\n}\n", "format document uses lf fmt, got " + JSON.stringify(edits));
 
+  const nav = doc("file:///tmp/t.lf", "beam twice(n: Int) gives Int {\n    send n * 2\n}\n\nlaunch {\n    x = twice(4)\n    show twice(x)\n}\n");
+  nav.version = 4;
+  state.listeners.change({ document: nav });
+  const def = await state.definition.provideDefinition(nav, { line: 5, character: 9 });
+  assert.ok(def && def.range.start.line === 0 && def.range.start.character === 5, "go to definition finds beam twice, got " + JSON.stringify(def));
+  const refs = await state.references.provideReferences(nav, { line: 0, character: 6 });
+  assert.strictEqual(refs.length, 3, "twice appears 3 times");
+  const ren = await state.rename.provideRenameEdits(nav, { line: 5, character: 4 }, "y");
+  assert.strictEqual(ren.edits.length, 2, "renaming x changes 2 places");
+  await assert.rejects(state.rename.provideRenameEdits(nav, { line: 5, character: 4 }, "show"), /can't be a name/);
+  const syms = await state.symbols.provideDocumentSymbols(nav);
+  assert.ok(syms.some((s) => s.name === "twice"), "the outline has twice");
+
   subs.forEach((s) => s.dispose && s.dispose());
-  console.log("VS Code extension: live errors, completion, hover and formatting all work");
+  console.log("VS Code extension: live errors, completion, hover, formatting, definition, references, rename and outline all work");
   setTimeout(() => process.exit(0), 200);
 })().catch((e) => { console.error(e.message); process.exit(1); });

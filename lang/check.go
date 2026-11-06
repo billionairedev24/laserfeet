@@ -31,7 +31,8 @@ func (p Problem) Error() string {
 type cvar struct {
 	t        *Type
 	locked   bool
-	declared bool // given a type when made, or an input: it keeps that type
+	declared bool  // given a type when made, or an input: it keeps that type
+	at       Place // where it was made, for go to definition
 }
 
 type cscope struct {
@@ -115,6 +116,44 @@ type checker struct {
 	params    []string // its :names, which are always there when the route runs
 	info      *Analysis
 	useStack  []UseContext
+	declAt    map[any]Place // where each object and choice was declared
+}
+
+// here is a place in the file being checked.
+func (c *checker) here(line int) Place { return Place{File: c.file, Line: line} }
+
+// ref records that a name on a line of the main file means the thing made at
+// def, for go to definition, references and rename in editors.
+func (c *checker) ref(line int, name string, def Place) {
+	if c.info == nil || c.file != "" || def.Line <= 0 || line <= 0 {
+		return
+	}
+	c.info.Refs = append(c.info.Refs, Ref{Line: line, Name: name, Def: def})
+}
+
+// memberRef is ref for a name written after a dot.
+func (c *checker) memberRef(line int, name string, def Place) {
+	c.ref(line, name, def)
+	if c.info == nil || c.file != "" {
+		return
+	}
+	if n := len(c.info.Refs); n > 0 && c.info.Refs[n-1].Name == name && c.info.Refs[n-1].Line == line {
+		c.info.Refs[n-1].Member = true
+	}
+}
+
+// declare makes a name in a scope, remembering where.
+func (c *checker) declare(vars map[string]*cvar, name string, v *cvar, line int) {
+	v.at = c.here(line)
+	vars[name] = v
+	c.ref(line, name, v.at)
+}
+
+func (c *checker) placeOf(x any, line int) Place {
+	if p, ok := c.declAt[x]; ok {
+		return p
+	}
+	return Place{Line: line}
 }
 
 // note records the type of a name on a line, for hover and autocomplete in editors.
@@ -142,7 +181,7 @@ func Check(src string, read func(string) (string, error)) []Problem {
 		}
 		return []Problem{{Msg: err.Error()}}
 	}
-	c := &checker{seen: map[string]bool{}, read: read, modules: map[string]*Type{}, loading: map[string]bool{}}
+	c := &checker{seen: map[string]bool{}, read: read, modules: map[string]*Type{}, loading: map[string]bool{}, declAt: map[any]Place{}}
 	c.checkProgram(prog, true)
 	sort.SliceStable(c.problems, func(i, j int) bool {
 		if c.problems[i].File != c.problems[j].File {
@@ -220,6 +259,7 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 				cl.Methods[m.Name] = m
 			}
 			c.classes[d.Name] = cl
+			c.declAt[cl] = c.here(d.Line)
 		case *ChoiceDecl:
 			ch, problem := newChoice(d, nil)
 			if problem != "" {
@@ -230,6 +270,7 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 				c.report(d.Line, "'%s' is already the name of an object", d.Name)
 			}
 			c.choices[d.Name] = ch
+			c.declAt[ch] = c.here(d.Line)
 		}
 	}
 	for _, s := range prog.Stmts {
@@ -244,7 +285,12 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 				cl.types[i] = c.resolve(f.Type)
 			}
 		})
-		top.vars[name] = &cvar{t: &Type{Kind: KClassRef, Class: cl}, locked: true}
+		at := c.declAt[cl]
+		top.vars[name] = &cvar{t: &Type{Kind: KClassRef, Class: cl}, locked: true, at: at}
+		c.ref(at.Line, name, at)
+		for _, f := range cl.Fields {
+			c.ref(f.Line, f.Name, Place{File: at.File, Line: f.Line})
+		}
 	}
 	for name, ch := range c.choices {
 		for _, o := range ch.Options {
@@ -255,11 +301,13 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 				}
 			})
 		}
-		top.vars[name] = &cvar{t: &Type{Kind: KChoiceRef, Choice: ch}, locked: true}
+		at := c.declAt[ch]
+		top.vars[name] = &cvar{t: &Type{Kind: KChoiceRef, Choice: ch}, locked: true, at: at}
+		c.ref(at.Line, name, at)
 	}
 	for _, s := range prog.Stmts {
 		if d, ok := s.(*BeamDecl); ok {
-			top.vars[d.Name] = &cvar{t: c.sigType(d.Params, d.Sig), locked: true}
+			c.declare(top.vars, d.Name, &cvar{t: c.sigType(d.Params, d.Sig), locked: true}, d.Line)
 		}
 	}
 	// objects: rules they follow, default values, and their beams
@@ -440,7 +488,7 @@ func (c *checker) use(u *UseStmt, top *cscope) {
 			c.report(u.Line, "there is no library called '%s' (available: web, json, files, time, store, postgres)", u.Name)
 			return
 		}
-		top.vars[u.Name] = &cvar{t: m, locked: true}
+		c.declare(top.vars, u.Name, &cvar{t: m, locked: true}, u.Line)
 		return
 	}
 	ctx := UseContext{}
@@ -453,7 +501,8 @@ func (c *checker) use(u *UseStmt, top *cscope) {
 		return
 	}
 	if m := c.modules[clean]; m != nil {
-		top.vars[name] = &cvar{t: m, locked: true}
+		top.vars[name] = &cvar{t: m, locked: true, at: Place{File: clean, Line: 1}}
+		c.ref(u.Line, name, Place{File: clean, Line: 1})
 		return
 	}
 	if c.loading[clean] {
@@ -488,15 +537,17 @@ func (c *checker) use(u *UseStmt, top *cscope) {
 	c.useStack = c.useStack[:len(c.useStack)-1]
 	c.file, c.beam = savedFile, savedBeam
 	delete(c.loading, clean)
-	m := &Type{Kind: KModule, Name: name, Members: map[string]*Type{}}
+	m := &Type{Kind: KModule, Name: name, Members: map[string]*Type{}, Places: map[string]Place{}}
 	hidden := privateNames(prog)
 	for k, v := range scope.vars {
 		if !hidden[k] {
 			m.Members[k] = v.t
+			m.Places[k] = v.at
 		}
 	}
 	c.modules[clean] = m
-	top.vars[name] = &cvar{t: m, locked: true}
+	top.vars[name] = &cvar{t: m, locked: true, at: Place{File: clean, Line: 1}}
+	c.ref(u.Line, name, Place{File: clean, Line: 1})
 }
 
 // ---------- beams ----------
@@ -514,7 +565,7 @@ func (c *checker) beamBody(name string, params []string, sig *Sig, body []Stmt, 
 	bt := c.sigType(params, sig)
 	sc := &cscope{vars: map[string]*cvar{}, parent: parent, scope: true}
 	for i, p := range params {
-		sc.vars[p] = &cvar{t: bt.Params[i], declared: true}
+		c.declare(sc.vars, p, &cvar{t: bt.Params[i], declared: true}, line)
 		c.note(line, p, bt.Params[i])
 	}
 	c.note(line, name, bt)
@@ -639,7 +690,7 @@ func presentWhenFalse(e Expr) []string {
 
 func (c *checker) narrow(name string, sc *cscope) {
 	if v, _ := sc.find(name); v != nil && v.t != nil && v.t.Optional {
-		sc.vars[name] = &cvar{t: nonOpt(v.t), locked: v.locked, declared: v.declared}
+		sc.vars[name] = &cvar{t: nonOpt(v.t), locked: v.locked, declared: v.declared, at: v.at}
 	}
 }
 
@@ -693,7 +744,8 @@ func (c *checker) stmt(s Stmt, sc *cscope) {
 		if over.Optional {
 			c.report(s.Line, "this list might be nothing here. Check it first with: when ... is nothing { ... }")
 		}
-		inner := &cscope{vars: map[string]*cvar{s.Var: {t: item}}, parent: sc}
+		inner := &cscope{vars: map[string]*cvar{}, parent: sc}
+		c.declare(inner.vars, s.Var, &cvar{t: item}, s.Line)
 		c.note(s.Line, s.Var, item)
 		c.block(s.Body, inner)
 		c.merge(inner, sc)
@@ -726,7 +778,7 @@ func (c *checker) stmt(s Stmt, sc *cscope) {
 				c.report(h.Line, "a 'fails' without a type catches every problem, so it must come last")
 			}
 			if h.Name != "" {
-				handler.vars[h.Name] = &cvar{t: t, declared: true}
+				c.declare(handler.vars, h.Name, &cvar{t: t, declared: true}, h.Line)
 				c.note(h.Line, h.Name, t)
 			}
 			c.block(h.Body, handler)
@@ -742,7 +794,7 @@ func (c *checker) stmt(s Stmt, sc *cscope) {
 	case *ExpectStmt:
 		c.flag(s.Value, sc, "expect")
 	case *BeamDecl:
-		sc.vars[s.Name] = &cvar{t: c.sigType(s.Params, s.Sig), locked: true}
+		c.declare(sc.vars, s.Name, &cvar{t: c.sigType(s.Params, s.Sig), locked: true}, s.Line)
 		c.beamBody(s.Name, s.Params, s.Sig, s.Body, sc, s.Line)
 	case *ObjectDecl, *RuleDecl, *ChoiceDecl:
 		c.report(s.Ln(), "objects and rules must be created at the top of the file, not inside a block")
@@ -771,20 +823,23 @@ func (c *checker) assign(s *AssignStmt, sc *cscope) {
 			declared = c.resolve(s.Type)
 		}
 		existing, _ := sc.find(t.Name)
+		if existing != nil && declared == nil && !s.Lock {
+			c.ref(s.Line, t.Name, existing.at)
+		}
 		vt := c.expr(s.Value, sc, firstNonNil(declared, typeOf(existing)))
 		if declared != nil {
 			if existing != nil {
 				c.report(s.Line, "'%s' already exists; give a name its type the first time you set it", t.Name)
 			}
 			c.assignable(s.Line, vt, declared, "'"+t.Name+"'")
-			sc.home().vars[t.Name] = &cvar{t: declared, locked: s.Lock, declared: true}
+			c.declare(sc.home().vars, t.Name, &cvar{t: declared, locked: s.Lock, declared: true}, s.Line)
 			return
 		}
 		if s.Lock {
 			if existing != nil {
 				c.report(s.Line, "'%s' already exists here, so it can't be locked again", t.Name)
 			}
-			sc.home().vars[t.Name] = &cvar{t: c.settle(s.Line, vt, t.Name), locked: true}
+			c.declare(sc.home().vars, t.Name, &cvar{t: c.settle(s.Line, vt, t.Name), locked: true}, s.Line)
 			return
 		}
 		if existing == nil && sc.obj != nil {
@@ -798,7 +853,7 @@ func (c *checker) assign(s *AssignStmt, sc *cscope) {
 				c.report(s.Line, "'%s' is set to nothing, so I can't tell what it will hold. Give it a type: %s: Text? = nothing", t.Name, t.Name)
 				vt = tUnknown
 			}
-			sc.home().vars[t.Name] = &cvar{t: c.settle(s.Line, vt, t.Name)}
+			c.declare(sc.home().vars, t.Name, &cvar{t: c.settle(s.Line, vt, t.Name)}, s.Line)
 			return
 		}
 		if existing.locked {
@@ -1093,7 +1148,8 @@ func (c *checker) expr1(e Expr, sc *cscope, want *Type) *Type {
 		default:
 			c.report(x.Line, "'fast each' needs a list, but this is %s", over.name())
 		}
-		inner := &cscope{vars: map[string]*cvar{x.Var: {t: item}}, parent: sc, fast: true, scope: true}
+		inner := &cscope{vars: map[string]*cvar{}, parent: sc, fast: true, scope: true}
+		c.declare(inner.vars, x.Var, &cvar{t: item}, x.Line)
 		c.note(x.Line, x.Var, item)
 		saved := c.beam
 		ctx := &beamCtx{name: "fast each", infer: true}
@@ -1186,14 +1242,18 @@ func numJoin(a, b *Type) (*Type, bool) {
 
 func (c *checker) ident(x *Ident, sc *cscope) *Type {
 	if v, _ := sc.find(x.Name); v != nil {
+		c.ref(x.Line, x.Name, v.at)
 		return v.t
 	}
 	for s := sc; s != nil; s = s.parent {
 		if s.obj != nil {
+			at := c.placeOf(s.obj, 0)
 			if i, ok := s.obj.index[x.Name]; ok {
+				c.ref(x.Line, x.Name, Place{File: at.File, Line: s.obj.Fields[i].Line})
 				return s.obj.types[i]
 			}
 			if m, ok := s.obj.Methods[x.Name]; ok {
+				c.ref(x.Line, x.Name, Place{File: at.File, Line: m.Line})
 				return c.sigType(m.Params, m.Sig)
 			}
 		}
@@ -1349,12 +1409,14 @@ func (c *checker) member(line int, obj *Type, name string, forSet bool) *Type {
 	case KObject:
 		binds := paramBinds(obj.Class.TypeParams, obj.Args)
 		if i, ok := obj.Class.index[name]; ok {
+			c.memberRef(line, name, Place{File: c.placeOf(obj.Class, 0).File, Line: obj.Class.Fields[i].Line})
 			if obj.Class.Fields[i].Private && c.selfClass != obj.Class {
 				c.report(line, "'%s' is private to %s, so only %s's own beams can use it", name, obj.Class.Name, obj.Class.Name)
 			}
 			return subst(obj.Class.types[i], binds)
 		}
 		if m, ok := obj.Class.Methods[name]; ok && !forSet {
+			c.memberRef(line, name, Place{File: c.placeOf(obj.Class, 0).File, Line: m.Line})
 			if m.Private && c.selfClass != obj.Class {
 				c.report(line, "the beam '%s' is private to %s, so only %s's own beams can call it", name, obj.Class.Name, obj.Class.Name)
 			}
@@ -1403,6 +1465,7 @@ func (c *checker) member(line int, obj *Type, name string, forSet bool) *Type {
 			return tUnknown
 		}
 		if t, ok := obj.Members[name]; ok {
+			c.memberRef(line, name, obj.Places[name])
 			return t
 		}
 		c.report(line, "%s has nothing called '%s'%s", obj.Name, name, didYouMean(name, keys(obj.Members)))
@@ -1483,7 +1546,7 @@ func (c *checker) lambda(x *Lambda, sc *cscope, want *Type, implicit map[string]
 			pt = want.Params[i]
 		}
 		t.Params = append(t.Params, pt)
-		inner.vars[p] = &cvar{t: pt, declared: true}
+		c.declare(inner.vars, p, &cvar{t: pt, declared: true}, x.Line)
 	}
 	if x.Expr != nil {
 		t.Result = c.settleLit(c.expr(x.Expr, inner, nil))
@@ -1869,7 +1932,7 @@ func FixEdits(src string, read func(string) (string, error)) ([]Edit, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &checker{seen: map[string]bool{}, read: read, modules: map[string]*Type{}, loading: map[string]bool{}}
+	c := &checker{seen: map[string]bool{}, read: read, modules: map[string]*Type{}, loading: map[string]bool{}, declAt: map[any]Place{}}
 	c.checkProgram(prog, true)
 	return append(edits, c.fixes...), nil
 }
@@ -1922,7 +1985,7 @@ func (c *checker) focus(s *FocusStmt, sc *cscope) {
 			if o == nil {
 				c.report(arm.Line, "choice %s has no option called '%s'%s", ch.Name, arm.Option, didYouMean(arm.Option, ch.optionNames()))
 				for _, b := range arm.Binds {
-					armSc.vars[b] = &cvar{t: tUnknown, declared: true}
+					c.declare(armSc.vars, b, &cvar{t: tUnknown, declared: true}, arm.Line)
 				}
 				badOption = true
 				break
@@ -1938,7 +2001,7 @@ func (c *checker) focus(s *FocusStmt, sc *cscope) {
 			for j, b := range arm.Binds {
 				if j < len(o.types) {
 					bt := subst(o.types[j], binds)
-					armSc.vars[b] = &cvar{t: bt, declared: true}
+					c.declare(armSc.vars, b, &cvar{t: bt, declared: true}, arm.Line)
 					c.note(arm.Line, b, bt)
 				}
 			}

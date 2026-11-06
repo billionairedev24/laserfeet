@@ -1,6 +1,6 @@
 # The Laser Feet Language Specification
 
-Version 0.11. This document says exactly what Laser Feet code means. Where the
+Version 0.12. This document says exactly what Laser Feet code means. Where the
 website explains, this specification decides. Every section has matching
 programs in `conformance/<section>/`: each one prints exactly its `.out` file,
 or is refused with exactly the message in its `.err` file. `go test ./lang -run
@@ -517,6 +517,12 @@ transaction with db as tx {
   the file's name (`use "tools.lf"` gives `tools.slug(...)`).
 - `use "host/owner/repo"` brings in a package installed with `lf get`, checked
   against `sole.lock` before every run.
+- A package may have its own `sole.list` for the packages it needs; `lf get`
+  installs those too. A project has each package once: when two ask for
+  different `vX.Y.Z` versions of a package, the newer is used, and any other
+  difference (a branch, a commit) is a conflict `lf get` explains.
+  `sole.lock` pins every package installed, including the ones packages
+  need, and a package's `sole.list` is part of the code its SHA-256 covers.
 
 ## 15. Grammar
 

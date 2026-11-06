@@ -7,8 +7,11 @@ package main
 //   lf get                                       install everything in sole.list
 //   lf remove github.com/someone/greetings       stop using a package
 //
-// sole.list says which packages a project needs; sole.lock records the exact
-// commit and a SHA-256 of every package's code. Packages are checked against the
+// sole.list says which packages a project needs; a package may have its own
+// sole.list for the packages it needs, and those are installed too (each
+// package once, at the newest version anything asks for). sole.lock records
+// the exact commit and a SHA-256 of every package's code, including the
+// packages that packages need. Packages are checked against the
 // lock when they are installed and every time the program runs, so code can't
 // change underneath you. Packages contain only .lf files and never run anything
 // when they're installed.
@@ -143,7 +146,7 @@ func hashPackage(root string) (string, error) {
 		if d.Type()&fs.ModeSymlink != 0 {
 			return fmt.Errorf("%s is a symbolic link, which packages may not contain", p)
 		}
-		if !d.IsDir() && strings.HasSuffix(p, ".lf") {
+		if !d.IsDir() && (strings.HasSuffix(p, ".lf") || p == filepath.Join(root, listFile)) {
 			rel, _ := filepath.Rel(root, p)
 			files = append(files, filepath.ToSlash(rel))
 		}
@@ -334,8 +337,8 @@ func install(dir string, n pkgNeed, locked *lockEntry) (lockEntry, error) {
 			}
 			return os.MkdirAll(filepath.Join(dest, rel), 0o755)
 		}
-		if !strings.HasSuffix(p, ".lf") {
-			return nil // packages are code only
+		if !strings.HasSuffix(p, ".lf") && p != filepath.Join(src, listFile) {
+			return nil // packages are code only, and the list of packages they need
 		}
 		data, err := os.ReadFile(p)
 		if err != nil {
@@ -351,6 +354,162 @@ func install(dir string, n pkgNeed, locked *lockEntry) (lockEntry, error) {
 	return lockEntry{Version: version, Commit: commit, Hash: hash}, nil
 }
 
+// ---------- working out every package needed ----------
+
+// semver reads vX.Y.Z, for choosing the newer of two versions.
+func semver(v string) ([3]int, bool) {
+	m := semverTag.FindStringSubmatch(v)
+	if m == nil {
+		return [3]int{}, false
+	}
+	var k [3]int
+	for i := range k {
+		k[i], _ = strconv.Atoi(m[i+1])
+	}
+	return k, true
+}
+
+func newer(a, b [3]int) bool {
+	return a[0] > b[0] || a[0] == b[0] && (a[1] > b[1] || a[1] == b[1] && a[2] > b[2])
+}
+
+// settle installs the project's packages and every package they need, each
+// once. When two ask for different vX.Y.Z versions of one package, the newer
+// is used (a newer version is meant to keep working for code written for the
+// older); any other difference is a conflict the person must settle. Packages
+// already installed that match the lock aren't fetched again. fresh names a
+// package to fetch anew (lf get name@version). offline works only from what
+// is installed and locked, fetching nothing (for lf remove). The new lock is
+// returned. dropped is a package lf remove takes away.
+func settle(dir string, needs []pkgNeed, lock map[string]lockEntry, fresh, dropped string, offline bool, say func(string)) (map[string]lockEntry, error) {
+	missing := false              // offline, and some package isn't installed, so what it needs is unknown
+	chosen := map[string]string{} // package -> version
+	wantedBy := map[string]string{}
+	var queue []string
+	for _, n := range needs {
+		chosen[n.Path], wantedBy[n.Path] = n.Version, "this project"
+		queue = append(queue, n.Path)
+	}
+	done := map[string]lockEntry{}
+	for steps := 0; len(queue) > 0; steps++ {
+		if steps > 10000 {
+			return nil, errors.New("the packages need each other without end")
+		}
+		p := queue[0]
+		queue = queue[1:]
+		version := chosen[p]
+		if e, ok := done[p]; ok && e.Version == version {
+			continue
+		}
+		var e lockEntry
+		var err error
+		if offline {
+			var ok bool
+			e, ok = lock[p]
+			if ok && e.Version != version { // a newer installed version still does
+				lv, ok1 := semver(e.Version)
+				wv, ok2 := semver(version)
+				ok = ok1 && ok2 && newer(lv, wv)
+				if ok {
+					chosen[p] = e.Version
+				}
+			}
+			if !ok {
+				return nil, fmt.Errorf("%s %s isn't installed. Run lf get first", p, version)
+			}
+			if _, serr := os.Stat(filepath.Join(dir, lang.SoleDir, filepath.FromSlash(p))); serr != nil {
+				missing = true
+			}
+		} else {
+			e, err = ensure(dir, pkgNeed{p, version}, lock, p == fresh, say)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s (needed by %s): %v", p, wantedBy[p], err)
+		}
+		if p == fresh { // lf get name: what it resolved to is now the version
+			chosen[p] = e.Version
+		}
+		done[p] = e
+		deps, err := readList(filepath.Join(dir, lang.SoleDir, filepath.FromSlash(p)))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %v", p, err)
+		}
+		for _, d := range deps {
+			if d.Path == p {
+				continue
+			}
+			have, ok := chosen[d.Path]
+			switch {
+			case !ok:
+				chosen[d.Path], wantedBy[d.Path] = d.Version, p
+				queue = append(queue, d.Path)
+			case have == d.Version:
+			default:
+				hv, ok1 := semver(have)
+				dv, ok2 := semver(d.Version)
+				if !ok1 || !ok2 {
+					return nil, fmt.Errorf("%s needs %s %s, but %s needs %s %s. Versions that aren't vX.Y.Z tags must match exactly", p, d.Path, d.Version, wantedBy[d.Path], d.Path, have)
+				}
+				if newer(dv, hv) {
+					chosen[d.Path], wantedBy[d.Path] = d.Version, p
+					queue = append(queue, d.Path)
+				}
+			}
+		}
+	}
+	out := map[string]lockEntry{}
+	for p := range chosen {
+		e := done[p]
+		if e.Version != chosen[p] && offline {
+			return nil, fmt.Errorf("%s needs a newer version than is installed. Run lf get first", p)
+		}
+		if e.Version != chosen[p] { // a newer version was chosen after this one was installed
+			var err error
+			if e, err = ensure(dir, pkgNeed{p, chosen[p]}, lock, false, say); err != nil {
+				return nil, err
+			}
+		}
+		out[p] = e
+	}
+	if missing { // can't tell what the uninstalled ones need: keep them (lf get puts back anything still needed)
+		for p, e := range lock {
+			if _, ok := out[p]; !ok && p != dropped {
+				out[p] = e
+			}
+		}
+		return out, nil
+	}
+	// installed packages nothing needs any more are taken away
+	for p := range lock {
+		if _, ok := out[p]; !ok {
+			os.RemoveAll(filepath.Join(dir, lang.SoleDir, filepath.FromSlash(p)))
+			say(fmt.Sprintf("  - %s (no longer needed)", p))
+		}
+	}
+	return out, nil
+}
+
+// ensure makes sure one package is installed at a version: it uses what's
+// installed when that matches the lock, and installs it otherwise.
+func ensure(dir string, n pkgNeed, lock map[string]lockEntry, fresh bool, say func(string)) (lockEntry, error) {
+	var locked *lockEntry
+	if e, ok := lock[n.Path]; ok && !fresh {
+		locked = &e
+		if e.Version == n.Version {
+			if h, err := hashPackage(filepath.Join(dir, lang.SoleDir, filepath.FromSlash(n.Path))); err == nil && h == e.Hash {
+				say(fmt.Sprintf("  ✓ %s %s", n.Path, n.Version))
+				return e, nil
+			}
+		}
+	}
+	e, err := install(dir, n, locked)
+	if err != nil {
+		return lockEntry{}, err
+	}
+	say(fmt.Sprintf("  ✓ %s %s (installed)", n.Path, e.Version))
+	return e, nil
+}
+
 // ---------- commands ----------
 
 func soleGet(args []string) int {
@@ -363,6 +522,8 @@ func soleGet(args []string) int {
 	if err != nil {
 		return soleFail(err)
 	}
+	say := func(s string) { fmt.Println(s) }
+	fresh := ""
 	if len(args) > 0 { // add or update one package
 		p, version, _ := strings.Cut(args[0], "@")
 		if !lang.IsPackagePath(p) {
@@ -371,65 +532,42 @@ func soleGet(args []string) int {
 		if version != "" && !versionPattern.MatchString(version) {
 			return soleFail(fmt.Errorf("%q isn't a valid version", version))
 		}
-		e, err := install(dir, pkgNeed{p, version}, nil)
-		if err != nil {
-			return soleFail(err)
-		}
 		found := false
 		for i := range needs {
 			if needs[i].Path == p {
-				needs[i].Version, found = e.Version, true
+				needs[i].Version, found = version, true
 			}
 		}
 		if !found {
-			needs = append(needs, pkgNeed{p, e.Version})
+			needs = append(needs, pkgNeed{p, version})
 		}
-		lock[p] = e
-		if err := writeList(dir, needs); err != nil {
-			return soleFail(err)
-		}
-		if err := writeLock(dir, lock); err != nil {
-			return soleFail(err)
-		}
-		fmt.Printf("Added %s %s (commit %s)\nUse it with: use \"%s\"\n", p, e.Version, e.Commit[:12], p)
-		return 0
-	}
-	if len(needs) == 0 {
+		fresh = p
+	} else if len(needs) == 0 {
 		fmt.Println("No packages to install. Add one with: lf get github.com/someone/greetings")
 		return 0
 	}
-	changed := false
-	for _, n := range needs {
-		var locked *lockEntry
-		if e, ok := lock[n.Path]; ok {
-			locked = &e
-			if h, err := hashPackage(filepath.Join(dir, lang.SoleDir, filepath.FromSlash(n.Path))); err == nil && h == e.Hash && e.Version == n.Version {
-				fmt.Printf("  ✓ %s %s\n", n.Path, n.Version)
-				continue
+	newLock, err := settle(dir, needs, lock, fresh, "", false, say)
+	if err != nil {
+		return soleFail(err)
+	}
+	if fresh != "" {
+		for i := range needs {
+			if needs[i].Path == fresh {
+				needs[i].Version = newLock[fresh].Version
 			}
 		}
-		e, err := install(dir, n, locked)
-		if err != nil {
+		if err := writeList(dir, needs); err != nil {
 			return soleFail(err)
 		}
-		lock[n.Path] = e
-		changed = true
-		fmt.Printf("  ✓ %s %s (installed)\n", n.Path, e.Version)
 	}
-	for p := range lock { // forget packages no longer listed
-		listed := false
-		for _, n := range needs {
-			listed = listed || n.Path == p
-		}
-		if !listed {
-			delete(lock, p)
-			changed = true
-		}
+	if err := writeLock(dir, newLock); err != nil {
+		return soleFail(err)
 	}
-	if changed {
-		if err := writeLock(dir, lock); err != nil {
-			return soleFail(err)
-		}
+	// .sole is rebuilt from sole.list and sole.lock, so it doesn't belong in git
+	os.WriteFile(filepath.Join(dir, lang.SoleDir, ".gitignore"), []byte("*\n"), 0o644)
+	if fresh != "" {
+		e := newLock[fresh]
+		fmt.Printf("Added %s %s (commit %s)\nUse it with: use \"%s\"\n", fresh, e.Version, e.Commit[:12], fresh)
 	}
 	return 0
 }
@@ -456,15 +594,22 @@ func soleRemove(args []string) int {
 	if len(kept) == len(needs) {
 		return soleFail(fmt.Errorf("%s isn't in %s", args[0], listFile))
 	}
-	delete(lock, args[0])
-	os.RemoveAll(filepath.Join(dir, lang.SoleDir, filepath.FromSlash(args[0])))
+	// what's left may still need it (or what it needed): work it out again
+	newLock, err := settle(dir, kept, lock, "", args[0], true, func(string) {})
+	if err != nil {
+		return soleFail(err)
+	}
 	if err := writeList(dir, kept); err != nil {
 		return soleFail(err)
 	}
-	if err := writeLock(dir, lock); err != nil {
+	if err := writeLock(dir, newLock); err != nil {
 		return soleFail(err)
 	}
-	fmt.Printf("Removed %s\n", args[0])
+	if _, still := newLock[args[0]]; still {
+		fmt.Printf("Removed %s from %s (another package still needs it, so it stays installed)\n", args[0], listFile)
+	} else {
+		fmt.Printf("Removed %s\n", args[0])
+	}
 	return 0
 }
 

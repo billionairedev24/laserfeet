@@ -93,6 +93,7 @@ type Type struct {
 	Lit      bool             // a decimal written in the code: also fits a Float
 	PNames   []string         // beam input names, for named inputs
 	Members  map[string]*Type // modules
+	Places   map[string]Place // modules: where each member was made
 	Sends    bool             // lf check: this beam type was inferred from a body that sends a value
 }
 
