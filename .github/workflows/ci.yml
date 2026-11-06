@@ -38,6 +38,19 @@ jobs:
         run: ./scripts/build.sh
       - name: Test the VS Code extension against the language server
         run: LF=dist/lf-linux-amd64 node editors/vscode/test/extension.test.js
+      - name: Build the Docker image and run a new app in a container
+        run: |
+          cp /etc/ssl/certs/ca-certificates.crt dist/
+          docker build --build-arg TARGETARCH=amd64 -f docker/Dockerfile -t laserfeet:ci dist
+          docker run --rm laserfeet:ci version
+          work="$(mktemp -d)"
+          dist/lf-linux-amd64 new demo >/dev/null && mv demo "$work/"
+          docker build --build-arg LF_IMAGE=laserfeet:ci -t demo:ci "$work/demo"
+          docker run -d --name demo -p 8080:8080 demo:ci
+          for i in $(seq 1 20); do curl -fsS localhost:8080/ && break; sleep 0.5; done | tee reply.txt
+          grep -q "Hello from demo!" reply.txt
+          test "$(docker inspect -f '{{.Config.User}}' demo:ci)" = "65534:65534"
+          docker rm -f demo
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: laserfeet-build
