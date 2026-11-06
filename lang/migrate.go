@@ -142,13 +142,15 @@ func (in *Interp) dbMigrate(db *Database) *Builtin {
 			in.fail(line, "db.migrate can't run inside a transaction")
 		}
 		steps := in.readMigrations(line, Text(a[0]))
-		in.gil.Unlock()
-		applied, err := Migrate(db.pool, steps)
-		in.gil.Lock()
+		var applied []string
+		var err error
+		in.outside(func() {
+			applied, err = Migrate(db.pool, steps)
+		})
 		if err != nil {
 			in.fail(line, "migrations: %v", err)
 		}
-		out := &List{}
+		out := newList(nil)
 		for _, n := range applied {
 			out.Items = append(out.Items, n)
 		}

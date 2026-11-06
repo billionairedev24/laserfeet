@@ -26,12 +26,13 @@ func postgresModule() *Module {
 			}
 			db := &Database{pool: pg.NewPool(cfg, 10)}
 			// connect now, so a wrong address or password shows up straight away
-			in.gil.Unlock()
-			c, err := db.pool.Get()
-			if err == nil {
-				db.pool.Put(c)
-			}
-			in.gil.Lock()
+			var c *pg.Conn
+			in.outside(func() {
+				c, err = db.pool.Get()
+				if err == nil {
+					db.pool.Put(c)
+				}
+			})
 			if err != nil {
 				in.fail(line, "postgres.open: %v", err)
 			}
@@ -129,15 +130,15 @@ func (in *Interp) dbExec(line int, db *Database, what string, a []Value) *pg.Res
 			args = append(args, toParam(v))
 		}
 	}
-	in.gil.Unlock() // let other work run while the database answers
 	var res *pg.Result
 	var err error
-	if db.conn != nil {
-		res, err = db.conn.Exec(sql, args)
-	} else {
-		res, err = db.pool.Exec(sql, args)
-	}
-	in.gil.Lock()
+	in.outside(func() { // let other work run while the database answers
+		if db.conn != nil {
+			res, err = db.conn.Exec(sql, args)
+		} else {
+			res, err = db.pool.Exec(sql, args)
+		}
+	})
 	if err != nil {
 		in.fail(line, "database: %v", err)
 	}
@@ -145,7 +146,7 @@ func (in *Interp) dbExec(line int, db *Database, what string, a []Value) *pg.Res
 }
 
 func rowsOf(res *pg.Result) *List {
-	out := &List{Items: make([]Value, 0, len(res.Rows))}
+	out := newList(make([]Value, 0, len(res.Rows)))
 	for _, row := range res.Rows {
 		m := NewMap()
 		for i, f := range res.Fields {
@@ -197,17 +198,20 @@ func databaseMethod(in *Interp, db *Database, name string) *Builtin {
 			if db.conn != nil {
 				in.fail(line, "a transaction can't start inside another transaction")
 			}
-			in.gil.Unlock()
-			c, err := db.pool.Get()
-			in.gil.Lock()
+			var c *pg.Conn
+			var err error
+			in.outside(func() {
+				c, err = db.pool.Get()
+			})
 			if err != nil {
 				in.fail(line, "database: %v", err)
 			}
 			tx := &Database{pool: db.pool, conn: c}
 			finish := func(sql string) error {
-				in.gil.Unlock()
-				_, err := c.Exec(sql, nil)
-				in.gil.Lock()
+				var err error
+				in.outside(func() {
+					_, err = c.Exec(sql, nil)
+				})
 				return err
 			}
 			defer db.pool.Put(c)

@@ -171,14 +171,15 @@ func startServer(in *Interp, s *Server, line int) {
 		srv.Shutdown(ctx)
 		close(done)
 	}()
-	in.gil.Unlock()
-	err := srv.ListenAndServe()
-	if errors.Is(err, http.ErrServerClosed) {
-		<-done
-		fmt.Fprintln(os.Stderr, "Laser Feet server stopped")
-		os.Exit(0)
-	}
-	in.gil.Lock()
+	var err error
+	in.outside(func() {
+		err = srv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			<-done
+			fmt.Fprintln(os.Stderr, "Laser Feet server stopped")
+			os.Exit(0)
+		}
+	})
 	in.fail(line, "the web server stopped: %s", err.Error())
 }
 

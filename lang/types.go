@@ -405,7 +405,7 @@ func (in *Interp) convertDeep(v Value, t *Type, where string) (Value, string) {
 		if !ok {
 			return nil, fmt.Sprintf("%s must be a list, but got %s", where, typeName(v))
 		}
-		out := &List{Items: make([]Value, len(l.Items))}
+		out := newList(make([]Value, len(l.Items)))
 		for i, it := range l.Items {
 			c, problem := in.convertDeep(it, t.Elem, fmt.Sprintf("%s[%d]", where, i))
 			if problem != "" {
@@ -456,7 +456,7 @@ func (in *Interp) convertDeep(v Value, t *Type, where string) (Value, string) {
 // objectFrom builds an object from a map (usually JSON), checking every field.
 func (in *Interp) objectFrom(c *Class, m *Map, where string) (Value, string) {
 	in.classTypes(c)
-	inst := &Instance{Class: c, Slots: make([]Value, len(c.Fields))}
+	inst := stampInstance(&Instance{Class: c, Slots: make([]Value, len(c.Fields))})
 	for i, f := range c.Fields {
 		name := f.Name
 		if where != "" {
@@ -496,7 +496,12 @@ func (in *Interp) objectFrom(c *Class, m *Map, where string) (Value, string) {
 
 // classTypes resolves an object's field types the first time they're needed.
 func (in *Interp) classTypes(c *Class) {
-	if c.types != nil {
+	if c.typesReady.Load() {
+		return
+	}
+	in.typesMu.Lock()
+	defer in.typesMu.Unlock()
+	if c.typesReady.Load() {
 		return
 	}
 	types := make([]*Type, len(c.Fields))
@@ -505,6 +510,7 @@ func (in *Interp) classTypes(c *Class) {
 		types[i] = in.resolveType(f.Type, env)
 	}
 	c.types = types
+	c.typesReady.Store(true)
 }
 
 // typeParam stands for a generic's type (the T in Page[T]) while the engine

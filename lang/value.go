@@ -5,20 +5,27 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // Value is any Laser Feet value: float64, string, bool, nil (nothing),
 // *List, *Map, *Beam, *Builtin, *Class, *RuleDef, *Instance, *Module, *Response.
 type Value any
 
-type List struct{ Items []Value }
+type List struct {
+	Items []Value
+	born  int64 // when it was made (see parallel.go)
+}
 
 type Map struct {
 	Keys []string
 	M    map[string]Value
+	born int64
 }
 
-func NewMap() *Map { return &Map{M: map[string]Value{}} }
+func newList(items []Value) *List { return &List{Items: items, born: genNow.Load()} }
+
+func NewMap() *Map { return &Map{M: map[string]Value{}, born: genNow.Load()} }
 func (m *Map) Set(k string, v Value) {
 	if _, ok := m.M[k]; !ok {
 		m.Keys = append(m.Keys, k)
@@ -55,6 +62,7 @@ type Class struct {
 	types      []*Type        // field types, by slot
 	Choice     *Choice        // set when this is an option of a choice
 	TypeParams []string       // object Page[T]: the names standing for types
+	typesReady atomic.Bool    // types is filled in, for the engine (lf check fills types itself)
 	single     *Instance      // the one value of an option without data
 }
 
@@ -69,6 +77,14 @@ type RuleDef struct {
 type Instance struct {
 	Class *Class
 	Slots []Value
+}
+
+// stampInstance notes an object made inside a parallel region (see parallel.go).
+func stampInstance(o *Instance) *Instance {
+	if regionsActive.Load() > 0 {
+		regionMade.Store(o, struct{}{})
+	}
+	return o
 }
 
 func (o *Instance) field(name string) (Value, bool) {

@@ -185,17 +185,21 @@ func (in *Interp) compileAssign(s *AssignStmt, name string) cblock {
 				if b.t != nil {
 					v = in.mustConform(s.Line, v, b.t, "'"+name+"'")
 				}
+				in.mayChange(env.born, s.Line, "'"+name+"'")
 				b.v = v
 				return cNone, nil
 			}
 			if env.obj != nil {
 				if i, ok := env.obj.Class.index[name]; ok {
+					in.mayChangeObject(env.obj, s.Line)
 					env.obj.Slots[i] = in.fieldValue(s.Line, env.obj.Class, i, v)
 					return cNone, nil
 				}
 			}
 		}
-		e.scope().define(name, v, false)
+		sc := e.scope()
+		in.mayChange(sc.born, s.Line, "'"+name+"'")
+		sc.define(name, v, false)
 		return cNone, nil
 	}
 }
@@ -297,7 +301,7 @@ func (in *Interp) compileEach(s *EachStmt) cblock {
 		var round *Env
 		for _, it := range items {
 			if fresh || round == nil {
-				round = &Env{parent: e, names: []string{s.Var}, binds: []binding{{v: it}}}
+				round = &Env{parent: e, names: []string{s.Var}, binds: []binding{{v: it}}, born: genNow.Load()}
 			} else {
 				round.binds[0].v = it
 				if len(round.names) > 1 { // a name made in the round's own scope (rare): start clean
@@ -326,7 +330,7 @@ func (in *Interp) compileEach(s *EachStmt) cblock {
 			var round *Env
 			for i := a; i <= b; i++ {
 				if fresh || round == nil {
-					round = &Env{parent: e, names: []string{s.Var}, binds: []binding{{v: box(i)}}}
+					round = &Env{parent: e, names: []string{s.Var}, binds: []binding{{v: box(i)}}, born: genNow.Load()}
 				} else {
 					round.binds[0].v = box(i)
 					if len(round.names) > 1 {
@@ -450,7 +454,7 @@ func (in *Interp) compileExpr(x Expr) cexpr {
 			items[i] = in.compileExpr(it)
 		}
 		return func(e *Env) Value {
-			l := &List{Items: make([]Value, len(items))}
+			l := newList(make([]Value, len(items)))
 			for i, it := range items {
 				l.Items[i] = it(e)
 			}
@@ -677,7 +681,7 @@ func (in *Interp) fastCall(f *Beam, code *beamCode, firstVal Value, hasFirst boo
 		e = new(Env)
 		e.binds = make([]binding, n)
 	}
-	e.parent, e.isScope, e.names = f.Closure, true, f.Params[:n:n]
+	e.parent, e.isScope, e.names, e.born = f.Closure, true, f.Params[:n:n], genNow.Load()
 	k := 0
 	if hasFirst {
 		e.binds[0].v = firstVal

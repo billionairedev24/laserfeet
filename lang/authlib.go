@@ -13,9 +13,10 @@ func authModule() *Module {
 		"hash": builtin("hash", func(in *Interp, line int, a []Value) Value {
 			wantArgs(in, line, "auth.hash", a, 1)
 			pw := in.passwordArg(line, a[0])
-			in.gil.Unlock() // hashing takes a moment on purpose; let other work run
-			h := auth.HashPassword(pw)
-			in.gil.Lock()
+			var h string
+			in.outside(func() { // hashing takes a moment on purpose; let other work run
+				h = auth.HashPassword(pw)
+			})
 			return h
 		}),
 		"check": builtin("check", func(in *Interp, line int, a []Value) Value {
@@ -25,9 +26,11 @@ func authModule() *Module {
 			if !ok {
 				return false
 			}
-			in.gil.Unlock()
-			match, err := auth.CheckPassword(pw, hash)
-			in.gil.Lock()
+			var match bool
+			var err error
+			in.outside(func() {
+				match, err = auth.CheckPassword(pw, hash)
+			})
 			return err == nil && match
 		}),
 		"token": builtin("token", func(in *Interp, line int, a []Value) Value {

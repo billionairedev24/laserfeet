@@ -1,0 +1,15 @@
+-- Benchmark: CPU work spread over every core with fast each
+beam work(n: Int) gives Int {
+    total = 0
+    each i in 1 to 300000 {
+        total = total + (i * n) % 7
+    }
+    send total
+}
+
+launch {
+    results = fast each n in 1 to 8 {
+        send work(n)
+    }
+    show sum(results)
+}

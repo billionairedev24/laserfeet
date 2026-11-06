@@ -1,0 +1,13 @@
+seen: List[Int] = []
+
+beam remember(n: Int) {
+    seen.add(n)
+}
+
+launch {
+    results = fast each n in [1, 2, 3] {
+        remember(n)
+        send n
+    }
+    show results
+}

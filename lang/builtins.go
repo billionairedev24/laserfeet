@@ -218,7 +218,7 @@ func installBuiltins(in *Interp, g *Env) {
 	def(builtin("reverse", func(in *Interp, line int, a []Value) Value {
 		wantArgs(in, line, "reverse", a, 1)
 		l := wantList(in, line, "reverse", a[0])
-		out := &List{Items: make([]Value, len(l.Items))}
+		out := newList(make([]Value, len(l.Items)))
 		for i, v := range l.Items {
 			out.Items[len(l.Items)-1-i] = v
 		}
@@ -241,9 +241,9 @@ func installBuiltins(in *Interp, g *Env) {
 	def(builtin("pause", func(in *Interp, line int, a []Value) Value {
 		wantArgs(in, line, "pause", a, 1)
 		secs := floatOf(in, line, "pause", a[0])
-		in.gil.Unlock()
-		time.Sleep(time.Duration(secs * float64(time.Second)))
-		in.gil.Lock()
+		in.outside(func() {
+			time.Sleep(time.Duration(secs * float64(time.Second)))
+		})
 		return nil
 	}))
 	def(envBuiltin())
@@ -260,7 +260,7 @@ func installBuiltins(in *Interp, g *Env) {
 	// Inside it you can use the item's fields directly, or 'it' for the item itself.
 	def(&Builtin{Name: "keepIf", Lazy: func(in *Interp, env *Env, line int, first Value, rest []Expr) Value {
 		l, cond := lazyArgs(in, line, "keepIf", first, rest)
-		out := &List{}
+		out := newList(nil)
 		for _, it := range l.Items {
 			if in.perItemTruth(env, cond, it, "keepIf") {
 				out.Items = append(out.Items, it)
@@ -270,7 +270,7 @@ func installBuiltins(in *Interp, g *Env) {
 	}})
 	def(&Builtin{Name: "dropIf", Lazy: func(in *Interp, env *Env, line int, first Value, rest []Expr) Value {
 		l, cond := lazyArgs(in, line, "dropIf", first, rest)
-		out := &List{}
+		out := newList(nil)
 		for _, it := range l.Items {
 			if !in.perItemTruth(env, cond, it, "dropIf") {
 				out.Items = append(out.Items, it)
@@ -280,7 +280,7 @@ func installBuiltins(in *Interp, g *Env) {
 	}})
 	def(&Builtin{Name: "turn", Lazy: func(in *Interp, env *Env, line int, first Value, rest []Expr) Value {
 		l, x := lazyArgs(in, line, "turn", first, rest)
-		out := &List{}
+		out := newList(nil)
 		for _, it := range l.Items {
 			out.Items = append(out.Items, in.perItem(env, x, it))
 		}
@@ -294,7 +294,7 @@ func installBuiltins(in *Interp, g *Env) {
 			keys[i] = in.perItem(env, x, it)
 		}
 		sortValues(in, line, items, keys)
-		return &List{Items: items}
+		return newList(items)
 	}})
 	def(&Builtin{Name: "findFirst", Lazy: func(in *Interp, env *Env, line int, first Value, rest []Expr) Value {
 		l, cond := lazyArgs(in, line, "findFirst", first, rest)
@@ -310,7 +310,7 @@ func installBuiltins(in *Interp, g *Env) {
 		items := append([]Value{}, wantList(in, line, "sort", a[0]).Items...)
 		keys := append([]Value{}, items...)
 		sortValues(in, line, items, keys)
-		return &List{Items: items}
+		return newList(items)
 	}))
 }
 
@@ -328,7 +328,7 @@ func (in *Interp) perItem(env *Env, x Expr, item Value) Value {
 	// one allocation per item: the item's scope with "it" in it
 	fr := new(frame1)
 	e := &fr.Env
-	e.parent, e.names, e.binds = env, itName, fr.slots[:1]
+	e.parent, e.names, e.binds, e.born = env, itName, fr.slots[:1], genNow.Load()
 	fr.slots[0].v = item
 	switch o := item.(type) {
 	case *Instance:
@@ -357,12 +357,14 @@ func listMethod(l *List, name string) *Builtin {
 	switch name {
 	case "add":
 		return builtin("add", func(in *Interp, line int, a []Value) Value {
+			in.mayChange(l.born, line, "a list")
 			l.Items = append(l.Items, a...)
 			return l
 		})
 	case "remove":
 		return builtin("remove", func(in *Interp, line int, a []Value) Value {
 			wantArgs(in, line, "remove", a, 1)
+			in.mayChange(l.born, line, "a list")
 			i := in.listIndex(line, l, a[0])
 			v := l.Items[i]
 			l.Items = append(l.Items[:i], l.Items[i+1:]...)
@@ -413,7 +415,7 @@ func textMethod(s string, name string) *Builtin {
 			if len(a) == 1 {
 				sep = Text(a[0])
 			}
-			out := &List{}
+			out := newList(nil)
 			for _, p := range strings.Split(s, sep) {
 				out.Items = append(out.Items, p)
 			}
@@ -432,7 +434,7 @@ func mapMethod(m *Map, name string) *Builtin {
 	switch name {
 	case "keys":
 		return builtin("keys", func(in *Interp, line int, a []Value) Value {
-			out := &List{}
+			out := newList(nil)
 			for _, k := range m.Keys {
 				out.Items = append(out.Items, k)
 			}

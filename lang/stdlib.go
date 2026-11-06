@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -129,7 +130,7 @@ func decodeValue(dec *json.Decoder) (Value, error) {
 	case json.Delim:
 		switch t {
 		case '[':
-			l := &List{}
+			l := newList(nil)
 			for dec.More() {
 				v, err := decodeValue(dec)
 				if err != nil {
@@ -200,7 +201,7 @@ func filesModule() *Module {
 			if err != nil {
 				in.fail(line, "could not list %s (%v)", Text(a[0]), err)
 			}
-			out := &List{}
+			out := newList(nil)
 			for _, n := range names {
 				out.Items = append(out.Items, n)
 			}
@@ -240,7 +241,8 @@ func timeModule() *Module {
 // ---------- store: a small built-in database saved to a JSON file ----------
 
 type Store struct {
-	path  string // empty means kept in memory only
+	mu    sync.Mutex // fast each items and web requests may use a store at once
+	path  string     // empty means kept in memory only
 	data  map[string]*List
 	next  map[string]int64
 	names []string
@@ -323,7 +325,7 @@ func (st *Store) save(in *Interp, line int) {
 func (st *Store) collection(name string) *List {
 	l := st.data[name]
 	if l == nil {
-		l = &List{}
+		l = newList(nil)
 		st.data[name] = l
 		st.names = append(st.names, name)
 	}
@@ -357,6 +359,20 @@ func (st *Store) indexOf(l *List, id Value) int {
 }
 
 func storeMethod(in *Interp, st *Store, name string) *Builtin {
+	b := storeMethodUnlocked(in, st, name)
+	if b == nil {
+		return nil
+	}
+	fn := b.Fn
+	b.Fn = func(in *Interp, line int, a []Value) Value {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		return fn(in, line, a)
+	}
+	return b
+}
+
+func storeMethodUnlocked(in *Interp, st *Store, name string) *Builtin {
 	need := func(a []Value, n int, usage string) {
 		if len(a) != n {
 			in.fail(0, "%s", usage)
@@ -384,7 +400,7 @@ func storeMethod(in *Interp, st *Store, name string) *Builtin {
 	case "all":
 		return builtin(name, func(in *Interp, line int, a []Value) Value {
 			need(a, 1, "store.all needs a collection name, like db.all(\"todos\")")
-			out := &List{}
+			out := newList(nil)
 			for _, it := range st.collection(Text(a[0])).Items {
 				out.Items = append(out.Items, copyRecord(in, line, it))
 			}

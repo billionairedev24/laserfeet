@@ -1,0 +1,1 @@
+line 4: fast work can't change a list made outside it, because other work may be reading it at the same time. Send a result instead, and collect it with fast each

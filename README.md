@@ -101,7 +101,15 @@ The built file checks a SHA-256 of the program inside it and refuses to start if
 
 ## Speed
 
-`go test ./lang -bench .` runs the benchmarks in `bench/`. Compared with 0.1, the engine is now about 2.4x faster on function calls (`bench/fib.lf`: 438 ms → 179 ms) and 1.7x faster on loops, lists and objects (`bench/loops.lf`: 466 ms → 280 ms), mainly by cutting memory allocations.
+Beams compile, the first time they run, into Go closures with fast paths for whole-number arithmetic, comparisons, fields, loops and calls; anything not compiled runs on the original tree-walking engine, and a differential test (plus a fuzzer) checks that both engines always give the same results. Timings on a 2-core machine, `lf run`, best of three:
+
+| Benchmark | 0.1 | 0.9 | 0.10 |
+|---|---|---|---|
+| `bench/fib.lf` (calls, arithmetic) | 438 ms | 209 ms | 92 ms |
+| `bench/loops.lf` (loops, lists, objects) | 466 ms | 272 ms | 164 ms |
+| `bench/parallel.lf` (`fast each`, CPU work) | | 1352 ms | 196 ms |
+
+`go test ./lang -bench .` runs them.
 
 ## VS Code
 
@@ -123,7 +131,7 @@ squares = fast each n in 1 to 8 {      -- one run per item, on a worker pool
 }
 ```
 
-Fast work may read outside values but never change them; `lf check` enforces this, so there are no data races and no locks. `wait job for 5 seconds` sets a time limit. `web.fetch(url)` calls other services (30-second limit, 10 MB maximum). Today fast work takes turns on the engine and switches while waiting on the network, files or `pause`; running on several cores at once is planned.
+Fast work may read outside values but never change them; `lf check` enforces this, and while `fast each` items run, changing anything made before they started is refused, so there are no data races and no locks to write. `fast each` runs its items in parallel on every core. A single `fast` job and web requests take turns on the engine, switching whenever one waits on a database, the network or `pause`. `wait job for 5 seconds` sets a time limit. `web.fetch(url)` calls other services (30-second limit, 10 MB maximum).
 
 ## Docker
 

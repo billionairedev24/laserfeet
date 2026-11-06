@@ -1,6 +1,6 @@
 # The Laser Feet Language Specification
 
-Version 0.9. This document says exactly what Laser Feet code means. Where the
+Version 0.10. This document says exactly what Laser Feet code means. Where the
 website explains, this specification decides. Every section has matching
 programs in `conformance/<section>/`: each one prints exactly its `.out` file,
 or is refused with exactly the message in its `.err` file. `go test ./lang -run
@@ -357,6 +357,15 @@ a position outside the list is a problem. Methods: `add(x)`, `remove(x)`,
 - **Fast work may read the names around it but never change them.** The
   checker refuses any change, so fast work can't race. Results come back with
   `send`.
+- **`fast each` uses every core.** Its items run truly in parallel, one per
+  core, while the code that started it waits. While they run, nothing made
+  before they started can change: changing an older list, map, object or name,
+  even from inside a beam an item calls, is a problem that says so. Items make
+  and change their own values freely. `fast` work started inside an item runs
+  in parallel too, and finishes before the `fast each` does.
+- A single `fast` job, and web requests, take turns with other work on the
+  engine; each lets others run while it waits for a database, the network, a
+  timer or `wait`.
 
 ## 12. Web
 

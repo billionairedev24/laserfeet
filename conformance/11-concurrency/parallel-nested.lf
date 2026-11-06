@@ -1,0 +1,11 @@
+launch {
+    grid = fast each row in 1 to 3 {
+        cells = fast each col in 1 to 3 {
+            send row * col
+        }
+        send sum(cells)
+    }
+    show grid
+    job = fast sum([1, 2, 3])
+    show wait job
+}

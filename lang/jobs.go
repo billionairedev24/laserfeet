@@ -15,13 +15,22 @@ type Job struct {
 	err   *RuntimeError
 }
 
-// startJob runs work at the same time as the rest of the program.
+// startJob runs work at the same time as the rest of the program. Normally
+// it takes turns with other work; started inside a parallel region it runs
+// in parallel, like the region's items, and the region waits for it.
 func (in *Interp) startJob(line int, work func() Value) *Job {
 	j := &Job{done: make(chan struct{})}
-	atomic.AddInt32(&in.fastLive, 1)
+	inRegion := in.parallel.Load() > 0
+	if inRegion {
+		in.regionJobs.Add(1)
+	} else {
+		atomic.AddInt32(&in.fastLive, 1)
+	}
 	in.wg.Add(1)
 	go func() {
-		in.gil.Lock()
+		if !inRegion {
+			in.gil.Lock()
+		}
 		defer func() {
 			if r := recover(); r != nil {
 				if re, ok := r.(*RuntimeError); ok {
@@ -30,31 +39,37 @@ func (in *Interp) startJob(line int, work func() Value) *Job {
 					j.err = &RuntimeError{Line: line, Msg: fmt.Sprint(r)}
 				}
 			}
-			atomic.AddInt32(&in.fastLive, -1)
 			close(j.done)
-			in.gil.Unlock()
+			if inRegion {
+				in.regionJobs.Done()
+			} else {
+				atomic.AddInt32(&in.fastLive, -1)
+				in.gil.Unlock()
+			}
 			in.wg.Done()
 		}()
 		j.value = work()
 	}()
-	in.tick(line) // let the work get started
+	if !inRegion {
+		in.tick(line) // let the work get started
+	}
 	return j
 }
 
 // waitJob waits for a job, letting other work run in the meantime.
 func (in *Interp) waitJob(line int, j *Job, timeout time.Duration) Value {
-	in.gil.Unlock()
 	var timedOut bool
-	if timeout > 0 {
-		select {
-		case <-j.done:
-		case <-time.After(timeout):
-			timedOut = true
+	in.outside(func() {
+		if timeout > 0 {
+			select {
+			case <-j.done:
+			case <-time.After(timeout):
+				timedOut = true
+			}
+		} else {
+			<-j.done
 		}
-	} else {
-		<-j.done
-	}
-	in.gil.Lock()
+	})
 	if timedOut {
 		in.fail(line, "the job didn't finish within %s", timeout)
 	}
@@ -64,8 +79,11 @@ func (in *Interp) waitJob(line int, j *Job, timeout time.Duration) Value {
 	return j.value
 }
 
-// fastEach runs the block once per item on a pool of workers (one per CPU core),
-// and gives back what each run sent, in the same order as the items.
+// fastEach runs the block once per item, truly in parallel on a pool of
+// workers (one per CPU core), and gives back what each run sent, in the same
+// order as the items. While the items run, this code holds the engine's lock
+// and waits, so only the items run Laser Feet code; see parallel.go for why
+// that, plus refusing changes to older values, keeps parallel work safe.
 func (in *Interp) fastEach(x *FastEach, env *Env) Value {
 	over := in.eval(x.Over, env)
 	l, ok := over.(*List)
@@ -79,22 +97,24 @@ func (in *Interp) fastEach(x *FastEach, env *Env) Value {
 	if workers > len(items) {
 		workers = len(items)
 	}
+	body := in.compileBlock(x.Body)
+	if in.NoCompile {
+		body = func(e *Env) (ctrl, Value) { return in.execBlock(x.Body, e) }
+	}
+	started := in.enterRegion()
+	defer in.leaveRegion(started)
 	var next int64 = -1
 	var wg sync.WaitGroup
-	atomic.AddInt32(&in.fastLive, int32(workers))
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			defer atomic.AddInt32(&in.fastLive, -1)
 			for {
 				i := int(atomic.AddInt64(&next, 1))
 				if i >= len(items) {
 					return
 				}
 				func() {
-					in.gil.Lock()
-					defer in.gil.Unlock()
 					defer func() {
 						if r := recover(); r != nil {
 							if re, ok := r.(*RuntimeError); ok {
@@ -106,7 +126,7 @@ func (in *Interp) fastEach(x *FastEach, env *Env) Value {
 					}()
 					e := newScope(env)
 					e.define(x.Var, items[i], false)
-					c, v := in.execBlock(x.Body, e)
+					c, v := body(e)
 					if c == cSend {
 						results[i] = v
 					}
@@ -114,13 +134,11 @@ func (in *Interp) fastEach(x *FastEach, env *Env) Value {
 			}
 		}()
 	}
-	in.gil.Unlock()
 	wg.Wait()
-	in.gil.Lock()
 	for _, err := range errs {
 		if err != nil {
 			panic(err)
 		}
 	}
-	return &List{Items: results}
+	return newList(results)
 }

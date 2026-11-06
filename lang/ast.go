@@ -1,5 +1,7 @@
 package lang
 
+import "sync/atomic"
+
 // ---- Expressions ----
 
 type Expr interface{ Ln() int }
@@ -89,7 +91,7 @@ type Sig struct {
 	TypeParams []string    // beam first[T](items: List[T]) gives T?
 	Params     []*TypeExpr // nil entries for inputs without a written type
 	Result     *TypeExpr   // nil when the beam gives nothing
-	resolved   bool
+	resolved   atomic.Bool // set after params and result, so parallel work can read them safely
 	params     []*Type
 	result     *Type
 }

@@ -1,0 +1,16 @@
+object Counter {
+    n: Int = 0
+    beam bump() {
+        me.n = me.n + 1
+    }
+}
+
+counter = Counter()
+
+launch {
+    results = fast each n in [1, 2, 3] {
+        counter.bump()
+        send n
+    }
+    show results
+}

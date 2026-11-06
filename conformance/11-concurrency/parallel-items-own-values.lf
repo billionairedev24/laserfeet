@@ -1,0 +1,22 @@
+object Tally {
+    count: Int = 0
+}
+
+beam squares(n: Int) gives List[Int] {
+    out: List[Int] = []
+    each i in 1 to n {
+        out.add(i * i)
+    }
+    send out
+}
+
+launch {
+    results = fast each n in 1 to 6 {
+        t = Tally()
+        each x in squares(n) {
+            t.count = t.count + x
+        }
+        send t.count
+    }
+    show results
+}

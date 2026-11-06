@@ -232,7 +232,7 @@ func (s *Server) request(in *Interp, req *incoming, u *url.URL, params *Map) (*M
 	r.Set("body", req.body)
 	r.Set("ip", req.ip)
 	var parsed Value
-	form, files := NewMap(), &List{}
+	form, files := NewMap(), newList(nil)
 	ctype, ctParams, _ := mime.ParseMediaType(req.get("Content-Type"))
 	switch {
 	case ctype == "application/x-www-form-urlencoded":
@@ -505,7 +505,7 @@ func (in *Interp) responseMember(r *Response, name string, line int) Value {
 			return r
 		})
 	case "cookies":
-		out := &List{}
+		out := newList(nil)
 		for _, h := range r.Headers {
 			if h[0] == "Set-Cookie" {
 				out.Items = append(out.Items, h[1])

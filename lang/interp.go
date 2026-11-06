@@ -36,6 +36,7 @@ type binding struct {
 // Small scopes (most blocks and calls) keep their names in a short slice,
 // which is much cheaper than a map; scopes that grow large switch to a map.
 type Env struct {
+	born   int64 // when it was made (see parallel.go)
 	names  []string
 	binds  []binding
 	big    map[string]*binding
@@ -49,9 +50,9 @@ type Env struct {
 
 const smallScope = 8
 
-func newEnv(parent *Env) *Env { return &Env{parent: parent} }
+func newEnv(parent *Env) *Env { return &Env{parent: parent, born: genNow.Load()} }
 
-func newScope(parent *Env) *Env { return &Env{parent: parent, isScope: true} }
+func newScope(parent *Env) *Env { return &Env{parent: parent, isScope: true, born: genNow.Load()} }
 
 // scope returns the beam, launch, test or file scope that new names belong to.
 func (e *Env) scope() *Env {
@@ -170,10 +171,15 @@ type Interp struct {
 	ListAssets func(dir string) ([]string, error)
 	tests      []*TestStmt
 	// NoCompile runs everything on the tree-walking engine (for differential tests).
-	NoCompile bool
-	codes     sync.Map // compiled beams, by declaration
-	exprCodes sync.Map // compiled per-item rules, by expression
-	outMu     sync.Mutex
+	NoCompile   bool
+	turns       int64          // statements run while other work waits for a turn
+	typesMu     sync.Mutex     // fills the type caches of signatures and objects
+	parallel    atomic.Int32   // parallel regions running (fast each)
+	regionStart atomic.Int64   // when the outermost one began
+	regionJobs  sync.WaitGroup // fast work started inside a region
+	codes       sync.Map       // compiled beams, by declaration
+	exprCodes   sync.Map       // compiled per-item rules, by expression
+	outMu       sync.Mutex
 }
 
 func NewInterp(out io.Writer) *Interp {
@@ -371,10 +377,14 @@ func (in *Interp) tick(line int) {
 			in.fail(line, "the program ran for too long and was stopped (is there a loop that never ends?)")
 		}
 	}
-	if atomic.LoadInt32(&in.fastLive) > 0 {
-		in.gil.Unlock()
-		runtime.Gosched()
-		in.gil.Lock()
+	// let other work have a turn now and then (not inside a parallel region,
+	// where nothing holds the lock and everything runs at once)
+	if atomic.LoadInt32(&in.fastLive) > 0 && in.parallel.Load() == 0 {
+		if atomic.AddInt64(&in.turns, 1)%32 == 0 {
+			in.gil.Unlock()
+			runtime.Gosched()
+			in.gil.Lock()
+		}
 	}
 }
 
@@ -466,25 +476,16 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 	case *SkipStmt:
 		return cSkip, nil
 	case *FastStmt:
-		atomic.AddInt32(&in.fastLive, 1)
-		in.wg.Add(1)
-		go func() {
-			in.gil.Lock()
-			defer func() {
-				if r := recover(); r != nil {
-					if re, ok := r.(*RuntimeError); ok {
-						in.print("Problem in fast work: " + re.Error())
-					} else {
-						in.print(fmt.Sprint("Problem in fast work: ", r))
-					}
-				}
-				atomic.AddInt32(&in.fastLive, -1)
-				in.gil.Unlock()
-				in.wg.Done()
-			}()
-			in.execBlock(s.Body, newEnv(env))
+		j := in.startJob(s.Line, func() Value {
+			in.runBlock(s.Body, newEnv(env))
+			return nil
+		})
+		go func() { // nobody waits for a fast block, so its problems are reported here
+			<-j.done
+			if j.err != nil {
+				in.print("Problem in fast work: " + j.err.Error())
+			}
 		}()
-		in.tick(s.Line) // let the fast work get started
 	case *AttemptStmt:
 		return in.attempt(s, env)
 	case *FailStmt:
@@ -582,6 +583,7 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 		}
 		if s.Lock || s.Type != nil {
 			sc := env.scope()
+			in.mayChange(sc.born, s.Line, "'"+t.Name+"'")
 			if b := sc.find(t.Name); b != nil {
 				if s.Lock {
 					in.fail(s.Line, "'%s' already exists here, so it can't be locked again", t.Name)
@@ -600,17 +602,21 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 				if b.t != nil {
 					v = in.mustConform(s.Line, v, b.t, "'"+t.Name+"'")
 				}
+				in.mayChange(e.born, s.Line, "'"+t.Name+"'")
 				b.v = v
 				return
 			}
 			if e.obj != nil {
 				if i, ok := e.obj.Class.index[t.Name]; ok {
+					in.mayChangeObject(e.obj, s.Line)
 					e.obj.Slots[i] = in.fieldValue(s.Line, e.obj.Class, i, v)
 					return
 				}
 			}
 		}
-		env.scope().define(t.Name, v, false)
+		sc := env.scope()
+		in.mayChange(sc.born, s.Line, "'"+t.Name+"'")
+		sc.define(t.Name, v, false)
 	case *Get:
 		obj := in.eval(t.Object, env)
 		switch o := obj.(type) {
@@ -619,8 +625,10 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 			if !ok {
 				in.fail(s.Line, "%s has no field called '%s'", o.Class.Name, t.Name)
 			}
+			in.mayChangeObject(o, s.Line)
 			o.Slots[i] = in.fieldValue(s.Line, o.Class, i, v)
 		case *Map:
+			in.mayChange(o.born, s.Line, "a map")
 			o.Set(t.Name, v)
 		default:
 			in.fail(s.Line, "I can't set '%s' on %s", t.Name, typeName(obj))
@@ -631,8 +639,10 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 		switch o := obj.(type) {
 		case *List:
 			i := in.listIndex(s.Line, o, key)
+			in.mayChange(o.born, s.Line, "a list")
 			o.Items[i] = v
 		case *Map:
+			in.mayChange(o.born, s.Line, "a map")
 			o.Set(in.mapKey(s.Line, key), v)
 		default:
 			in.fail(s.Line, "I can't use [ ] on %s", typeName(obj))
@@ -687,7 +697,7 @@ func (in *Interp) eval(x Expr, env *Env) Value {
 		}
 		return v
 	case *ListLit:
-		l := &List{}
+		l := newList(nil)
 		for _, it := range x.Items {
 			l.Items = append(l.Items, in.eval(it, env))
 		}
@@ -722,7 +732,7 @@ func (in *Interp) eval(x Expr, env *Env) Value {
 			return o.M[in.mapKey(x.Line, key)]
 		case string:
 			rs := []rune(o)
-			l := &List{Items: make([]Value, len(rs))}
+			l := newList(make([]Value, len(rs)))
 			for i, r := range rs {
 				l.Items[i] = string(r)
 			}
@@ -821,7 +831,7 @@ func (in *Interp) binaryValues(x *Binary, l, r Value) Value {
 		}
 		if a, ok := l.(*List); ok {
 			if b, ok := r.(*List); ok {
-				return &List{Items: append(append([]Value{}, a.Items...), b.Items...)}
+				return newList(append(append([]Value{}, a.Items...), b.Items...))
 			}
 		}
 		_, ls := l.(string)
@@ -839,7 +849,7 @@ func (in *Interp) binaryValues(x *Binary, l, r Value) Value {
 		if b-a > 50_000_000 {
 			in.fail(x.Line, "this range would hold %d numbers, which is too many to make at once", b-a+1)
 		}
-		list := &List{}
+		list := newList(nil)
 		if b >= a {
 			list.Items = make([]Value, 0, b-a+1)
 		}
@@ -925,7 +935,7 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 			parent = withTypeParams(parent, f.Sig.TypeParams) // so 'out: List[T] = []' can be read
 		}
 		if f.Self != nil {
-			parent = &Env{names: []string{"me"}, binds: []binding{{v: f.Self, locked: true}}, parent: f.Closure, obj: f.Self}
+			parent = &Env{names: []string{"me"}, binds: []binding{{v: f.Self, locked: true}}, parent: f.Closure, obj: f.Self, born: genNow.Load()}
 		}
 		ptypes, rtype := in.sigTypes(f)
 		for i, pt := range ptypes {
@@ -937,7 +947,7 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 				vals[i] = out
 			}
 		}
-		e := &Env{parent: parent, isScope: true}
+		e := &Env{parent: parent, isScope: true, born: genNow.Load()}
 		if len(f.Params) <= smallScope {
 			e.names = append(make([]string, 0, len(f.Params)+2), f.Params...)
 			e.binds = make([]binding, len(f.Params), len(f.Params)+2)
@@ -1203,13 +1213,18 @@ func (in *Interp) sigTypes(f *Beam) ([]*Type, *Type) {
 	if sig == nil {
 		return nil, nil
 	}
-	if !sig.resolved {
-		env := withTypeParams(f.Closure, sig.TypeParams)
-		ps := make([]*Type, len(sig.Params))
-		for i, te := range sig.Params {
-			ps[i] = in.resolveType(te, env)
+	if !sig.resolved.Load() {
+		in.typesMu.Lock()
+		if !sig.resolved.Load() {
+			env := withTypeParams(f.Closure, sig.TypeParams)
+			ps := make([]*Type, len(sig.Params))
+			for i, te := range sig.Params {
+				ps[i] = in.resolveType(te, env)
+			}
+			sig.params, sig.result = ps, in.resolveType(sig.Result, env)
+			sig.resolved.Store(true)
 		}
-		sig.params, sig.result, sig.resolved = ps, in.resolveType(sig.Result, env), true
+		in.typesMu.Unlock()
 	}
 	return sig.params, sig.result
 }
@@ -1240,11 +1255,11 @@ func newInstance(c *Class) *Instance {
 	case n <= 2:
 		x := new(instance2)
 		x.Class, x.Slots = c, x.slots[:n]
-		return &x.Instance
+		return stampInstance(&x.Instance)
 	case n <= 4:
 		x := new(instance4)
 		x.Class, x.Slots = c, x.slots[:n]
-		return &x.Instance
+		return stampInstance(&x.Instance)
 	}
-	return &Instance{Class: c, Slots: make([]Value, n)}
+	return stampInstance(&Instance{Class: c, Slots: make([]Value, n)})
 }

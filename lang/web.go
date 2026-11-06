@@ -109,9 +109,11 @@ func webModule() *Module {
 				}
 			}
 			// waiting for the network lets other fast work run meanwhile
-			in.gil.Unlock()
-			r, err := fetchURL(method, Text(a[0]), body)
-			in.gil.Lock()
+			var r *Response
+			var err error
+			in.outside(func() {
+				r, err = fetchURL(method, Text(a[0]), body)
+			})
 			if err != nil {
 				in.fail(line, "web.fetch %s: %v", Text(a[0]), err)
 			}
@@ -281,7 +283,7 @@ func serverMethod(in *Interp, s *Server, name string) *Builtin {
 		})
 	case "routes":
 		return builtin("routes", func(in *Interp, line int, a []Value) Value {
-			out := &List{}
+			out := newList(nil)
 			for _, r := range s.routes {
 				out.Items = append(out.Items, r.pattern)
 			}
