@@ -126,14 +126,40 @@ Changing the `VERSION` file on `main` runs the release workflow, which tags the 
 ## A taste
 
 ```
-object User {
-    name
-    age
+object Item {
+    name: Text
+    price: Decimal
+    quantity: Int = 1
+}
+
+beam total(items: List[Item]) gives Decimal {
+    sum: Decimal = 0
+    each item in items {
+        sum = sum + item.price * item.quantity
+    }
+    send sum
 }
 
 launch {
-    users = [User("Ada", 36), User("Tobi", 12)]
-    adults = users then keepIf(age >= 18) then turn(name)
-    show adults
+    show total([Item("Lamp", 19.99, 3), Item("Bulb", 0.10)])   -- exactly 60.07
 }
 ```
+
+## Types
+
+Beam inputs, results (`gives`) and object fields always say their type; values inside a beam take the type of what's put in them. `lf run`, `lf test` and `lf build` check every type first and run nothing if there's a problem; `lf check app.lf` does just the check.
+
+| Type | Holds |
+|---|---|
+| `Int` | Whole numbers; overflow is an error, never a wrap-around |
+| `Decimal` | Exact decimals, for money (`0.1 + 0.2` is exactly `0.3`); `19.99` written in code is a Decimal |
+| `Float` | Fast approximate decimals; Float and Decimal never mix without `float()` / `decimal()` |
+| `Text`, `Flag`, `Json` | Text, yes/no, data from outside |
+| `List[T]`, `Map[T]`, `T?` | Lists, named entries, and values that may be `nothing` (which must be checked before use) |
+| `Beam(A) gives B`, rule names | Beams as values; any object that follows a rule |
+
+`Item.from(json)` builds a checked object from JSON; in web routes a mismatch becomes a 400 reply naming the field.
+
+## Memory
+
+Memory budgets in `lang/memory_test.go` fail the build if values grow: an object with two Int fields uses about 106 bytes (394 in 0.3), an exact Decimal about 42.

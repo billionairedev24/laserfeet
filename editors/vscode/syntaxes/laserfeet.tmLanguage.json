@@ -178,6 +178,10 @@
     "keywords": {
       "patterns": [
         {
+          "name": "storage.type.gives.laserfeet",
+          "match": "\\bgives\\b"
+        },
+        {
           "name": "keyword.control.laserfeet",
           "match": "\\b(when|otherwise|each|in|loop|while|times|stop|skip|send|attempt|fails|fail|then|fast|launch|expect)\\b"
         },
@@ -213,7 +217,7 @@
     },
     "builtins": {
       "name": "support.function.builtin.laserfeet",
-      "match": "\\b(text|number|count|sum|biggest|smallest|round|first|last|reverse|sort|join|keepIf|dropIf|turn|sortBy|findFirst|pause|readFile|writeFile|fileExists|now|env|json|store)\\b(?=\\s*\\()"
+      "match": "\\b(text|number|int|float|decimal|fixed|count|sum|biggest|smallest|round|first|last|reverse|sort|join|keepIf|dropIf|turn|sortBy|findFirst|pause|readFile|writeFile|fileExists|now|env|json|store)\\b(?=\\s*\\()"
     },
     "call": {
       "match": "\\b([a-z_][A-Za-z0-9_]*)(?=\\s*\\()",
@@ -224,11 +228,27 @@
       }
     },
     "type": {
-      "name": "entity.name.type.laserfeet",
-      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+      "patterns": [
+        {
+          "name": "support.type.primitive.laserfeet",
+          "match": "\\b(Int|Float|Decimal|Text|Flag|Json|Nothing)\\b"
+        },
+        {
+          "name": "support.type.laserfeet",
+          "match": "\\b(List|Map|Beam|Server|Request|Response|Store)\\b"
+        },
+        {
+          "name": "entity.name.type.laserfeet",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
     },
     "operators": {
       "patterns": [
+        {
+          "name": "keyword.operator.optional.laserfeet",
+          "match": "\\?"
+        },
         {
           "name": "keyword.operator.arrow.laserfeet",
           "match": "=>"

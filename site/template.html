@@ -241,7 +241,7 @@ footer .wrap { display: flex; gap: 12px 28px; justify-content: space-between; fl
       <div>
         <div class="hazard" aria-label="Prototype, version 0.1">
           <span><svg width="14" height="13" viewBox="0 0 14 13" aria-hidden="true"><path d="M7 .8 13.3 12H.7z" fill="none" stroke="#111" stroke-width="1.4"/><circle cx="7" cy="8.4" r="1.2" fill="#111"/><path d="M7 8.4 9.6 5.2M7 8.4 4.4 5.2M7 8.4V4.6" stroke="#111" stroke-width=".8"/></svg>Prototype</span>
-          <span>v0.3 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
+          <span>v0.4 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
         </div>
         <h1>Code at the <em>speed of light</em></h1>
         <p class="lede">Laser Feet is a programming language that reads like plain English, mixes objects and functions freely, and comes with a secure web server built in.</p>
@@ -282,7 +282,7 @@ footer .wrap { display: flex; gap: 12px 28px; justify-content: space-between; fl
         <div class="module" style="--wl: var(--l650)">
           <span class="tag">Plain English</span>
           <h3>Keywords that say what they do</h3>
-          <p><code>when</code>, <code>otherwise</code>, <code>each</code>, <code>send</code>. Types are worked out for you.</p>
+          <p><code>when</code>, <code>otherwise</code>, <code>each</code>, <code>send</code>. Beams and objects say their types; the rest is worked out for you.</p>
 <lf-code>when age >= 18 {
     show "Adult"
 } otherwise {
@@ -294,8 +294,8 @@ footer .wrap { display: flex; gap: 12px 28px; justify-content: space-between; fl
           <h3>Two styles, one language</h3>
           <p>Build with objects and rules, or with small functions called beams.</p>
 <lf-code>object User follows Greeter {
-    name
-    beam greet() {
+    name: Text
+    beam greet() gives Text {
         send "Hi, I am {name}"
     }
 }</lf-code>
@@ -367,9 +367,9 @@ lf test app.lf</lf-code></div></li>
       <ul class="spectrum">
         <li style="--wl: var(--l650)"><span class="ver">0.1</span><strong>Prototype</strong><p>Interpreter, playground, web server, tests, friendly errors, signed builds, VS Code colors.</p></li>
         <li style="--wl: var(--l589)"><span class="ver">0.2</span><strong>Standalone programs</strong><p><code>lf build</code> makes one file that runs with nothing installed, on an engine twice as fast.</p></li>
-        <li class="now" style="--wl: var(--l532)"><span class="ver">0.3</span><strong>Standard library</strong><p>A built-in store, JSON, files, time, settings, and code split across files.</p></li>
-        <li style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Types and editors</strong><p>Optional types checked by <code>lf check</code>, autocomplete and live error underlines in VS Code, and the <code>sole</code> package manager.</p></li>
-        <li style="--wl: var(--l405)"><span class="ver">1.0</span><strong>Independent</strong><p>A true native compiler, written in Laser Feet itself.</p></li>
+        <li style="--wl: var(--l532)"><span class="ver">0.3</span><strong>Standard library</strong><p>A built-in store, JSON, files, time, settings, and code split across files.</p></li>
+        <li class="now" style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Types</strong><p>Required types, exact Decimal money, <code>lf check</code> before every run, objects 3.7x smaller.</p></li>
+        <li style="--wl: var(--l405)"><span class="ver">0.5 → 1.0</span><strong>Next</strong><p>Editor autocomplete and live errors, multi-core <code>fast</code>, PostgreSQL, Docker, the <code>sole</code> package manager, then a native compiler written in Laser Feet.</p></li>
       </ul>
     </div>
   </div>
@@ -388,6 +388,7 @@ lf test app.lf</lf-code></div></li>
         <div class="label">Chapters</div>
         <a href="#learn" data-jump="g1">First program</a>
         <a href="#learn" data-jump="g2">Values</a>
+        <a href="#learn" data-jump="gtypes">Types and numbers</a>
         <a href="#learn" data-jump="g3">Beams</a>
         <a href="#learn" data-jump="g4">Objects and rules</a>
         <a href="#learn" data-jump="g5">Decisions and loops</a>
@@ -411,7 +412,7 @@ launch {
         <p>Save it as <code>hello.lf</code> and run <code>lf run hello.lf</code>. For quick scripts you can leave out <code>launch</code>; the lines then run from top to bottom.</p>
 
         <h2 id="g2"><span class="num">02</span>Values</h2>
-        <p>Give a value a name with <code>=</code>. You don't write types; Laser Feet works them out. Use <code>lock</code> for a value that must never change, and put any value inside text with <code>{ }</code>.</p>
+        <p>Give a value a name with <code>=</code>. Inside a beam you don't write types; Laser Feet works them out from what you assign. Use <code>lock</code> for a value that must never change, and put any value inside text with <code>{ }</code>.</p>
 <lf-code data-try>launch {
     name = "Ada"
     age = 36
@@ -431,7 +432,7 @@ launch {
 }</lf-code>
         <div class="tablewrap"><table>
           <tr><th>Kind</th><th>Looks like</th></tr>
-          <tr><td>Number</td><td><code>42</code>, <code>19.99</code>, <code>1_000_000</code></td></tr>
+          <tr><td>Number</td><td><code>42</code> is an Int, <code>19.99</code> an exact Decimal, <code>1_000_000</code> reads like a million</td></tr>
           <tr><td>Text</td><td><code>"Hello {name}"</code></td></tr>
           <tr><td>Yes / no</td><td><code>yes</code>, <code>no</code></td></tr>
           <tr><td>Nothing</td><td><code>nothing</code></td></tr>
@@ -440,13 +441,70 @@ launch {
           <tr><td>Range</td><td><code>1 to 10</code> makes the list 1, 2 … 10</td></tr>
         </table></div>
 
-        <h2 id="g3"><span class="num">03</span>Beams</h2>
-        <p>A <code>beam</code> is a function: inputs go in and <code>send</code> shoots the result out. Inputs can be named when you call it.</p>
-<lf-code data-try>beam add(a, b) {
+        <h2 id="gtypes"><span class="num">03</span>Types and numbers</h2>
+        <p>Laser Feet is typed: beam inputs, what a beam <code>gives</code>, and object fields all say their type. Values inside a beam take the type of what you put in them. Before anything runs, <code>lf run</code> checks every type, so mistakes show up as clear messages instead of crashes. You can also run <code>lf check app.lf</code> on its own.</p>
+<lf-code data-try>object Item {
+    name: Text
+    price: Decimal
+    quantity: Int = 1
+}
+
+beam total(items: List[Item]) gives Decimal {
+    sum: Decimal = 0
+    each item in items {
+        sum = sum + item.price * item.quantity
+    }
+    send sum
+}
+
+launch {
+    cart = [Item("Lamp", 19.99, 3), Item("Bulb", 0.10)]
+    show total(cart)          -- exactly 60.07
+    show 0.1 + 0.2            -- exactly 0.3
+    show 7 / 2                -- 3.5
+    show fixed(12.5, 2)       -- "12.50"
+}</lf-code>
+        <div class="tablewrap"><table>
+          <tr><th>Type</th><th>Holds</th></tr>
+          <tr><td><code>Int</code></td><td>Whole numbers. Going past about 9.2 quintillion is an error, never a silent wrap-around</td></tr>
+          <tr><td><code>Decimal</code></td><td>Exact decimals, for money: <code>0.1 + 0.2</code> is exactly <code>0.3</code>. A number written with a point, like <code>19.99</code>, is a Decimal</td></tr>
+          <tr><td><code>Float</code></td><td>Fast, approximate decimals, for measurements. Make one with <code>float(x)</code></td></tr>
+          <tr><td><code>Text</code> / <code>Flag</code></td><td>Text / <code>yes</code> or <code>no</code></td></tr>
+          <tr><td><code>List[Item]</code> / <code>Map[Int]</code></td><td>A list of items / named entries holding Ints</td></tr>
+          <tr><td><code>Item?</code></td><td>An Item, or <code>nothing</code></td></tr>
+          <tr><td><code>Greeter</code></td><td>Any object that follows the rule Greeter</td></tr>
+          <tr><td><code>Beam(Int) gives Text</code></td><td>A beam, for passing beams around</td></tr>
+          <tr><td><code>Json</code></td><td>Data from outside, like a request body, before it's checked</td></tr>
+        </table></div>
+        <p><b>Numbers mix safely.</b> An Int can be used wherever a Decimal or Float is needed, and dividing Ints gives an exact Decimal. A Float and a Decimal never mix by accident; convert on purpose with <code>float(x)</code> or <code>decimal(x)</code>. <code>int(x)</code> drops anything after the point, <code>round(x)</code> rounds halves away from zero, and <code>fixed(x, 2)</code> shows exactly two places.</p>
+        <p><b>Nothing is never a surprise.</b> Only a <code>?</code> type can be <code>nothing</code>, and Laser Feet makes you check it before you use it:</p>
+<lf-code data-try>object User {
+    name: Text
+}
+
+beam find(users: List[User], wanted: Text) gives User? {
+    send users then findFirst(name is wanted)
+}
+
+launch {
+    users = [User("Ada"), User("Tobi")]
+    found = find(users, "Kemi")
+    when found is nothing {
+        show "No Kemi here"
+        stop
+    }
+    show found.name    -- safe: found can't be nothing on this line
+}</lf-code>
+        <p><b>Data from outside gets checked once.</b> <code>Item.from(json)</code> turns JSON into a real <code>Item</code>, checking every field. In a web route, a mismatch automatically becomes a 400 reply that names the field, like <code>{"error": "price must be Decimal, but got text"}</code>.</p>
+        <p class="note"><b>Empty lists need a type.</b> Laser Feet can't tell what <code>[]</code> will hold, so write it: <code>names: List[Text] = []</code>. Values set to <code>nothing</code> at first need one too: <code>winner: User? = nothing</code>.</p>
+
+        <h2 id="g3"><span class="num">04</span>Beams</h2>
+        <p>A <code>beam</code> is a function: inputs go in and <code>send</code> shoots the result out. Each input says its type, and <code>gives</code> says what comes out. A beam that sends nothing back leaves out <code>gives</code>. Inputs can be named when you call it.</p>
+<lf-code data-try>beam add(a: Int, b: Int) gives Int {
     send a + b
 }
 
-beam factorial(n) {
+beam factorial(n: Int) gives Int {
     when n <= 1 {
         send 1
     }
@@ -461,20 +519,20 @@ launch {
     double = x => x * 2
     show double(21)
 }</lf-code>
-        <p><code>x => x * 2</code> is a one-line beam, handy for passing to other beams.</p>
+        <p><code>x => x * 2</code> is a one-line beam, handy for passing to other beams. It takes its types from where it's used, so it doesn't need them written.</p>
 
-        <h2 id="g4"><span class="num">04</span>Objects and rules</h2>
+        <h2 id="g4"><span class="num">05</span>Objects and rules</h2>
         <p>An <code>object</code> is a blueprint listing fields and the beams that work on them. Inside its beams, fields are used by name and <code>me</code> means the object itself. A <code>rule</code> lists beams an object promises to have; <code>follows</code> makes the promise and Laser Feet checks it.</p>
 <lf-code data-try>rule Greeter {
-    beam greet()
+    beam greet() gives Text
 }
 
 object User follows Greeter {
-    name
-    age
-    visits = 0
+    name: Text
+    age: Int
+    visits: Int = 0
 
-    beam greet() {
+    beam greet() gives Text {
         send "Hi, I am {name}"
     }
 
@@ -492,9 +550,9 @@ launch {
     tobi = User("Tobi", 12)
     show tobi
 }</lf-code>
-        <p>Make an object by calling its name, filling fields in order or by name. Fields with a default, like <code>visits = 0</code>, can be left out.</p>
+        <p>Every field has a type. Make an object by calling its name, filling fields in order or by name. Fields with a default, like <code>visits: Int = 0</code>, can be left out.</p>
 
-        <h2 id="g5"><span class="num">05</span>Decisions and loops</h2>
+        <h2 id="g5"><span class="num">06</span>Decisions and loops</h2>
         <p><code>when</code> runs a block if the answer is <code>yes</code>; chain more checks with <code>otherwise when</code>. Compare with <code>is</code>, <code>is not</code>, <code>&lt;</code> and <code>&gt;</code>, and combine answers with <code>and</code>, <code>or</code> and <code>not</code>.</p>
 <lf-code data-try>launch {
     score = 72
@@ -522,11 +580,11 @@ launch {
 }</lf-code>
         <p><code>skip</code> jumps to the next item and <code>stop</code> leaves the loop. <code>loop while</code> repeats as long as its answer is yes.</p>
 
-        <h2 id="g6"><span class="num">06</span>Chaining with then</h2>
+        <h2 id="g6"><span class="num">07</span>Chaining with then</h2>
         <p><code>then</code> hands the result on its left to the beam on its right as the first input. Inside <code>keepIf</code>, <code>turn</code> and <code>sortBy</code>, use the item's fields by name, or <code>it</code> for the item itself.</p>
 <lf-code data-try>object User {
-    name
-    age
+    name: Text
+    age: Int
 }
 
 launch {
@@ -538,9 +596,9 @@ launch {
     show [4, 8, 15, 16, 23, 42] then keepIf(it > 10) then sum
 }</lf-code>
 
-        <h2 id="g7"><span class="num">07</span>Handling problems</h2>
+        <h2 id="g7"><span class="num">08</span>Handling problems</h2>
         <p>Wrap risky work in <code>attempt</code>. If anything fails, the <code>fails</code> block runs and receives the problem. Use <code>fail</code> to report one yourself.</p>
-<lf-code data-try>beam divide(a, b) {
+<lf-code data-try>beam divide(a: Int, b: Int) gives Decimal {
     when b is 0 {
         fail "can't divide {a} by zero"
     }
@@ -557,9 +615,9 @@ launch {
     show "Still running"
 }</lf-code>
 
-        <h2 id="g8"><span class="num">08</span>Fast work</h2>
+        <h2 id="g8"><span class="num">09</span>Fast work</h2>
         <p>Put <code>fast</code> in front of work to run it at the same time as the rest of the program. The program waits for all fast work before it ends.</p>
-<lf-code data-try>beam brew(drink, seconds) {
+<lf-code data-try>beam brew(drink: Text, seconds: Decimal) {
     pause(seconds)
     show "{drink} is ready"
 }
@@ -570,7 +628,7 @@ launch {
     show "Ordered both"
 }</lf-code>
 
-        <h2 id="g9"><span class="num">09</span>Web apps</h2>
+        <h2 id="g9"><span class="num">10</span>Web apps</h2>
         <p><code>use web</code> brings in the web library. Add routes with <code>server.get</code>, <code>server.post</code> or <code>server.on</code> (any method), then <code>start</code> the server. Inside a route, <code>request</code> holds the details, and path parts written as <code>:name</code> arrive in <code>request.params</code>.</p>
 <lf-code data-try>use web
 
@@ -581,7 +639,7 @@ server.get("/hello") {
 }
 
 server.get("/square/:n") {
-    n = number(request.params.n)
+    n = int(request.params.n)
     send {number: n, square: n * n}
 }
 
@@ -594,9 +652,9 @@ launch {
         <p>What a route sends decides the reply. Text is always sent as plain text, so nothing a visitor types can turn into a web page. Lists, maps and objects become JSON. <code>web.page(html)</code> sends HTML on purpose, with visitor input cleaned by <code>web.escape(x)</code>, and <code>web.status(404, "Not found")</code> sends an error code. <code>server.visit</code> tries a route without a browser, which is handy in tests.</p>
         <p class="note"><b>In the playground</b>, <code>start</code> lists your routes instead of opening a port. On your computer, <code>lf run app.lf</code> serves real pages at <code>http://localhost:8080</code>.</p>
 
-        <h2 id="g10"><span class="num">10</span>Testing</h2>
+        <h2 id="g10"><span class="num">11</span>Testing</h2>
         <p>A <code>test</code> block holds <code>expect</code> checks. <code>lf test file.lf</code> runs every test and reports which passed. In the playground, press Run tests.</p>
-<lf-code data-try data-mode="test">beam discount(total) {
+<lf-code data-try data-mode="test">beam discount(total: Decimal) gives Decimal {
     when total >= 100 {
         send total * 0.9
     }
@@ -611,14 +669,14 @@ test "small orders pay full price" {
     expect discount(50) is 50
 }</lf-code>
 
-        <h2 id="g11"><span class="num">11</span>Sharing your program</h2>
+        <h2 id="g11"><span class="num">12</span>Sharing your program</h2>
         <p><code>lf build</code> turns a program into one standalone file. The people you give it to don't need Laser Feet, Go, or anything else installed.</p>
 <lf-code>lf build app.lf            -- makes ./app (app.exe on Windows)
 lf build app.lf -o shop    -- picks the name
 ./app</lf-code>
         <p>The file carries a SHA-256 checksum of your program and refuses to start if it was changed or damaged after you built it. Files your program uses with <code>use "file.lf"</code> are packed in too. It runs on the same kind of computer you built it on, so build on a Mac for Macs and on Windows for Windows.</p>
 
-        <h2 id="g12"><span class="num">12</span>Saving data</h2>
+        <h2 id="g12"><span class="num">13</span>Saving data</h2>
         <p><code>use store</code> gives you a small built-in database. Records are maps with an <code>id</code> that Laser Feet gives them. Everything is saved to a file after each change, so it survives restarts.</p>
 <lf-code data-try>use store
 
@@ -646,7 +704,7 @@ launch {
         </table></div>
         <p class="note"><b>Safe by default:</b> the file is written to a temporary copy first and then swapped in, so a crash never leaves it half-written, and only you can read it. Changing a record you got back doesn't save it; use <code>update</code>.</p>
 
-        <h2 id="g13"><span class="num">13</span>JSON, files and settings</h2>
+        <h2 id="g13"><span class="num">14</span>JSON, files and settings</h2>
 <lf-code data-try>use json
 use time
 
@@ -671,10 +729,10 @@ launch {
         </table></div>
         <p>In a web route, <code>request.json</code> holds the request body already read as JSON (or nothing if it isn't JSON).</p>
 
-        <h2 id="g14"><span class="num">14</span>Splitting code into files</h2>
+        <h2 id="g14"><span class="num">15</span>Splitting code into files</h2>
         <p>Put beams and objects in another <code>.lf</code> file and bring them in with <code>use</code>. The file's name becomes the name you reach them by.</p>
 <lf-code>-- prices.lf
-beam withTax(amount) {
+beam withTax(amount: Decimal) gives Decimal {
     send round(amount * 1.0825, 2)
 }
 
@@ -701,6 +759,7 @@ launch {
       <nav class="toc" aria-label="Reference sections">
         <div class="label">Sections</div>
         <a href="#reference" data-jump="r1">Keywords</a>
+        <a href="#reference" data-jump="r8">Types</a>
         <a href="#reference" data-jump="r2">Operators</a>
         <a href="#reference" data-jump="r3">Built-in beams</a>
         <a href="#reference" data-jump="r4">List, text, map</a>
@@ -716,6 +775,7 @@ launch {
           <tr><td><code>show</code></td><td>Print a value on its own line</td></tr>
           <tr><td><code>beam</code></td><td>Make a function</td></tr>
           <tr><td><code>send</code></td><td>Give back a result from a beam</td></tr>
+          <tr><td><code>gives</code></td><td>Say what type a beam sends back</td></tr>
           <tr><td><code>lock</code></td><td>Make a value that can never change</td></tr>
           <tr><td><code>object</code></td><td>Make a blueprint with fields and beams</td></tr>
           <tr><td><code>rule</code> / <code>follows</code></td><td>List beams an object must have / promise to have them</td></tr>
@@ -731,6 +791,20 @@ launch {
           <tr><td><code>test</code> / <code>expect</code></td><td>Write a test / check a result</td></tr>
           <tr><td><code>yes</code> / <code>no</code> / <code>nothing</code></td><td>The yes/no values and the empty value</td></tr>
           <tr><td><code>--</code></td><td>A note for readers, ignored when running</td></tr>
+        </table></div>
+
+        <h2 id="r8">Types</h2>
+        <div class="tablewrap"><table>
+          <tr><th>Write</th><th>Meaning</th></tr>
+          <tr><td><code>beam f(x: Int) gives Text</code></td><td>Every input has a type; <code>gives</code> says what's sent back (leave it out if nothing is)</td></tr>
+          <tr><td><code>price: Decimal = 0</code></td><td>A field with a type and a default; also works for a value inside a beam</td></tr>
+          <tr><td><code>Int</code> <code>Float</code> <code>Decimal</code></td><td>Whole numbers, fast approximate decimals, exact decimals</td></tr>
+          <tr><td><code>Text</code> <code>Flag</code> <code>Json</code></td><td>Text, yes/no, data from outside</td></tr>
+          <tr><td><code>List[T]</code> <code>Map[T]</code> <code>T?</code></td><td>A list, named entries, or a value that may be nothing</td></tr>
+          <tr><td><code>Beam(A, B) gives C</code></td><td>A beam as a value</td></tr>
+          <tr><td><code>Server</code> <code>Request</code> <code>Response</code> <code>Store</code></td><td>Library types</td></tr>
+          <tr><td><code>int</code> <code>float</code> <code>decimal</code> <code>fixed</code></td><td>Convert numbers; <code>fixed(x, 2)</code> gives text with 2 places</td></tr>
+          <tr><td><code>Item.from(json)</code></td><td>Build an object from JSON, checking every field</td></tr>
         </table></div>
 
         <h2 id="r2">Operators</h2>
@@ -749,12 +823,12 @@ launch {
         <div class="tablewrap"><table>
           <tr><th>Beam</th><th>What it does</th></tr>
           <tr><td><code>text(x)</code></td><td>Turn any value into text</td></tr>
-          <tr><td><code>number(x)</code></td><td>Turn text like "42" into a number</td></tr>
+          <tr><td><code>number(x)</code></td><td>Turn text like "42.5" into an exact Decimal (<code>int(x)</code> for an Int)</td></tr>
           <tr><td><code>count(x)</code></td><td>How many items, letters, or entries</td></tr>
           <tr><td><code>sum(list)</code></td><td>Add up numbers</td></tr>
           <tr><td><code>biggest</code> / <code>smallest</code></td><td>Largest or smallest number</td></tr>
-          <tr><td><code>round(x, places)</code></td><td>Round, optionally to decimal places</td></tr>
-          <tr><td><code>first</code> / <code>last</code></td><td>First or last item, or nothing</td></tr>
+          <tr><td><code>round(x, places)</code></td><td>Round halves away from zero; with no places it gives an Int</td></tr>
+          <tr><td><code>first</code> / <code>last</code></td><td>First or last item, or nothing (so the result is <code>T?</code>)</td></tr>
           <tr><td><code>reverse</code> / <code>sort</code></td><td>A new list, reversed or sorted</td></tr>
           <tr><td><code>join(list, sep)</code></td><td>Join items into text</td></tr>
           <tr><td><code>keepIf(list, rule)</code></td><td>Items where the rule is yes</td></tr>
@@ -805,6 +879,7 @@ launch {
           <tr><td><code>lf new name</code></td><td>Create a starter project with an app and tests</td></tr>
           <tr><td><code>lf run app.lf</code></td><td>Run a program (<code>lf app.lf</code> works too)</td></tr>
           <tr><td><code>lf test app.lf</code></td><td>Run its test blocks</td></tr>
+          <tr><td><code>lf check app.lf</code></td><td>Find type mistakes without running anything (<code>run</code>, <code>test</code> and <code>build</code> check first too)</td></tr>
           <tr><td><code>lf build app.lf</code></td><td>Make a standalone program file (<code>-o name</code> picks its name)</td></tr>
           <tr><td><code>lf version</code></td><td>Show the version</td></tr>
           <tr><td><code>lf help</code></td><td>Show help</td></tr>
@@ -863,7 +938,7 @@ launch {
 
 <footer>
   <div class="wrap">
-    <span>Laser Feet 0.3 · engine written in Go</span>
+    <span>Laser Feet 0.4 · engine written in Go</span>
     <span>engine sha-256 <span id="engineHash"></span> · verified before every load</span>
     <a href="https://github.com/billionairedev24/laserfeet">github.com/billionairedev24/laserfeet</a>
   </div>
@@ -873,7 +948,7 @@ launch {
 <script>
 const EXAMPLES = /*EXAMPLES*/;
 const WASM_SHA256 = /*WASM_SHA256*/;
-const KW = new Set("launch show beam send lock object rule follows when otherwise each in loop while times then fast attempt fails fail use test expect is not and or yes no nothing me stop skip to".split(" "));
+const KW = new Set("gives launch show beam send lock object rule follows when otherwise each in loop while times then fast attempt fails fail use test expect is not and or yes no nothing me stop skip to".split(" "));
 const BI = new Set("text number count sum biggest smallest round first last reverse sort join keepIf dropIf turn sortBy findFirst pause readFile".split(" "));
 const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
