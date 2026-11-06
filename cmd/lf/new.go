@@ -65,7 +65,7 @@ ARG LF_IMAGE=ghcr.io/billionairedev24/laserfeet:{{version}}
 
 # 1. Check, test and build the app with the official Laser Feet image
 FROM ${LF_IMAGE} AS build
-USER 0
+USER 0:0
 WORKDIR /app
 COPY *.lf ./
 RUN ["lf", "test", "app.lf"]
