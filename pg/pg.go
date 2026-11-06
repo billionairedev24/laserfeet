@@ -37,7 +37,8 @@ import (
 // Config says how to reach a database.
 type Config struct {
 	Host, Port, User, Password, Database string
-	SSLMode                              string // disable, require, verify-full
+	SSLMode                              string        // disable, require, verify-full
+	Timeout                              time.Duration // longest a statement may run (0: 30 seconds)
 }
 
 // ParseURL reads a URL like postgres://user:password@host:5432/dbname?sslmode=verify-full.
@@ -58,6 +59,13 @@ func ParseURL(s string) (Config, error) {
 		c.Database = c.User
 	}
 	c.SSLMode = u.Query().Get("sslmode")
+	if t := u.Query().Get("timeout"); t != "" {
+		d, err := time.ParseDuration(t)
+		if err != nil || d < time.Millisecond {
+			return Config{}, fmt.Errorf("timeout must be a length of time like 30s or 2m, not %q", t)
+		}
+		c.Timeout = d
+	}
 	if c.SSLMode == "" {
 		if isLocal(c.Host) {
 			c.SSLMode = "disable"
@@ -243,7 +251,12 @@ func (cn *Conn) startup(c Config) error {
 	cn.w = cn.w[:0]
 	cn.i32(0)
 	cn.i32(196608) // protocol 3.0
-	for _, kv := range [][2]string{{"user", c.User}, {"database", c.Database}, {"application_name", "laserfeet"}, {"client_encoding", "UTF8"}, {"DateStyle", "ISO, YMD"}, {"TimeZone", "UTC"}} {
+	timeout := c.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second // a runaway query can't hold a connection forever
+	}
+	for _, kv := range [][2]string{{"user", c.User}, {"database", c.Database}, {"application_name", "laserfeet"}, {"client_encoding", "UTF8"}, {"DateStyle", "ISO, YMD"}, {"TimeZone", "UTC"},
+		{"statement_timeout", strconv.FormatInt(timeout.Milliseconds(), 10)}} {
 		cn.str(kv[0])
 		cn.str(kv[1])
 	}
@@ -623,4 +636,36 @@ func (p *Pool) Exec(sql string, args []*string) (*Result, error) {
 	}
 	defer p.Put(c)
 	return c.Exec(sql, args)
+}
+
+// Script runs SQL that may hold several statements (a migration file), with no
+// values. It uses PostgreSQL's simple query protocol.
+func (cn *Conn) Script(sql string) error {
+	if cn.broken {
+		return errors.New("this database connection is broken")
+	}
+	cn.nc.SetDeadline(time.Now().Add(30 * time.Minute))
+	defer cn.nc.SetDeadline(time.Time{})
+	start := len(cn.w)
+	cn.begin('Q')
+	cn.str(sql)
+	cn.end(start)
+	if err := cn.flush(); err != nil {
+		return err
+	}
+	var failed error
+	for {
+		kind, body, err := cn.read()
+		if err != nil {
+			return err
+		}
+		switch kind {
+		case 'E':
+			if failed == nil {
+				failed = parseError(body)
+			}
+		case 'Z':
+			return failed
+		}
+	}
 }

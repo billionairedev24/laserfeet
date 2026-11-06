@@ -82,6 +82,19 @@ ENTRYPOINT ["/server"]
 
 const starterDockerignore = `*
 !*.lf
+!sole.*
+!.sole/
+!views/
+!public/
+!static/
+!templates/
+!migrations/
+`
+
+// starterGitignore keeps secrets and built programs out of git.
+const starterGitignore = `.env
+/app
+/app.exe
 `
 
 // newProject creates a starter project folder.
@@ -98,7 +111,7 @@ func newProject(name string) int {
 		fmt.Fprintf(os.Stderr, "I couldn't create %s: %v\n", name, err)
 		return 1
 	}
-	files := map[string]string{"app.lf": starterApp, "README.md": starterReadme, "Dockerfile": starterDockerfile, ".dockerignore": starterDockerignore}
+	files := map[string]string{"app.lf": starterApp, "README.md": starterReadme, "Dockerfile": starterDockerfile, ".dockerignore": starterDockerignore, ".gitignore": starterGitignore}
 	imageTag := version
 	if imageTag == "dev" {
 		imageTag = "latest"

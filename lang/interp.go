@@ -164,8 +164,12 @@ type Interp struct {
 	// ReadAsset, when set, reads templates and static files instead of the disk
 	// (a program built with lf build carries them inside it). Paths use /.
 	ReadAsset func(path string) (string, error)
-	tests     []*TestStmt
-	outMu     sync.Mutex
+	// Log receives log lines from 'use log' (lf sends them to standard error).
+	Log io.Writer
+	// ListAssets, when set, lists the files in one of those folders.
+	ListAssets func(dir string) ([]string, error)
+	tests      []*TestStmt
+	outMu      sync.Mutex
 }
 
 func NewInterp(out io.Writer) *Interp {
@@ -178,6 +182,17 @@ func NewInterp(out io.Writer) *Interp {
 
 func (in *Interp) fail(line int, format string, args ...any) {
 	panic(&RuntimeError{Line: line, Msg: fmt.Sprintf(format, args...)})
+}
+
+// logLine writes a log line (from use log) to Log, or with the output if Log isn't set.
+func (in *Interp) logLine(s string) {
+	in.outMu.Lock()
+	w := in.Log
+	if w == nil {
+		w = in.Out
+	}
+	fmt.Fprintln(w, s)
+	in.outMu.Unlock()
 }
 
 func (in *Interp) print(s string) {

@@ -160,6 +160,8 @@ func rowsOf(res *pg.Result) *List {
 
 func databaseMethod(in *Interp, db *Database, name string) *Builtin {
 	switch name {
+	case "migrate":
+		return in.dbMigrate(db)
 	case "query":
 		return builtin("query", func(in *Interp, line int, a []Value) Value {
 			cl, a := rowClass(a)

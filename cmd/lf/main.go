@@ -20,6 +20,7 @@ Usage:
   lf run <file.lf>     run a program
   lf test <file.lf>    run the test blocks in a file
   lf check <file.lf>   find type mistakes without running anything
+  lf migrate [folder]  apply new .sql migrations to DATABASE_URL
   lf secret            print a new random secret (for server.sessions)
   lf fmt [files]       lay out code the standard way (--check: only report)
   lf fix [files]       update code written for an older Laser Feet
@@ -59,6 +60,8 @@ func main() {
 		os.Exit(soleGet(args[1:]))
 	case "remove":
 		os.Exit(soleRemove(args[1:]))
+	case "migrate":
+		os.Exit(migrate(args[1:]))
 	case "secret":
 		// a secret for server.sessions: 48 random bytes, URL-safe
 		fmt.Println(auth.Token(48))
@@ -118,6 +121,8 @@ func newInterp(path string) *lang.Interp {
 	in := lang.NewInterp(os.Stdout)
 	dir := filepath.Dir(path)
 	in.Dir = dir
+	in.Log = os.Stderr
+	loadDotEnv(dir)
 	in.ReadSource = func(p string) (string, error) {
 		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p)))
 		return string(b), err

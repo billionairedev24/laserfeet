@@ -204,6 +204,7 @@ func runAttached() (code int, found bool) {
 		return 1, true
 	}
 	in := lang.NewInterp(os.Stdout)
+	in.Log = os.Stderr
 	in.ReadSource = func(p string) (string, error) {
 		if src, ok := b.Files[p]; ok && p != b.Main {
 			return src, nil
@@ -215,6 +216,16 @@ func runAttached() (code int, found bool) {
 			return src, nil
 		}
 		return "", fmt.Errorf("%s was not packed into this program", p)
+	}
+	in.ListAssets = func(dir string) ([]string, error) {
+		prefix := "assets/" + path.Clean(dir) + "/"
+		var names []string
+		for k := range b.Files {
+			if rest, ok := strings.CutPrefix(k, prefix); ok && !strings.Contains(rest, "/") {
+				names = append(names, rest)
+			}
+		}
+		return names, nil
 	}
 	if err := in.Run(b.Files[b.Main]); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

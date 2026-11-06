@@ -52,6 +52,8 @@ func loadModule(in *Interp, name string) *Module {
 		return postgresModule()
 	case "auth":
 		return authModule()
+	case "log":
+		return logModule()
 	}
 	return nil
 }

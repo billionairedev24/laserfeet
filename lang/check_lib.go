@@ -28,6 +28,7 @@ func libraryModule(name string) *Type {
 		"store":    {"open", "memory"},
 		"postgres": {"open"},
 		"auth":     {"hash", "check", "token"},
+		"log":      {"info", "warn", "error"},
 	}[name]
 	if members == nil {
 		return nil
@@ -50,7 +51,7 @@ var libraryMembers = map[string]bool{
 	"response.header": true, "response.cookie": true, "response.forget": true,
 	"session.get": true, "session.set": true, "session.has": true, "session.remove": true, "session.clear": true,
 	"upload.saveAs":  true,
-	"database.query": true, "database.first": true, "database.run": true, "database.transaction": true,
+	"database.query": true, "database.first": true, "database.run": true, "database.transaction": true, "database.migrate": true,
 	"store.add": true, "store.all": true, "store.find": true, "store.update": true, "store.remove": true, "store.count": true,
 }
 
@@ -571,6 +572,19 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 			c.need(line, a[0], tText, "the HTML")
 		}
 		return tText
+	case "log.info", "log.warn", "log.error":
+		if c.argCount(line, n, a, 1, 2) {
+			c.need(line, a[0], tText, "the message")
+			if len(a) == 2 && a[1] != nil && a[1].Kind != KMap && a[1].Kind != KJson && a[1].Kind != KUnknown {
+				c.report(line, "the details for %s must be a map, like {id: id}", n)
+			}
+		}
+		return tNothing
+	case "database.migrate":
+		if c.argCount(line, "migrate", a, 1, 1) {
+			c.need(line, a[0], tText, "the migrations folder")
+		}
+		return listOf(tText)
 	case "auth.hash":
 		if c.argCount(line, "auth.hash", a, 1, 1) {
 			c.need(line, a[0], tText, "the password")
@@ -684,7 +698,7 @@ func builtinWant(name string, i int) *Type {
 	switch {
 	case i == 1 && name == "database.run", (i == 1 || i == 2) && (name == "database.query" || name == "database.first"):
 		return listOf(tJson)
-	case i == 1 && (name == "store.add" || name == "web.status" || name == "web.render"):
+	case i == 1 && (name == "store.add" || name == "web.status" || name == "web.render" || name == "log.info" || name == "log.warn" || name == "log.error"):
 		return tJson
 	case i == 2 && (name == "store.update" || name == "server.visit" || name == "web.fetch"):
 		return tJson
