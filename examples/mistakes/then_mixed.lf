@@ -1,0 +1,4 @@
+launch {
+    names = ["ada", "tobi"]
+    show "Team: " + names then join(", ")
+}

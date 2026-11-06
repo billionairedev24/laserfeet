@@ -19,6 +19,8 @@ Usage:
   lf run <file.lf>     run a program
   lf test <file.lf>    run the test blocks in a file
   lf check <file.lf>   find type mistakes without running anything
+  lf fmt [files]       lay out code the standard way (--check: only report)
+  lf fix [files]       update code written for an older Laser Feet
   lf get <package>     add a package, like: lf get github.com/someone/greetings@v1.2.0
   lf get               install the packages in sole.list, checked against sole.lock
   lf remove <package>  stop using a package
@@ -55,6 +57,10 @@ func main() {
 		os.Exit(soleGet(args[1:]))
 	case "remove":
 		os.Exit(soleRemove(args[1:]))
+	case "fmt":
+		os.Exit(formatFiles(args[1:]))
+	case "fix":
+		os.Exit(fixFiles(args[1:]))
 	case "lsp":
 		os.Exit(runLSP(os.Stdin, os.Stdout))
 	case "check":

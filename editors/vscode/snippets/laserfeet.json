@@ -117,11 +117,31 @@
   "Route": {
     "prefix": "get",
     "body": [
-      "server.get(\"${1:/path}\") {",
+      "server.get(\"${1:/path}\") as request {",
       "\t$0",
       "}"
     ],
     "description": "Answer GET requests on a path"
+  },
+  "Post route": {
+    "prefix": "post",
+    "body": [
+      "server.post(\"${1:/path}\") as request {",
+      "\t${2:item} = ${3:Item}.from(request.json)",
+      "\t$0",
+      "}"
+    ],
+    "description": "Answer POST requests with a JSON body"
+  },
+  "Transaction": {
+    "prefix": "transaction",
+    "body": [
+      "transaction with ${1:db} as ${2:tx} {",
+      "\t$2.run(\"$3\", [$4])",
+      "\t$0",
+      "}"
+    ],
+    "description": "Database changes that all happen, or none do"
   },
   "Field": {
     "prefix": "field",

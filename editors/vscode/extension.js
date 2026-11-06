@@ -168,6 +168,15 @@ function activate(context) {
         return new vscode.Hover(new vscode.MarkdownString(h.contents.value));
       },
     }),
+    vscode.languages.registerDocumentFormattingEditProvider(LANG, {
+      // lf fmt: works with "Format Document" and with editor.formatOnSave
+      async provideDocumentFormattingEdits(doc) {
+        flush(doc);
+        const edits = await client.request("textDocument/formatting", { textDocument: { uri: doc.uri.toString() }, options: { tabSize: 4, insertSpaces: true } }).catch(() => []);
+        return (edits || []).map((e) => vscode.TextEdit.replace(
+          new vscode.Range(e.range.start.line, e.range.start.character, e.range.end.line, e.range.end.character), e.newText));
+      },
+    }),
     { dispose: () => client.stop() }
   );
 

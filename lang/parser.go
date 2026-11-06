@@ -10,19 +10,41 @@ type parser struct {
 	toks    []Token
 	pos     int
 	noTrail int // when > 0, a "{" after a call is a block, not a trailing beam
+	src     []rune
+	grouped map[Expr]bool // expressions written inside ( )
+	fixing  bool          // lf fix: record Edits for old code instead of failing
+	edits   []Edit
+}
+
+// Edit is a change lf fix makes to bring older code up to date: Text is put at
+// position At (counted in characters).
+type Edit struct {
+	At   int
+	Text string
 }
 
 // Parse reads Laser Feet source code into a Program.
 func Parse(src string) (prog *Program, err error) {
+	prog, _, err = parse(src, false)
+	return prog, err
+}
+
+// ParseForFix is Parse for lf fix: code written for older versions is accepted,
+// and the edits that update it are returned.
+func ParseForFix(src string) (*Program, []Edit, error) {
+	return parse(src, true)
+}
+
+func parse(src string, fixing bool) (prog *Program, edits []Edit, err error) {
 	toks, lerr := Lex(src, 1)
 	if lerr != nil {
-		return nil, lerr
+		return nil, nil, lerr
 	}
-	p := &parser{toks: toks}
+	p := &parser{toks: toks, src: []rune(src), grouped: map[Expr]bool{}, fixing: fixing}
 	defer func() {
 		if r := recover(); r != nil {
 			if se, ok := r.(*SyntaxError); ok {
-				prog, err = nil, se
+				prog, edits, err = nil, nil, se
 				return
 			}
 			panic(r)
@@ -37,7 +59,7 @@ func Parse(src string) (prog *Program, err error) {
 		prog.Stmts = append(prog.Stmts, p.statement())
 		p.endOfStatement()
 	}
-	return prog, nil
+	return prog, p.edits, nil
 }
 
 // ---- helpers ----
@@ -158,8 +180,40 @@ func (p *parser) block(what string) []Stmt {
 
 // ---- statements ----
 
+// isBlockName reports whether the next words are "as <name> {", naming a block's input.
+func (p *parser) isBlockName() bool {
+	if p.pos+2 >= len(p.toks) {
+		return false
+	}
+	a, n, b := p.toks[p.pos], p.toks[p.pos+1], p.toks[p.pos+2]
+	return a.Type == IDENT && a.Text == "as" && n.Type == IDENT && b.Type == SYMBOL && b.Text == "{"
+}
+
+// transactionStmt reads: transaction with db as tx { ... }
+// It means db.transaction() as tx { ... }: everything in the block happens, or none of it.
+func (p *parser) transactionStmt() Stmt {
+	t := p.next()
+	p.next() // with
+	p.noTrail++
+	db := p.expr()
+	p.noTrail--
+	if !(p.peek().Type == IDENT && p.peek().Text == "as") {
+		p.fail(t.Line, "name the transaction, like: transaction with db as tx { ... }")
+	}
+	p.next()
+	name := p.expectIdent("a name for the transaction, like 'tx'")
+	bt := p.peek()
+	body := p.block("the transaction")
+	call := &Call{Line: t.Line, Callee: &Get{t.Line, db, "transaction"}, Tx: true,
+		Args: []Arg{{Value: &Lambda{Line: bt.Line, Params: []string{name.Text}, Body: body, As: true, Open: bt.Start}}}}
+	return &ExprStmt{t.Line, call}
+}
+
 func (p *parser) statement() Stmt {
 	t := p.peek()
+	if t.Type == IDENT && t.Text == "transaction" && p.toks[p.pos+1].Type == IDENT && p.toks[p.pos+1].Text == "with" {
+		return p.transactionStmt()
+	}
 	if t.Type == KEYWORD {
 		switch t.Text {
 		case "launch":
@@ -446,13 +500,41 @@ func (p *parser) whenStmt() Stmt {
 // ---- expressions ----
 
 func (p *parser) expr() Expr {
+	start := p.pos
 	left := p.or()
+	end := p.pos - 1
 	for p.keywordAfterNewlines("then") {
+		if p.mixedBeforeThen(left) {
+			// a + b then f could mean (a + b) then f or a + (b then f): ask which
+			from, to := p.toks[start].Start, p.toks[end].End
+			if !p.fixing {
+				p.fail(p.peek().Line, "it's unclear what 'then' takes here. Add brackets: (%s) then ... passes all of it, or put brackets around just the part 'then' should take (lf fix adds the first kind, which is how this code ran before)",
+					string(p.src[from:to]))
+			}
+			p.edits = append(p.edits, Edit{from, "("}, Edit{to, ")"})
+			p.grouped[left] = true
+		}
 		t := p.next()
 		right := p.postfix()
 		left = &Then{t.Line, left, right}
 	}
 	return left
+}
+
+// mixedBeforeThen reports whether the left side of 'then' is an unbracketed
+// calculation like a + b or not x, where it's unclear what 'then' applies to.
+// A range (1 to 10 then sum) is clear, so it's allowed.
+func (p *parser) mixedBeforeThen(x Expr) bool {
+	if p.grouped[x] {
+		return false
+	}
+	switch e := x.(type) {
+	case *Binary:
+		return e.Op != "to"
+	case *Unary:
+		return true
+	}
+	return false
 }
 
 func (p *parser) or() Expr {
@@ -604,10 +686,17 @@ func (p *parser) postfix() Expr {
 			}
 			p.noTrail = saved
 			p.expectSym(")", "to close the call")
-			if p.isSym("{") && p.noTrail == 0 {
+			if p.noTrail == 0 && p.isBlockName() {
+				// server.get("/x") as request { ... }: the block gets one named input
+				p.next()
+				name := p.next()
 				bt := p.peek()
 				body := p.block("the beam block")
-				c.Args = append(c.Args, Arg{Value: &Lambda{Line: bt.Line, Body: body}})
+				c.Args = append(c.Args, Arg{Value: &Lambda{Line: bt.Line, Params: []string{name.Text}, Body: body, As: true, Open: bt.Start}})
+			} else if p.isSym("{") && p.noTrail == 0 {
+				bt := p.peek()
+				body := p.block("the beam block")
+				c.Args = append(c.Args, Arg{Value: &Lambda{Line: bt.Line, Body: body, Open: bt.Start}})
 			}
 			x = c
 		case p.isSym("."):
@@ -687,6 +776,7 @@ func (p *parser) primary() Expr {
 			p.next()
 			x := p.expr()
 			p.expectSym(")", "to close the '('")
+			p.grouped[x] = true
 			return x
 		case "[":
 			p.next()

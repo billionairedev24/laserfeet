@@ -102,6 +102,13 @@ func TestLanguageServer(t *testing.T) {
 	if d := c.read(); !strings.Contains(fmt.Sprint(d["params"]), "diagnostics:[]") {
 		t.Errorf("expected no problems after the fix, got %v", d)
 	}
+	// format (format on save) gives the lf fmt layout
+	c.write("textDocument/didChange", 0, map[string]any{"textDocument": map[string]any{"uri": uri}, "contentChanges": []any{map[string]any{"text": "launch {\nshow 1+2\n}\n"}}})
+	c.read()
+	c.write("textDocument/formatting", 5, map[string]any{"textDocument": map[string]any{"uri": uri}})
+	if f := fmt.Sprint(c.read()["result"]); !strings.Contains(f, "show 1 + 2") {
+		t.Errorf("formatting should lay out the code, got %s", f)
+	}
 	c.write("shutdown", 4, nil)
 	c.read()
 	c.write("exit", 0, nil)

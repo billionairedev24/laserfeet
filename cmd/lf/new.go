@@ -21,7 +21,7 @@ server.get("/") {
     send "Hello from {{name}}!"
 }
 
-server.get("/hello/:name") {
+server.get("/hello/:name") as request {
     send greet(request.params.name)
 }
 

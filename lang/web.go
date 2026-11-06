@@ -256,7 +256,7 @@ func (s *Server) run(in *Interp, r *route, req *Map) (resp *Response) {
 	}()
 	var out Value
 	if b, ok := r.handler.(*Beam); ok && len(b.Params) == 0 {
-		out = in.call(b, nil, nil, 0, map[string]Value{"request": req})
+		out = in.call(b, nil, nil, 0, nil) // a route that doesn't name its request
 	} else {
 		out = in.call(r.handler, []Value{req}, nil, 0, nil)
 	}

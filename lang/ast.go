@@ -56,6 +56,7 @@ type Call struct {
 	Line   int
 	Callee Expr
 	Args   []Arg
+	Tx     bool // written as: transaction with db as tx { ... }
 }
 type Get struct {
 	Line   int
@@ -78,6 +79,8 @@ type Lambda struct {
 	Sig    *Sig   // types, when written (beam(x: Int) gives Int { ... })
 	Body   []Stmt // block body
 	Expr   Expr   // or single expression body
+	As     bool   // written as a block after a call: f() as name { ... }
+	Open   int    // where its '{' is in the source, for lf fix
 }
 
 // Sig holds the written types of a beam's inputs and result, and their resolved

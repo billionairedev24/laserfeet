@@ -199,6 +199,14 @@
           "match": "\\b(when|otherwise|each|in|loop|while|times|stop|skip|send|attempt|fails|fail|then|fast|wait|launch|expect)\\b"
         },
         {
+          "name": "keyword.control.transaction.laserfeet",
+          "match": "^\\s*transaction(?=\\s+with\\b)|(?<=\\btransaction)\\s+with\\b"
+        },
+        {
+          "name": "keyword.other.as.laserfeet",
+          "match": "\\bas(?=\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\{)"
+        },
+        {
           "name": "storage.modifier.laserfeet",
           "match": "\\b(lock|follows)\\b"
         },

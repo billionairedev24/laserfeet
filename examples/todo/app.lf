@@ -15,7 +15,7 @@ port = int(env("PORT", "8080"))
 server = web.open(port)
 
 -- list every to-do, or only open ones with /todos?open=yes
-server.get("/todos") {
+server.get("/todos") as request {
     todos = db.all("todos")
     when request.query.open is "yes" {
         todos = todos then keepIf(not done)
@@ -23,7 +23,7 @@ server.get("/todos") {
     send todos
 }
 
-server.get("/todos/:id") {
+server.get("/todos/:id") as request {
     todo = db.find("todos", int(request.params.id))
     when todo is nothing {
         send web.status(404, {error: "no to-do with that id"})
@@ -31,7 +31,7 @@ server.get("/todos/:id") {
     send todo
 }
 
-server.post("/todos") {
+server.post("/todos") as request {
     problem = checks.problemWith(request.json)
     when problem is not nothing {
         send web.status(400, {error: problem})
@@ -44,7 +44,7 @@ server.post("/todos") {
     send web.status(201, todo)
 }
 
-server.post("/todos/:id/done") {
+server.post("/todos/:id/done") as request {
     todo = db.update("todos", int(request.params.id), {done: yes})
     when todo is nothing {
         send web.status(404, {error: "no to-do with that id"})
@@ -52,7 +52,7 @@ server.post("/todos/:id/done") {
     send todo
 }
 
-server.on("/todos/:id") {
+server.on("/todos/:id") as request {
     when request.method is not "DELETE" {
         send web.status(405, {error: "use GET, or DELETE to remove a to-do"})
     }

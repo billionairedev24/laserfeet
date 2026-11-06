@@ -89,20 +89,23 @@ type beamCtx struct {
 }
 
 type checker struct {
-	file     string
-	problems []Problem
-	seen     map[string]bool
-	classes  map[string]*Class
-	rules    map[string]*RuleDef
-	beam     *beamCtx
-	read     func(string) (string, error)
-	modules  map[string]*Type
-	loading  map[string]bool
-	inRoute  bool
-	route    string   // the path of the route being checked, like /todos/:id
-	params   []string // its :names, which are always there when the route runs
-	info     *Analysis
-	useStack []UseContext
+	file      string
+	problems  []Problem
+	seen      map[string]bool
+	classes   map[string]*Class
+	rules     map[string]*RuleDef
+	beam      *beamCtx
+	read      func(string) (string, error)
+	modules   map[string]*Type
+	loading   map[string]bool
+	inRoute   bool
+	reqNamed  bool     // the route's block names its request (as request)
+	routeOpen int      // where the route block's '{' is, for lf fix
+	fixes     []Edit   // changes lf fix would make
+	route     string   // the path of the route being checked, like /todos/:id
+	params    []string // its :names, which are always there when the route runs
+	info      *Analysis
+	useStack  []UseContext
 }
 
 // note records the type of a name on a line, for hover and autocomplete in editors.
@@ -1037,7 +1040,10 @@ func (c *checker) ident(x *Ident, sc *cscope) *Type {
 			}
 		}
 	}
-	if c.inRoute && x.Name == "request" {
+	if c.inRoute && !c.reqNamed && x.Name == "request" {
+		c.report(x.Line, "name the request to use it: write 'as request' before the route's '{', like server.get(\"/hello\") as request { ... } (lf fix can do this for you)")
+		c.fix(c.routeOpen, "as request ")
+		c.reqNamed = true // one message per route is enough
 		return lib("Request")
 	}
 	for s := sc; s != nil; s = s.parent {
@@ -1306,12 +1312,18 @@ func (c *checker) call(x *Call, sc *cscope, first *Type, hasFirst bool) *Type {
 		} else if fn.Kind == KBuiltin {
 			want = builtinWant(fn.Name, i)
 		}
-		if lam, ok := a.Value.(*Lambda); ok && isTransactionCall(x.Callee) && len(lam.Params) == 0 {
-			// db.transaction() { ... } runs its block with tx, the transaction
-			args = append(args, c.lambda(lam, sc, nil, map[string]*Type{"tx": lib("Database")}))
+		if lam, ok := a.Value.(*Lambda); ok && isTransactionCall(x.Callee) {
+			// transaction with db as tx { ... }: the block's input is the transaction
+			var implicit map[string]*Type
+			if len(lam.Params) == 0 {
+				c.report(x.Line, "name the transaction: write 'transaction with %s as tx { ... }' (lf fix can do this for you)", shortText(x.Callee.(*Get).Object))
+				c.fix(lam.Open, "as tx ")
+				implicit = map[string]*Type{"tx": lib("Database")}
+			}
+			args = append(args, c.lambda(lam, sc, &Type{Kind: KBeam, Params: []*Type{lib("Database")}}, implicit))
 		} else if lam, ok := a.Value.(*Lambda); ok && c.isRouteCall(x) {
-			saved, savedRoute, savedParams := c.inRoute, c.route, c.params
-			c.inRoute, c.route, c.params = true, "", nil
+			saved, savedRoute, savedParams, savedNamed, savedOpen := c.inRoute, c.route, c.params, c.reqNamed, c.routeOpen
+			c.inRoute, c.route, c.params, c.reqNamed, c.routeOpen = true, "", nil, len(lam.Params) > 0, lam.Open
 			if len(x.Args) > 0 {
 				if p, ok := x.Args[0].Value.(*TextLit); ok {
 					c.route = p.Value
@@ -1324,12 +1336,8 @@ func (c *checker) call(x *Call, sc *cscope, first *Type, hasFirst bool) *Type {
 			}
 			savedBeam := c.beam
 			c.beam = nil
-			var implicit map[string]*Type
-			if len(lam.Params) == 0 {
-				implicit = map[string]*Type{"request": lib("Request")}
-			}
-			args = append(args, c.lambda(lam, sc, nil, implicit))
-			c.beam, c.inRoute, c.route, c.params = savedBeam, saved, savedRoute, savedParams
+			args = append(args, c.lambda(lam, sc, &Type{Kind: KBeam, Params: []*Type{lib("Request")}}, nil))
+			c.beam, c.inRoute, c.route, c.params, c.reqNamed, c.routeOpen = savedBeam, saved, savedRoute, savedParams, savedNamed, savedOpen
 		} else if fn.Kind == KBuiltin && lazyBuiltins[fn.Name] && i > 0 {
 			args = append(args, nil) // checked by the built-in itself, once per item
 		} else {
@@ -1577,4 +1585,40 @@ func sameType(a, b *Type) bool {
 		return sameType(a.Result, b.Result)
 	}
 	return true
+}
+
+// fix records a change that lf fix makes to update older code.
+func (c *checker) fix(at int, text string) {
+	if c.file != "" { // only the file being fixed, not files it uses
+		return
+	}
+	for _, e := range c.fixes {
+		if e.At == at && e.Text == text {
+			return
+		}
+	}
+	c.fixes = append(c.fixes, Edit{at, text})
+}
+
+// FixEdits lists the changes that bring code written for an older Laser Feet up
+// to date (lf fix). It never changes what the code does.
+func FixEdits(src string, read func(string) (string, error)) ([]Edit, error) {
+	prog, edits, err := ParseForFix(src)
+	if err != nil {
+		return nil, err
+	}
+	c := &checker{seen: map[string]bool{}, read: read, modules: map[string]*Type{}, loading: map[string]bool{}}
+	c.checkProgram(prog, true)
+	return append(edits, c.fixes...), nil
+}
+
+// shortText writes a simple expression back as code, for messages (db, app.db).
+func shortText(e Expr) string {
+	switch x := e.(type) {
+	case *Ident:
+		return x.Name
+	case *Get:
+		return shortText(x.Object) + "." + x.Name
+	}
+	return "db"
 }

@@ -21,7 +21,7 @@ server.get("/hello") {
     send "Hello from Laser Feet"
 }
 
-server.get("/greet/:name") {
+server.get("/greet/:name") as request {
     send "Welcome, {request.params.name}!"
 }
 
@@ -29,7 +29,7 @@ server.get("/products") {
     send products
 }
 
-server.get("/products/:id") {
+server.get("/products/:id") as request {
     wanted = int(request.params.id)
     found = products then findFirst(id is wanted)
     when found is nothing {

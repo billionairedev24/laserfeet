@@ -157,7 +157,7 @@ func MembersOf(t *Type) []Member {
 			add("query", "(sql: Text, values: List) gives List[Json]", true)
 			add("first", "(sql: Text, values: List) gives Json?", true)
 			add("run", "(sql: Text, values: List) gives Int", true)
-			add("transaction", "() { ... } with tx", true)
+			add("transaction", "() as tx { ... } (or: transaction with db as tx { ... })", true)
 		case "Response":
 			add("status", "Int", false)
 			add("body", "Text", false)

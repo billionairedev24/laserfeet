@@ -8,7 +8,7 @@ import (
 )
 
 // Database is a PostgreSQL database opened with postgres.open. Inside
-// db.transaction() { ... }, tx is a Database tied to one connection.
+// transaction with db as tx { ... }, tx is a Database tied to one connection.
 type Database struct {
 	pool *pg.Pool
 	conn *pg.Conn // set inside a transaction
@@ -161,7 +161,7 @@ func databaseMethod(in *Interp, db *Database, name string) *Builtin {
 	case "transaction":
 		return builtin("transaction", func(in *Interp, line int, a []Value) Value {
 			if len(a) != 1 {
-				in.fail(line, "db.transaction needs a block, like db.transaction() { tx.run(...) }")
+				in.fail(line, "a transaction needs a block, like: transaction with db as tx { tx.run(...) }")
 			}
 			if db.conn != nil {
 				in.fail(line, "a transaction can't start inside another transaction")
@@ -189,7 +189,7 @@ func databaseMethod(in *Interp, db *Database, name string) *Builtin {
 					finish("rollback") // any problem undoes everything the block did
 				}
 			}()
-			out := in.call(a[0], nil, nil, line, map[string]Value{"tx": tx})
+			out := in.call(a[0], []Value{tx}, nil, line, nil)
 			if err := finish("commit"); err != nil {
 				in.fail(line, "database: %v", err)
 			}
@@ -200,7 +200,7 @@ func databaseMethod(in *Interp, db *Database, name string) *Builtin {
 	return nil
 }
 
-// isTransactionCall reports whether a call is db.transaction() { ... }, whose block gets tx.
+// isTransactionCall reports whether a call is db.transaction(), the form behind 'transaction with db as tx'.
 func isTransactionCall(callee Expr) bool {
 	g, ok := callee.(*Get)
 	return ok && strings.EqualFold(g.Name, "transaction")

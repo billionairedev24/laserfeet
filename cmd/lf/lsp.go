@@ -135,9 +135,10 @@ func (s *server) handle(m *rpcMessage) {
 	case "initialize":
 		s.reply(m.ID, map[string]any{
 			"capabilities": map[string]any{
-				"textDocumentSync":   1, // the editor sends the whole file on each change
-				"completionProvider": map[string]any{"triggerCharacters": []string{"."}},
-				"hoverProvider":      true,
+				"textDocumentSync":           1, // the editor sends the whole file on each change
+				"completionProvider":         map[string]any{"triggerCharacters": []string{"."}},
+				"hoverProvider":              true,
+				"documentFormattingProvider": true, // lf fmt, for format on save
 			},
 			"serverInfo": map[string]any{"name": "Laser Feet", "version": version},
 		})
@@ -190,6 +191,9 @@ func (s *server) handle(m *rpcMessage) {
 	case "textDocument/hover":
 		uri, pos := docPosition(m.Params)
 		s.reply(m.ID, s.hover(uri, pos))
+	case "textDocument/formatting":
+		uri, _ := docPosition(m.Params)
+		s.reply(m.ID, s.format(uri))
 	default:
 		if len(m.ID) > 0 && m.Method != "" {
 			s.send(rpcMessage{JSONRPC: "2.0", ID: m.ID, Error: &rpcError{Code: -32601, Message: "not supported: " + m.Method}})
@@ -392,4 +396,25 @@ func analyzeWhileTyping(text string, a *lang.Analysis, read func(string) (string
 		}
 	}
 	return nil, nil
+}
+
+// format replaces the whole document with its lf fmt layout. Code that doesn't
+// read (a missing quote, say) is left as it is.
+func (s *server) format(uri string) any {
+	d := s.docs[uri]
+	if d == nil {
+		return []any{}
+	}
+	out, err := lang.Format(d.text)
+	if err != nil || out == d.text {
+		return []any{}
+	}
+	lines := strings.Count(d.text, "\n") + 1
+	return []any{map[string]any{
+		"range": map[string]any{
+			"start": map[string]int{"line": 0, "character": 0},
+			"end":   map[string]int{"line": lines, "character": 0},
+		},
+		"newText": out,
+	}}
 }

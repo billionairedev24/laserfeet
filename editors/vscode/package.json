@@ -66,6 +66,13 @@
           "description": "The lf program used for live errors and autocomplete. Set this only if lf isn't on your PATH. For safety, only your user settings can change it, never a project's settings."
         }
       }
+    },
+    "configurationDefaults": {
+      "[laserfeet]": {
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
+      }
     }
   },
   "main": "./extension.js",

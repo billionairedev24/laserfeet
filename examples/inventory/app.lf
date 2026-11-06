@@ -30,7 +30,7 @@ server.get("/products") {
     send db.query("select sku, name, price, stock from products order by name")
 }
 
-server.get("/products/:sku") {
+server.get("/products/:sku") as request {
     found = db.first("select sku, name, price, stock from products where sku = $1", [request.params.sku])
     when found is nothing {
         send web.status(404, {error: "no product with that sku"})
@@ -38,7 +38,7 @@ server.get("/products/:sku") {
     send found
 }
 
-server.post("/products") {
+server.post("/products") as request {
     p = Product.from(request.json)     -- checks every field; a mismatch becomes a 400
     db.run("insert into products (sku, name, price, stock) values ($1, $2, $3, $4)",
         [p.sku, p.name, p.price, p.stock])
@@ -47,7 +47,7 @@ server.post("/products") {
 
 -- move stock between two products: both changes happen, or neither does
 beam transfer(source: Text, target: Text, amount: Int) {
-    db.transaction() {
+    transaction with db as tx {
         taken = tx.run("update products set stock = stock - $1 where sku = $2", [amount, source])
         when taken is 0 {
             fail "no product {source}"
@@ -56,7 +56,7 @@ beam transfer(source: Text, target: Text, amount: Int) {
     }
 }
 
-server.post("/transfer") {
+server.post("/transfer") as request {
     t = request.json
     transfer(t.from, t.to, int(text(t.amount)))
     send {ok: yes}

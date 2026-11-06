@@ -4,7 +4,7 @@
 const Module = require("module");
 const assert = require("assert");
 
-const state = { diagnostics: new Map(), completion: null, hover: null, warnings: [], listeners: {} };
+const state = { diagnostics: new Map(), completion: null, hover: null, format: null, warnings: [], listeners: {} };
 class Range { constructor(a, b, c, d) { this.start = { line: a, character: b }; this.end = { line: c, character: d }; } }
 const fakeVscode = {
   Range,
@@ -12,6 +12,7 @@ const fakeVscode = {
   DiagnosticSeverity: { Error: 0 },
   CompletionItem: class { constructor(label, kind) { this.label = label; this.kind = kind; } },
   CompletionItemKind: { Method: 2, Function: 3, Field: 5, Variable: 6, Class: 7, Module: 9, Keyword: 14, Snippet: 15, Text: 1 },
+  TextEdit: { replace: (range, newText) => ({ range, newText }) },
   Hover: class { constructor(md) { this.contents = md; } },
   MarkdownString: class { constructor(v) { this.value = v; } },
   Uri: { parse: (s) => ({ toString: () => s }) },
@@ -31,6 +32,7 @@ const fakeVscode = {
     createDiagnosticCollection: () => ({ set: (uri, d) => state.diagnostics.set(uri.toString(), d), delete() {}, dispose() {} }),
     registerCompletionItemProvider: (lang, p) => { state.completion = p; return { dispose() {} }; },
     registerHoverProvider: (lang, p) => { state.hover = p; return { dispose() {} }; },
+    registerDocumentFormattingEditProvider: (lang, p) => { state.format = p; return { dispose() {} }; },
   },
 };
 const realLoad = Module._load;
@@ -70,7 +72,13 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const hover = await state.hover.provideHover(typing, { line: 6, character: 5 });
   assert.ok(hover && /ada: User/.test(hover.contents.value), "hover shows the type");
 
+  const messy = doc("file:///tmp/t.lf", "launch {\nshow 1+2\n}\n");
+  messy.version = 3;
+  state.listeners.change({ document: messy });
+  const edits = await state.format.provideDocumentFormattingEdits(messy);
+  assert.ok(edits.length === 1 && edits[0].newText === "launch {\n    show 1 + 2\n}\n", "format document uses lf fmt, got " + JSON.stringify(edits));
+
   subs.forEach((s) => s.dispose && s.dispose());
-  console.log("VS Code extension: live errors, completion and hover all work");
+  console.log("VS Code extension: live errors, completion, hover and formatting all work");
   setTimeout(() => process.exit(0), 200);
 })().catch((e) => { console.error(e.message); process.exit(1); });

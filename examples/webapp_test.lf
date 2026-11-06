@@ -8,7 +8,7 @@ server.get("/hello") {
     send "Hello from Laser Feet"
 }
 
-server.get("/square/:n") {
+server.get("/square/:n") as request {
     n = int(request.params.n)
     send {number: n, square: n * n}
 }

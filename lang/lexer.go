@@ -20,9 +20,11 @@ const (
 
 // Token is one piece of Laser Feet source code.
 type Token struct {
-	Type TokenType
-	Text string
-	Line int
+	Type  TokenType
+	Text  string
+	Line  int
+	Start int // where the token starts in the source, counted in characters (runes)
+	End   int // just after its last character
 }
 
 var keywords = map[string]bool{
@@ -56,8 +58,16 @@ func Lex(src string, startLine int) ([]Token, error) {
 	depth := 0 // inside ( ) or [ ], newlines are ignored
 	rs := []rune(src)
 	i := 0
-	emit := func(t TokenType, text string) { toks = append(toks, Token{t, text, line}) }
+	emit := func(t TokenType, text string) { toks = append(toks, Token{Type: t, Text: text, Line: line}) }
+	marked, from := 0, 0 // tokens before marked have their positions set; from is where this step began
+	mark := func() {
+		for ; marked < len(toks); marked++ {
+			toks[marked].Start, toks[marked].End = from, i
+		}
+	}
 	for i < len(rs) {
+		mark()
+		from = i
 		c := rs[i]
 		switch {
 		case c == '\n':
@@ -125,7 +135,7 @@ func Lex(src string, startLine int) ([]Token, error) {
 			if !closed {
 				return nil, &SyntaxError{startLine, "this text starting with \"\"\" is missing its closing \"\"\""}
 			}
-			toks = append(toks, Token{STRING, sb.String(), startLine})
+			toks = append(toks, Token{Type: STRING, Text: sb.String(), Line: startLine})
 		case c == '"':
 			startLine := line
 			i++
@@ -188,7 +198,7 @@ func Lex(src string, startLine int) ([]Token, error) {
 			if !closed {
 				return nil, &SyntaxError{startLine, "this text is missing its closing quote \""}
 			}
-			toks = append(toks, Token{STRING, sb.String(), startLine})
+			toks = append(toks, Token{Type: STRING, Text: sb.String(), Line: startLine})
 		default:
 			two := ""
 			if i+1 < len(rs) {
@@ -216,8 +226,11 @@ func Lex(src string, startLine int) ([]Token, error) {
 			return nil, &SyntaxError{line, fmt.Sprintf("I don't understand the character '%c'", c)}
 		}
 	}
+	mark()
+	from = i
 	emit(NEWLINE, "\\n")
 	emit(EOF, "end of file")
+	mark()
 	return toks, nil
 }
 

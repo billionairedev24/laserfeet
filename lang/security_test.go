@@ -13,17 +13,17 @@ import (
 const secureApp = `
 use web
 server = web.open(8080)
-server.get("/hi/:name") {
+server.get("/hi/:name") as request {
     send "<h1>Hello {request.params.name}</h1>"
 }
-server.get("/page/:name") {
+server.get("/page/:name") as request {
     send web.page("<h1>Hello {web.escape(request.params.name)}</h1>")
 }
 server.get("/boom") {
     secret = "database-password-123"
     fail "could not connect with {secret}"
 }
-server.post("/echo") {
+server.post("/echo") as request {
     send count(request.body)
 }
 `
