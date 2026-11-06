@@ -149,8 +149,15 @@ func decodeValue(dec *json.Decoder) (Value, error) {
 			return m, err
 		}
 	case json.Number:
-		f, err := t.Float64()
-		return num(f), err
+		// whole numbers become Ints, anything else an exact Decimal
+		if i, err := t.Int64(); err == nil {
+			return box(i), nil
+		}
+		if d, err := ParseDecimal(t.String()); err == nil {
+			return d, nil
+		}
+		f, err := t.Float64() // numbers like 1e300 that have no short exact form
+		return f, err
 	case string, bool, nil:
 		return t, nil
 	}
@@ -216,13 +223,13 @@ func timeModule() *Module {
 type Store struct {
 	path  string // empty means kept in memory only
 	data  map[string]*List
-	next  map[string]float64
+	next  map[string]int64
 	names []string
 }
 
 type storeFile struct {
-	Collections map[string]any     `json:"collections"`
-	Next        map[string]float64 `json:"next"`
+	Collections map[string]any   `json:"collections"`
+	Next        map[string]int64 `json:"next"`
 }
 
 func storeModule() *Module {
@@ -231,7 +238,7 @@ func storeModule() *Module {
 			if len(a) > 1 {
 				in.fail(line, "store.open takes a file name, like store.open(\"data.json\"), or nothing to keep data in memory")
 			}
-			st := &Store{data: map[string]*List{}, next: map[string]float64{}}
+			st := &Store{data: map[string]*List{}, next: map[string]int64{}}
 			if len(a) == 1 {
 				st.path = Text(a[0])
 				if err := st.load(); err != nil {
@@ -241,7 +248,7 @@ func storeModule() *Module {
 			return st
 		}),
 		"memory": builtin("memory", func(in *Interp, line int, a []Value) Value {
-			return &Store{data: map[string]*List{}, next: map[string]float64{}}
+			return &Store{data: map[string]*List{}, next: map[string]int64{}}
 		}),
 	}}
 }
@@ -343,7 +350,7 @@ func storeMethod(in *Interp, st *Store, name string) *Builtin {
 			l := st.collection(Text(a[0]))
 			rec := copyRecord(in, line, a[1])
 			st.next[Text(a[0])]++
-			id := num(st.next[Text(a[0])])
+			id := box(st.next[Text(a[0])])
 			out := NewMap()
 			out.Set("id", id)
 			for _, k := range rec.Keys {
@@ -406,7 +413,7 @@ func storeMethod(in *Interp, st *Store, name string) *Builtin {
 	case "count":
 		return builtin(name, func(in *Interp, line int, a []Value) Value {
 			need(a, 1, "store.count needs a collection name")
-			return float64(len(st.collection(Text(a[0])).Items))
+			return box(int64(len(st.collection(Text(a[0])).Items)))
 		})
 	}
 	return nil

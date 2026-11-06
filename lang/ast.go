@@ -4,17 +4,11 @@ package lang
 
 type Expr interface{ Ln() int }
 
+// NumberLit is a number written in the code: 42 is an Int, 19.99 an exact Decimal.
 type NumberLit struct {
 	Line  int
-	Value float64
-	box   any // the value, boxed once so evaluating a literal doesn't allocate
-}
-
-func (n *NumberLit) boxed() any {
-	if n.box == nil {
-		n.box = n.Value
-	}
-	return n.box
+	Text  string
+	Value any // int64 or *Decimal, made once when the code is read
 }
 
 type TextLit struct {

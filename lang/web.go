@@ -47,9 +47,12 @@ func loadModule(in *Interp, name string) *Module {
 func webModule() *Module {
 	return &Module{Name: "web", Members: map[string]Value{
 		"open": builtin("open", func(in *Interp, line int, a []Value) Value {
-			port := 8080.0
+			port := int64(8080)
 			if len(a) == 1 {
-				port = wantNumber(in, line, "web.open", a[0])
+				port = in.wantInt(line, "the port", a[0])
+			}
+			if port < 1 || port > 65535 {
+				in.fail(line, "a port must be between 1 and 65535")
 			}
 			return &Server{Port: int(port)}
 		}),
@@ -61,7 +64,11 @@ func webModule() *Module {
 			if len(a) < 1 || len(a) > 2 {
 				in.fail(line, "web.status takes a code and an optional message, like web.status(404, \"Not found\")")
 			}
-			r := &Response{Status: int(wantNumber(in, line, "web.status", a[0])), ContentType: "text/plain; charset=utf-8"}
+			code := in.wantInt(line, "the status code", a[0])
+			if code < 100 || code > 599 {
+				in.fail(line, "a status code must be between 100 and 599")
+			}
+			r := &Response{Status: int(code), ContentType: "text/plain; charset=utf-8"}
 			if len(a) == 2 {
 				if t, ok := a[1].(string); ok {
 					r.Body = t
@@ -256,8 +263,10 @@ func toPlain(v Value) any {
 			out[k] = toPlain(it)
 		}
 		return out
-	case float64, string, bool, nil:
+	case int64, float64, string, bool, nil:
 		return x
+	case *Decimal:
+		return json.Number(x.String())
 	}
 	return Text(v)
 }
@@ -301,7 +310,9 @@ func writeJSON(b *strings.Builder, v Value) {
 			field(i, f.Name, x.Fields[f.Name])
 		}
 		b.WriteByte('}')
-	case float64, string, bool, nil:
+	case *Decimal:
+		b.WriteString(x.String()) // exact, never rounded through a Float
+	case int64, float64, string, bool, nil:
 		out, err := json.Marshal(x)
 		if err != nil { // NaN or infinity have no JSON form
 			b.WriteString("null")

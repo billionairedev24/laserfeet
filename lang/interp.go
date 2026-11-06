@@ -3,7 +3,6 @@ package lang
 import (
 	"fmt"
 	"io"
-	"math"
 	"runtime"
 	"sort"
 	"strings"
@@ -128,22 +127,6 @@ func (e *Env) names_() []string {
 		}
 	}
 	return out
-}
-
-// Common whole numbers are boxed once and shared, so arithmetic on counters,
-// positions and small totals doesn't allocate memory.
-var numCache = func() (c [4096]Value) {
-	for i := range c {
-		c[i] = float64(i)
-	}
-	return
-}()
-
-func num(f float64) Value {
-	if f >= 0 && f < 4096 && f == math.Trunc(f) {
-		return numCache[int(f)]
-	}
-	return f
 }
 
 type ctrl int
@@ -409,11 +392,8 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 		}
 	case *LoopStmt:
 		if s.Times != nil {
-			n, ok := in.eval(s.Times, env).(float64)
-			if !ok {
-				in.fail(s.Line, "'loop ... times' needs a number")
-			}
-			for i := 0; i < int(n); i++ {
+			n := in.wantInt(s.Line, "the number in 'loop ... times'", in.eval(s.Times, env))
+			for i := int64(0); i < n; i++ {
 				c, v := in.execBlock(s.Body, env)
 				if c == cStop {
 					break
@@ -606,7 +586,7 @@ func (in *Interp) truth(x Expr, env *Env, where string) bool {
 func (in *Interp) eval(x Expr, env *Env) Value {
 	switch x := x.(type) {
 	case *NumberLit:
-		return x.boxed()
+		return x.Value
 	case *TextLit:
 		return x.Value
 	case *BoolLit:
@@ -659,11 +639,7 @@ func (in *Interp) eval(x Expr, env *Env) Value {
 			}
 			return !b
 		}
-		n, ok := v.(float64)
-		if !ok {
-			in.fail(x.Line, "'-' needs a number, but got %s", typeName(v))
-		}
-		return -n
+		return in.negate(x.Line, v)
 	case *Binary:
 		return in.binary(x, env)
 	case *Get:
@@ -704,10 +680,7 @@ func (in *Interp) eval(x Expr, env *Env) Value {
 }
 
 func (in *Interp) listIndex(line int, l *List, key Value) int {
-	n, ok := key.(float64)
-	if !ok || n != math.Trunc(n) {
-		in.fail(line, "a list position must be a whole number")
-	}
+	n := in.wantInt(line, "a list position", key)
 	i := int(n)
 	if i < 0 {
 		i += len(l.Items)
@@ -752,10 +725,8 @@ func (in *Interp) binary(x *Binary, env *Env) Value {
 	case ">=":
 		return compareValues(in, x.Line, l, r) >= 0
 	case "+":
-		if a, ok := l.(float64); ok {
-			if b, ok := r.(float64); ok {
-				return num(a + b)
-			}
+		if isNumber(l) && isNumber(r) {
+			return in.arith(x.Line, "+", l, r)
 		}
 		if a, ok := l.(*List); ok {
 			if b, ok := r.(*List); ok {
@@ -769,43 +740,21 @@ func (in *Interp) binary(x *Binary, env *Env) Value {
 		}
 		in.fail(x.Line, "I can't add %s and %s", typeName(l), typeName(r))
 	case "to":
-		a, ok1 := l.(float64)
-		b, ok2 := r.(float64)
-		if !ok1 || !ok2 {
-			in.fail(x.Line, "'to' makes a range of numbers, like 1 to 10")
+		a := in.wantInt(x.Line, "the start of a range", l)
+		b := in.wantInt(x.Line, "the end of a range", r)
+		if b-a > 50_000_000 {
+			in.fail(x.Line, "this range would hold %d numbers, which is too many to make at once", b-a+1)
 		}
 		list := &List{}
 		if b >= a {
-			list.Items = make([]Value, 0, int(b-a)+1)
+			list.Items = make([]Value, 0, b-a+1)
 		}
 		for i := a; i <= b; i++ {
-			list.Items = append(list.Items, num(i))
+			list.Items = append(list.Items, box(i))
 		}
 		return list
 	}
-	a, ok1 := l.(float64)
-	b, ok2 := r.(float64)
-	if !ok1 || !ok2 {
-		in.fail(x.Line, "'%s' needs two numbers, but got %s and %s", x.Op, typeName(l), typeName(r))
-	}
-	switch x.Op {
-	case "-":
-		return num(a - b)
-	case "*":
-		return num(a * b)
-	case "/":
-		if b == 0 {
-			in.fail(x.Line, "you can't divide by zero")
-		}
-		return a / b
-	case "%":
-		if b == 0 {
-			in.fail(x.Line, "you can't divide by zero")
-		}
-		return num(math.Mod(a, b))
-	}
-	in.fail(x.Line, "unknown operator %s", x.Op)
-	return nil
+	return in.arith(x.Line, x.Op, l, r)
 }
 
 func (in *Interp) callExpr(c *Call, env *Env, first Value, hasFirst bool) Value {
@@ -1026,7 +975,7 @@ func (in *Interp) get(obj Value, name string, line int) Value {
 	case *Response:
 		switch name {
 		case "status":
-			return float64(o.Status)
+			return box(int64(o.Status))
 		case "body":
 			return o.Body
 		case "json":

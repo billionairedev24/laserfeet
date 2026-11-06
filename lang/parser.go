@@ -538,11 +538,19 @@ func (p *parser) primary() Expr {
 	switch t.Type {
 	case NUMBER:
 		p.next()
-		v, err := strconv.ParseFloat(t.Text, 64)
-		if err != nil {
-			p.fail(t.Line, "'%s' is not a valid number", t.Text)
+		if strings.Contains(t.Text, ".") {
+			d, err := ParseDecimal(t.Text)
+			if err != nil {
+				p.fail(t.Line, "'%s' is not a valid number", t.Text)
+			}
+			d.literal = true
+			return &NumberLit{Line: t.Line, Text: t.Text, Value: d}
 		}
-		return &NumberLit{Line: t.Line, Value: v, box: v}
+		i, err := strconv.ParseInt(t.Text, 10, 64)
+		if err != nil {
+			p.fail(t.Line, "%s is too big for an Int. Write it with a decimal point to make an exact Decimal: %s.0", t.Text, t.Text)
+		}
+		return &NumberLit{Line: t.Line, Text: t.Text, Value: box(i)}
 	case STRING:
 		p.next()
 		return p.text(t)

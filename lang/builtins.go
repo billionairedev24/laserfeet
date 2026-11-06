@@ -25,12 +25,18 @@ func wantList(in *Interp, line int, name string, v Value) *List {
 	return l
 }
 
-func wantNumber(in *Interp, line int, name string, v Value) float64 {
-	n, ok := v.(float64)
-	if !ok {
-		in.fail(line, "%s needs a number, but got %s", name, typeName(v))
+// floatOf turns any number into a Float, for things like seconds to wait.
+func floatOf(in *Interp, line int, name string, v Value) float64 {
+	switch n := v.(type) {
+	case int64:
+		return float64(n)
+	case float64:
+		return n
+	case *Decimal:
+		return n.Float64()
 	}
-	return n
+	in.fail(line, "%s needs a number, but got %s", name, typeName(v))
+	return 0
 }
 
 func installBuiltins(in *Interp, g *Env) {
@@ -40,43 +46,96 @@ func installBuiltins(in *Interp, g *Env) {
 		wantArgs(in, line, "text", a, 1)
 		return Text(a[0])
 	}))
-	def(builtin("number", func(in *Interp, line int, a []Value) Value {
-		wantArgs(in, line, "number", a, 1)
-		switch x := a[0].(type) {
-		case float64:
+	toDecimal := func(in *Interp, line int, name string, v Value) *Decimal {
+		switch x := v.(type) {
+		case int64:
+			return decimalFromInt(x)
+		case *Decimal:
 			return x
+		case float64:
+			d, err := decimalFromFloat(x)
+			if err != nil {
+				in.fail(line, "%s: %v", name, err)
+			}
+			return d
 		case string:
-			n, err := strconv.ParseFloat(strings.TrimSpace(x), 64)
+			d, err := ParseDecimal(x)
 			if err != nil {
 				in.fail(line, "%q is not a number", x)
 			}
-			return n
+			return d
 		}
-		in.fail(line, "I can't turn %s into a number", typeName(a[0]))
+		in.fail(line, "I can't turn %s into a number", typeName(v))
+		return nil
+	}
+	def(builtin("decimal", func(in *Interp, line int, a []Value) Value {
+		wantArgs(in, line, "decimal", a, 1)
+		return toDecimal(in, line, "decimal", a[0])
+	}))
+	// number is the friendly name for reading a number from text: it gives a Decimal
+	def(builtin("number", func(in *Interp, line int, a []Value) Value {
+		wantArgs(in, line, "number", a, 1)
+		return toDecimal(in, line, "number", a[0])
+	}))
+	def(builtin("float", func(in *Interp, line int, a []Value) Value {
+		wantArgs(in, line, "float", a, 1)
+		if t, ok := a[0].(string); ok {
+			f, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
+			if err != nil {
+				in.fail(line, "%q is not a number", t)
+			}
+			return f
+		}
+		return floatOf(in, line, "float", a[0])
+	}))
+	def(builtin("int", func(in *Interp, line int, a []Value) Value {
+		wantArgs(in, line, "int", a, 1)
+		switch x := a[0].(type) {
+		case int64:
+			return x
+		case float64:
+			if math.IsNaN(x) || x >= 9.2e18 || x <= -9.2e18 {
+				in.fail(line, "this Float doesn't fit in an Int")
+			}
+			return box(int64(x))
+		case *Decimal:
+			i, err := x.Int64()
+			if err != nil {
+				in.fail(line, "this number doesn't fit in an Int")
+			}
+			return box(i)
+		case string:
+			i, err := strconv.ParseInt(strings.TrimSpace(x), 10, 64)
+			if err != nil {
+				in.fail(line, "%q is not a whole number", x)
+			}
+			return box(i)
+		}
+		in.fail(line, "I can't turn %s into an Int", typeName(a[0]))
 		return nil
 	}))
 	def(builtin("count", func(in *Interp, line int, a []Value) Value {
 		wantArgs(in, line, "count", a, 1)
 		switch x := a[0].(type) {
 		case *List:
-			return float64(len(x.Items))
+			return box(int64(len(x.Items)))
 		case string:
-			return float64(len([]rune(x)))
+			return box(int64(len([]rune(x))))
 		case *Map:
-			return float64(len(x.Keys))
+			return box(int64(len(x.Keys)))
 		}
 		in.fail(line, "count needs a list or text, but got %s", typeName(a[0]))
 		return nil
 	}))
 	def(builtin("sum", func(in *Interp, line int, a []Value) Value {
 		wantArgs(in, line, "sum", a, 1)
-		total := 0.0
+		var total Value = box(0)
 		for _, v := range wantList(in, line, "sum", a[0]).Items {
-			total += wantNumber(in, line, "sum", v)
+			total = in.arith(line, "+", total, v)
 		}
 		return total
 	}))
-	pick := func(name string, better func(a, b float64) bool) *Builtin {
+	pick := func(name string, want int) *Builtin {
 		return builtin(name, func(in *Interp, line int, a []Value) Value {
 			items := a
 			if len(a) == 1 {
@@ -87,24 +146,57 @@ func installBuiltins(in *Interp, g *Env) {
 			if len(items) == 0 {
 				in.fail(line, "%s needs at least one number", name)
 			}
-			best := wantNumber(in, line, name, items[0])
-			for _, v := range items[1:] {
-				if n := wantNumber(in, line, name, v); better(n, best) {
-					best = n
+			best := items[0]
+			for _, v := range items {
+				c, ok := numberCmp(v, best)
+				if !ok {
+					in.fail(line, "%s needs numbers, but got %s", name, typeName(v))
+				}
+				if c == want {
+					best = v
 				}
 			}
 			return best
 		})
 	}
-	def(pick("biggest", func(a, b float64) bool { return a > b }))
-	def(pick("smallest", func(a, b float64) bool { return a < b }))
+	def(pick("biggest", 1))
+	def(pick("smallest", -1))
 	def(builtin("round", func(in *Interp, line int, a []Value) Value {
-		if len(a) == 2 {
-			places := math.Pow(10, wantNumber(in, line, "round", a[1]))
-			return math.Round(wantNumber(in, line, "round", a[0])*places) / places
+		if len(a) < 1 || len(a) > 2 {
+			in.fail(line, "round takes a number and an optional number of places, like round(price, 2)")
 		}
-		wantArgs(in, line, "round", a, 1)
-		return math.Round(wantNumber(in, line, "round", a[0]))
+		places := int64(0)
+		if len(a) == 2 {
+			places = in.wantInt(line, "the number of places", a[1])
+		}
+		switch x := a[0].(type) {
+		case int64:
+			return x
+		case *Decimal:
+			r := x.Round(int32(places))
+			if len(a) == 1 {
+				i, err := r.Int64()
+				if err != nil {
+					in.fail(line, "this number doesn't fit in an Int")
+				}
+				return box(i)
+			}
+			return r
+		case float64:
+			if len(a) == 1 {
+				return box(int64(math.Round(x)))
+			}
+			p := math.Pow(10, float64(places))
+			return math.Round(x*p) / p
+		}
+		in.fail(line, "round needs a number, but got %s", typeName(a[0]))
+		return nil
+	}))
+	// fixed shows a number with exactly the given places, like money: fixed(12.5, 2) is "12.50"
+	def(builtin("fixed", func(in *Interp, line int, a []Value) Value {
+		wantArgs(in, line, "fixed", a, 2)
+		places := in.wantInt(line, "the number of places", a[1])
+		return toDecimal(in, line, "fixed", a[0]).Round(int32(places)).String()
 	}))
 	def(builtin("first", func(in *Interp, line int, a []Value) Value {
 		wantArgs(in, line, "first", a, 1)
@@ -147,7 +239,7 @@ func installBuiltins(in *Interp, g *Env) {
 	}))
 	def(builtin("pause", func(in *Interp, line int, a []Value) Value {
 		wantArgs(in, line, "pause", a, 1)
-		secs := wantNumber(in, line, "pause", a[0])
+		secs := floatOf(in, line, "pause", a[0])
 		in.gil.Unlock()
 		time.Sleep(time.Duration(secs * float64(time.Second)))
 		in.gil.Lock()
@@ -270,7 +362,7 @@ func listMethod(l *List, name string) *Builtin {
 			return v
 		})
 	case "size":
-		return builtin("size", func(in *Interp, line int, a []Value) Value { return float64(len(l.Items)) })
+		return builtin("size", func(in *Interp, line int, a []Value) Value { return box(int64(len(l.Items))) })
 	case "has":
 		return builtin("has", func(in *Interp, line int, a []Value) Value {
 			wantArgs(in, line, "has", a, 1)
@@ -297,7 +389,7 @@ func textMethod(s string, name string) *Builtin {
 	case "trim":
 		return simple(func(s string) Value { return strings.TrimSpace(s) })
 	case "size":
-		return simple(func(s string) Value { return float64(len([]rune(s))) })
+		return simple(func(s string) Value { return box(int64(len([]rune(s)))) })
 	case "has":
 		return builtin("has", func(in *Interp, line int, a []Value) Value {
 			wantArgs(in, line, "has", a, 1)

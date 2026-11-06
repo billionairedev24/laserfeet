@@ -2,7 +2,6 @@ package lang
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -71,8 +70,12 @@ func typeName(v Value) string {
 	switch x := v.(type) {
 	case nil:
 		return "nothing"
+	case int64:
+		return "an Int"
 	case float64:
-		return "a number"
+		return "a Float"
+	case *Decimal:
+		return "a Decimal"
 	case string:
 		return "text"
 	case bool:
@@ -101,13 +104,6 @@ func typeName(v Value) string {
 	return "a value"
 }
 
-func formatNumber(f float64) string {
-	if f == math.Trunc(f) && math.Abs(f) < 1e15 {
-		return strconv.FormatInt(int64(f), 10)
-	}
-	return strconv.FormatFloat(f, 'f', -1, 64)
-}
-
 // Text is how a value looks when shown.
 func Text(v Value) string { return toText(v, false) }
 
@@ -115,8 +111,12 @@ func toText(v Value, quote bool) string {
 	switch x := v.(type) {
 	case nil:
 		return "nothing"
+	case int64:
+		return strconv.FormatInt(x, 10)
 	case float64:
-		return formatNumber(x)
+		return formatFloat(x)
+	case *Decimal:
+		return x.String()
 	case string:
 		if quote {
 			return strconv.Quote(x)
@@ -172,6 +172,10 @@ func toText(v Value, quote bool) string {
 }
 
 func equal(a, b Value) bool {
+	if isNumber(a) && isNumber(b) {
+		c, _ := numberCmp(a, b)
+		return c == 0
+	}
 	switch x := a.(type) {
 	case *List:
 		y, ok := b.(*List)
@@ -215,17 +219,10 @@ func equal(a, b Value) bool {
 }
 
 func compareValues(in *Interp, line int, a, b Value) int {
+	if c, ok := numberCmp(a, b); ok {
+		return c
+	}
 	switch x := a.(type) {
-	case float64:
-		if y, ok := b.(float64); ok {
-			switch {
-			case x < y:
-				return -1
-			case x > y:
-				return 1
-			}
-			return 0
-		}
 	case string:
 		if y, ok := b.(string); ok {
 			return strings.Compare(x, y)
