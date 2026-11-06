@@ -241,7 +241,7 @@ footer .wrap { display: flex; gap: 12px 28px; justify-content: space-between; fl
       <div>
         <div class="hazard" aria-label="Prototype, version 0.1">
           <span><svg width="14" height="13" viewBox="0 0 14 13" aria-hidden="true"><path d="M7 .8 13.3 12H.7z" fill="none" stroke="#111" stroke-width="1.4"/><circle cx="7" cy="8.4" r="1.2" fill="#111"/><path d="M7 8.4 9.6 5.2M7 8.4 4.4 5.2M7 8.4V4.6" stroke="#111" stroke-width=".8"/></svg>Prototype</span>
-          <span>v0.5 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
+          <span>v0.6 · <span style="text-transform:none;padding:0;border:0">λ</span> 650 nm</span>
         </div>
         <h1>Code at the <em>speed of light</em></h1>
         <p class="lede">Laser Feet is a programming language that reads like plain English, mixes objects and functions freely, and comes with a secure web server built in.</p>
@@ -251,7 +251,7 @@ footer .wrap { display: flex; gap: 12px 28px; justify-content: space-between; fl
         </div>
         <div class="specs">
           <div><b>.lf</b>file type</div>
-          <div><b>0</b>dependencies</div>
+          <div><b>0</b>outside dependencies</div>
           <div><b>SHA-256</b>signed releases</div>
         </div>
       </div>
@@ -369,7 +369,7 @@ lf test app.lf</lf-code></div></li>
         <li style="--wl: var(--l589)"><span class="ver">0.2</span><strong>Standalone programs</strong><p><code>lf build</code> makes one file that runs with nothing installed, on an engine twice as fast.</p></li>
         <li style="--wl: var(--l532)"><span class="ver">0.3</span><strong>Standard library</strong><p>A built-in store, JSON, files, time, settings, and code split across files.</p></li>
         <li style="--wl: var(--l450)"><span class="ver">0.4</span><strong>Types</strong><p>Required types, exact Decimal money, <code>lf check</code> before every run, objects 3.7x smaller.</p></li>
-        <li class="now" style="--wl: var(--l405)"><span class="ver">0.5</span><strong>Editors, jobs, Docker</strong><p>Live errors and autocomplete in VS Code, <code>fast</code> jobs with <code>wait</code>, <code>web.fetch</code>, official Docker image. Next: databases, packages, multi-core.</p></li>
+        <li class="now" style="--wl: var(--l405)"><span class="ver">0.5 – 0.6</span><strong>Editors, jobs, data, packages</strong><p>Live errors in VS Code, <code>fast</code> jobs, Docker, Laser Feet's own PostgreSQL driver, and <code>sole</code> packages from git. Next: multi-core, then a native compiler.</p></li>
       </ul>
     </div>
   </div>
@@ -401,6 +401,8 @@ lf test app.lf</lf-code></div></li>
         <a href="#learn" data-jump="g12">Saving data</a>
         <a href="#learn" data-jump="g13">JSON, files and settings</a>
         <a href="#learn" data-jump="g14">Splitting code into files</a>
+        <a href="#learn" data-jump="g15">Databases</a>
+        <a href="#learn" data-jump="g16">Packages</a>
       </nav>
       <article>
         <h2 id="g1"><span class="num">01</span>Your first program</h2>
@@ -761,6 +763,58 @@ launch {
     show prices.withTax(100)
 }</lf-code>
         <p>Paths are relative to your main program's folder, and Laser Feet refuses paths that point outside it. Only the main file runs its <code>launch</code> and <code>test</code> blocks. See the <a href="#examples">To-do API example</a> for a complete app split across two files.</p>
+        <h2 id="g15"><span class="num">16</span>Databases</h2>
+        <p><code>use postgres</code> connects to PostgreSQL with Laser Feet's own driver. Values go in a list and are sent separately from the SQL as <code>$1</code>, <code>$2</code>…, so nothing a visitor types can change your SQL. Results come back typed: numbers as <code>Int</code> or exact <code>Decimal</code>, <code>true</code>/<code>false</code> as <code>Flag</code>, json columns as <code>Json</code>.</p>
+<lf-code>use postgres
+
+db = postgres.open(env("DATABASE_URL"))
+
+db.run("""
+    create table if not exists products (
+        sku   text primary key,
+        name  text not null,
+        price numeric(12, 2) not null
+    )
+""")
+
+db.run("insert into products values ($1, $2, $3)", ["LAMP-1", "Desk lamp", 19.99])
+cheap = db.query("select name, price from products where price < $1", [50])
+lamp = db.first("select * from products where sku = $1", ["LAMP-1"])   -- Json? (nothing if not found)
+
+db.transaction() {
+    tx.run("update products set price = price * 0.9 where price > $1", [100])
+    tx.run("insert into price_log (note) values ($1)", ["10% off"])
+}   -- both happen, or, if anything fails, neither does</lf-code>
+        <div class="tablewrap"><table>
+          <tr><th>Beam</th><th>What it does</th></tr>
+          <tr><td><code>postgres.open(url)</code></td><td>Connect, like <code>postgres://user:password@host:5432/shop</code>; keeps a pool of up to 10 connections</td></tr>
+          <tr><td><code>db.query(sql, values)</code></td><td>Every row, as a list of maps</td></tr>
+          <tr><td><code>db.first(sql, values)</code></td><td>The first row, or nothing</td></tr>
+          <tr><td><code>db.run(sql, values)</code></td><td>Change data; gives how many rows changed</td></tr>
+          <tr><td><code>db.transaction() { tx… }</code></td><td>All or nothing; any problem undoes the whole block</td></tr>
+        </table></div>
+        <p class="note"><b>Secure by default:</b> a remote database is reached over TLS with its certificate checked (<code>sslmode=verify-full</code>); a database on the same machine doesn't need TLS. Login uses SCRAM-SHA-256, which also proves the server is real. <code>sslmode=prefer</code> is refused because it can quietly drop encryption. Turn rows into typed objects with <code>Product.from(row)</code>. A complete API is in <a href="https://github.com/billionairedev24/laserfeet/tree/main/examples/inventory">examples/inventory</a>.</p>
+
+        <h2 id="g16"><span class="num">17</span>Packages</h2>
+        <p>A package is Laser Feet code in a git repository, or a folder inside one, with a <code>package.lf</code> file. <code>lf get</code> adds it to your project; then <code>use</code> it by its address.</p>
+<lf-code>lf get github.com/billionairedev24/laserfeet/packages/textkit@main
+
+-- app.lf
+use "github.com/billionairedev24/laserfeet/packages/textkit"
+
+launch {
+    show textkit.slug("Code at the Speed of Light")   -- code-at-the-speed-of-light
+}</lf-code>
+        <p><code>lf get</code> writes two files to keep in git. <code>sole.list</code> says which packages and versions you use. <code>sole.lock</code> records the exact commit and a SHA-256 of each package's code. The packages themselves go in a <code>.sole</code> folder that git ignores; anyone who clones your project runs <code>lf get</code> to fetch them.</p>
+        <div class="tablewrap"><table>
+          <tr><th>Command</th><th>What it does</th></tr>
+          <tr><td><code>lf get host/owner/repo</code></td><td>Add a package at its newest <code>vX.Y.Z</code> tag</td></tr>
+          <tr><td><code>lf get host/owner/repo@v1.2.0</code></td><td>Add or change to a version: a tag, a branch, or a commit</td></tr>
+          <tr><td><code>lf get</code></td><td>Install everything in <code>sole.list</code>, exactly as locked</td></tr>
+          <tr><td><code>lf remove host/owner/repo</code></td><td>Stop using a package</td></tr>
+        </table></div>
+        <p class="note"><b>Safe by default:</b> installing never runs any code, and only <code>.lf</code> files are installed. The lock pins exact commits, so a moved tag or a branch with new commits can't change what you get. Before every <code>run</code>, <code>test</code> and <code>build</code>, each package is checked against its SHA-256, and changed code is refused. A package can only use its own files and other packages, never your project's files.</p>
+        <p><b>Making a package</b> is just a repository with a <code>package.lf</code>; its beams and objects are what users reach through its name. Tag releases as <code>v1.0.0</code>, <code>v1.1.0</code>, and so on.</p>
       </article>
     </div>
   </div>
@@ -822,7 +876,7 @@ launch {
           <tr><td><code>Text</code> <code>Flag</code> <code>Json</code></td><td>Text, yes/no, data from outside</td></tr>
           <tr><td><code>List[T]</code> <code>Map[T]</code> <code>T?</code></td><td>A list, named entries, or a value that may be nothing</td></tr>
           <tr><td><code>Beam(A, B) gives C</code></td><td>A beam as a value</td></tr>
-          <tr><td><code>Server</code> <code>Request</code> <code>Response</code> <code>Store</code></td><td>Library types</td></tr>
+          <tr><td><code>Server</code> <code>Request</code> <code>Response</code> <code>Store</code> <code>Database</code></td><td>Library types</td></tr>
           <tr><td><code>Job[T]</code></td><td>Work started with <code>fast</code>; <code>wait</code> gives a <code>T</code></td></tr>
           <tr><td><code>int</code> <code>float</code> <code>decimal</code> <code>fixed</code></td><td>Convert numbers; <code>fixed(x, 2)</code> gives text with 2 places</td></tr>
           <tr><td><code>Item.from(json)</code></td><td>Build an object from JSON, checking every field</td></tr>
@@ -838,6 +892,7 @@ launch {
           <tr><td><code>a to b</code></td><td>The whole numbers from a to b</td></tr>
           <tr><td><code>x => …</code></td><td>A one-line beam</td></tr>
           <tr><td><code>"{ }"</code></td><td>Put a value inside text; write <code>\{</code> for a plain brace</td></tr>
+          <tr><td><code>""" … """</code></td><td>Text over several lines, handy for SQL</td></tr>
         </table></div>
 
         <h2 id="r3">Built-in beams</h2>
@@ -892,7 +947,9 @@ launch {
           <tr><td><code>use json</code></td><td>Reading and writing JSON</td></tr>
           <tr><td><code>use files</code></td><td>Reading, writing and listing files</td></tr>
           <tr><td><code>use time</code></td><td>The current time and date</td></tr>
+          <tr><td><code>use postgres</code></td><td>PostgreSQL databases, with Laser Feet's own driver</td></tr>
           <tr><td><code>use "file.lf"</code></td><td>Your own code from another file</td></tr>
+          <tr><td><code>use "host/owner/repo"</code></td><td>A package installed with <code>lf get</code></td></tr>
         </table></div>
 
         <h2 id="r6">The lf command</h2>
@@ -903,6 +960,7 @@ launch {
           <tr><td><code>lf test app.lf</code></td><td>Run its test blocks</td></tr>
           <tr><td><code>lf check app.lf</code></td><td>Find type mistakes without running anything (<code>run</code>, <code>test</code> and <code>build</code> check first too)</td></tr>
           <tr><td><code>lf build app.lf</code></td><td>Make a standalone program file (<code>-o name</code> picks its name)</td></tr>
+          <tr><td><code>lf get</code> / <code>lf remove</code></td><td>Add, install or remove packages (see the Packages chapter)</td></tr>
           <tr><td><code>lf lsp</code></td><td>The language server that gives editors live errors, autocomplete and hover</td></tr>
           <tr><td><code>lf version</code></td><td>Show the version</td></tr>
           <tr><td><code>lf help</code></td><td>Show help</td></tr>
@@ -961,7 +1019,7 @@ launch {
 
 <footer>
   <div class="wrap">
-    <span>Laser Feet 0.5 · engine written in Go</span>
+    <span>Laser Feet 0.6 · engine written in Go</span>
     <span>engine sha-256 <span id="engineHash"></span> · verified before every load</span>
     <a href="https://github.com/billionairedev24/laserfeet">github.com/billionairedev24/laserfeet</a>
   </div>

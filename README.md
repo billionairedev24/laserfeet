@@ -39,6 +39,28 @@ lf run app.lf
 
 `env("PORT", "8080")` reads a setting from the environment. See `examples/todo` for a complete web API that uses all of these, with tests.
 
+## Databases
+
+`use postgres` connects to PostgreSQL with Laser Feet's own driver (`pg/`, written with only Go's standard library):
+
+```
+db = postgres.open(env("DATABASE_URL"))
+rows = db.query("select name, price from products where price < $1", [50])
+db.transaction() {
+    tx.run("update products set stock = stock - $1 where sku = $2", [1, "LAMP-1"])
+}
+```
+
+Values are always sent separately from SQL; logins use SCRAM-SHA-256 with the server's proof checked; remote databases use TLS with certificate checks by default. See `examples/inventory`.
+
+## Packages
+
+```
+lf get github.com/billionairedev24/laserfeet/packages/textkit@main
+```
+
+Packages are git repositories (or folders in them) with a `package.lf`. `sole.list` lists them and `sole.lock` pins each to a commit and a SHA-256 of its code, checked at install and before every run. Installing never runs code. `packages/textkit` is an example package.
+
 ## Share a program
 
 ```
@@ -145,6 +167,9 @@ Changing the `VERSION` file on `main` runs the release workflow, which tags the 
 | `editors/vscode` | The VS Code extension (and its test) |
 | `cmd/lf/lsp.go` | The language server behind live errors and autocomplete |
 | `docker` | The official image |
+| `pg` | The PostgreSQL driver |
+| `cmd/lf/sole.go` | The package manager |
+| `packages/textkit` | An example package |
 | `install.sh`, `install.ps1` | One-line installers that verify checksums |
 | `.github/workflows` | CI (tests, vulnerability scan, build) and signed releases |
 

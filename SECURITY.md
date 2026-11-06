@@ -57,4 +57,23 @@ The playground page has the SHA-256 checksum of the Laser Feet engine (`laserfee
 | `use "file.lf"` only accepts `.lf` files inside the program's folder, and refuses loops | Loading code from unexpected places |
 | Built programs check a SHA-256 of the code inside them before running | Running a program that was changed or damaged after it was built |
 
+## Packages
+
+| Protection | What it stops |
+|---|---|
+| `sole.lock` pins each package to a commit and a SHA-256 of its code | Moved tags, rewritten branches, or changed code reaching your program |
+| Packages are checked against the lock before every run, test and build | Code edited after installation |
+| Installing never runs code; only `.lf` files are copied; symbolic links are refused | Install-time attacks |
+| git is run HTTPS-only, without hooks or password prompts | Unexpected transports and credential prompts |
+| A package can only use its own files and other packages | A package reading your project's code |
+
+## Databases
+
+| Default | What it stops |
+|---|---|
+| Values are sent separately from SQL, and one call runs one statement | SQL injection through values |
+| Remote databases: TLS with certificate and hostname checks (`verify-full`); `prefer` is refused | Eavesdropping and fake servers |
+| SCRAM-SHA-256 login with the server's proof checked; plain passwords only over TLS | Password theft and impersonation |
+| 10 s connection timeout, 64 MB message limit | Hanging or flooding a program |
+
 These are checked by `lang/security_test.go`, `lang/stdlib_test.go` and `cmd/lf/bundle_test.go` on every push.

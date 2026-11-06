@@ -100,6 +100,19 @@
         }
       ]
     },
+    "text-block": {
+      "name": "string.quoted.triple.laserfeet",
+      "begin": "\"\"\"",
+      "end": "\"\"\"",
+      "patterns": [
+        {
+          "name": "meta.interpolation.laserfeet",
+          "begin": "\\{",
+          "end": "\\}",
+          "patterns": [{ "include": "#interpolated" }]
+        }
+      ]
+    },
     "string": {
       "name": "string.quoted.double.laserfeet",
       "begin": "\"",
