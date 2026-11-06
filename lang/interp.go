@@ -844,7 +844,7 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 	case *Beam:
 		label := "this beam"
 		if f.Name != "" {
-			label = "beam " + f.Name
+			label = "beam " + f.Name // cheap: no formatting
 		}
 		vals := in.matchArgs(label, f.Params, args, names, line)
 		parent := f.Closure
@@ -854,7 +854,11 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		ptypes, rtype := in.sigTypes(f)
 		for i, pt := range ptypes {
 			if pt != nil && i < len(vals) {
-				vals[i] = in.mustConform(line, vals[i], pt, fmt.Sprintf("the input '%s' of %s", f.Params[i], label))
+				out, ok := conform(vals[i], pt)
+				if !ok { // the message is only built when something is wrong
+					in.fail(line, "the input '%s' of %s must be %s, but got %s", f.Params[i], label, pt.Describe(), describeValue(vals[i]))
+				}
+				vals[i] = out
 			}
 		}
 		e := &Env{parent: parent, isScope: true}

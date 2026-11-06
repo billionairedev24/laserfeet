@@ -17,9 +17,12 @@ import (
 // A number written with a decimal point (19.99) is a Decimal, so exact is the default.
 // Int mixes freely with either; Float and Decimal never mix without a conversion.
 
-// Decimal is an exact decimal number: coef × 10^-scale.
+// Decimal is an exact decimal number: coefficient × 10^-scale.
+// Most decimals (prices, totals, rates) fit in 64 bits and are kept in small,
+// which costs no extra memory; only very large ones use big.
 type Decimal struct {
-	coef  *big.Int
+	small int64
+	big   *big.Int // used instead of small when the coefficient doesn't fit
 	scale int32
 	// written directly in the code, like 2.5: it may also be used as a Float.
 	// Results of calculations are never literal.
@@ -33,8 +36,38 @@ var (
 	errRange = errors.New("this number is too big for an Int")
 )
 
+var smallPow10 = func() (p [19]int64) {
+	p[0] = 1
+	for i := 1; i < len(p); i++ {
+		p[i] = p[i-1] * 10
+	}
+	return
+}()
+
 func pow10(n int32) *big.Int {
 	return new(big.Int).Exp(bigTen, big.NewInt(int64(n)), nil)
+}
+
+// mkDec stores c compactly when it fits in 64 bits.
+func mkDec(c *big.Int, scale int32) *Decimal {
+	if c.IsInt64() {
+		return &Decimal{small: c.Int64(), scale: scale}
+	}
+	return &Decimal{big: c, scale: scale}
+}
+
+func (d *Decimal) coef() *big.Int {
+	if d.big != nil {
+		return d.big
+	}
+	return big.NewInt(d.small)
+}
+
+func (d *Decimal) sign() int {
+	if d.big != nil {
+		return d.big.Sign()
+	}
+	return cmp3(d.small < 0, d.small > 0)
 }
 
 // ParseDecimal reads text like "19.99" or "-3" exactly.
@@ -59,10 +92,10 @@ func ParseDecimal(s string) (*Decimal, error) {
 	if neg {
 		c.Neg(c)
 	}
-	return &Decimal{coef: c, scale: int32(len(frac))}, nil
+	return mkDec(c, int32(len(frac))), nil
 }
 
-func decimalFromInt(i int64) *Decimal { return &Decimal{coef: big.NewInt(i), scale: 0} }
+func decimalFromInt(i int64) *Decimal { return &Decimal{small: i} }
 
 func decimalFromFloat(f float64) (*Decimal, error) {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
@@ -72,43 +105,103 @@ func decimalFromFloat(f float64) (*Decimal, error) {
 }
 
 func (d *Decimal) String() string {
-	s := new(big.Int).Abs(d.coef).String()
+	var s string
+	neg := d.sign() < 0
+	if d.big != nil {
+		s = new(big.Int).Abs(d.big).String()
+	} else if d.small == math.MinInt64 {
+		s = new(big.Int).Abs(big.NewInt(d.small)).String()
+	} else {
+		v := d.small
+		if v < 0 {
+			v = -v
+		}
+		s = strconv.FormatInt(v, 10)
+	}
 	if d.scale > 0 {
 		if len(s) <= int(d.scale) {
 			s = strings.Repeat("0", int(d.scale)-len(s)+1) + s
 		}
 		s = s[:len(s)-int(d.scale)] + "." + s[len(s)-int(d.scale):]
 	}
-	if d.coef.Sign() < 0 {
+	if neg {
 		s = "-" + s
 	}
 	return s
 }
 
-// align returns both coefficients at the same scale.
+// alignSmall brings two compact decimals to the same scale, if that fits in 64 bits.
+func alignSmall(a, b *Decimal) (int64, int64, int32, bool) {
+	if a.big != nil || b.big != nil {
+		return 0, 0, 0, false
+	}
+	x, y := a.small, b.small
+	switch {
+	case a.scale > b.scale:
+		k := a.scale - b.scale
+		if k >= int32(len(smallPow10)) {
+			return 0, 0, 0, false
+		}
+		var ok bool
+		if y, ok = mulInt(y, smallPow10[k]); !ok {
+			return 0, 0, 0, false
+		}
+		return x, y, a.scale, true
+	case b.scale > a.scale:
+		k := b.scale - a.scale
+		if k >= int32(len(smallPow10)) {
+			return 0, 0, 0, false
+		}
+		var ok bool
+		if x, ok = mulInt(x, smallPow10[k]); !ok {
+			return 0, 0, 0, false
+		}
+		return x, y, b.scale, true
+	}
+	return x, y, a.scale, true
+}
+
+// align returns both coefficients at the same scale (slow, general form).
 func align(a, b *Decimal) (*big.Int, *big.Int, int32) {
+	ac, bc := a.coef(), b.coef()
 	switch {
 	case a.scale == b.scale:
-		return a.coef, b.coef, a.scale
+		return ac, bc, a.scale
 	case a.scale > b.scale:
-		return a.coef, new(big.Int).Mul(b.coef, pow10(a.scale-b.scale)), a.scale
+		return ac, new(big.Int).Mul(bc, pow10(a.scale-b.scale)), a.scale
 	default:
-		return new(big.Int).Mul(a.coef, pow10(b.scale-a.scale)), b.coef, b.scale
+		return new(big.Int).Mul(ac, pow10(b.scale-a.scale)), bc, b.scale
 	}
 }
 
 func (a *Decimal) Add(b *Decimal) *Decimal {
+	if x, y, s, ok := alignSmall(a, b); ok {
+		if c, ok := addInt(x, y); ok {
+			return &Decimal{small: c, scale: s}
+		}
+	}
 	x, y, s := align(a, b)
-	return &Decimal{coef: new(big.Int).Add(x, y), scale: s}
+	return mkDec(new(big.Int).Add(x, y), s)
 }
 
 func (a *Decimal) Sub(b *Decimal) *Decimal {
+	if x, y, s, ok := alignSmall(a, b); ok {
+		if c, ok := subInt(x, y); ok {
+			return &Decimal{small: c, scale: s}
+		}
+	}
 	x, y, s := align(a, b)
-	return &Decimal{coef: new(big.Int).Sub(x, y), scale: s}
+	return mkDec(new(big.Int).Sub(x, y), s)
 }
 
 func (a *Decimal) Mul(b *Decimal) *Decimal {
-	d := &Decimal{coef: new(big.Int).Mul(a.coef, b.coef), scale: a.scale + b.scale}
+	scale := a.scale + b.scale
+	if a.big == nil && b.big == nil && scale <= maxDecimalScale {
+		if c, ok := mulInt(a.small, b.small); ok {
+			return &Decimal{small: c, scale: scale}
+		}
+	}
+	d := mkDec(new(big.Int).Mul(a.coef(), b.coef()), scale)
 	if d.scale > maxDecimalScale {
 		return d.Round(maxDecimalScale)
 	}
@@ -117,30 +210,41 @@ func (a *Decimal) Mul(b *Decimal) *Decimal {
 
 // Div divides, keeping up to 28 digits after the point and removing trailing zeros.
 func (a *Decimal) Div(b *Decimal) (*Decimal, error) {
-	if b.coef.Sign() == 0 {
+	if b.sign() == 0 {
 		return nil, errors.New("you can't divide by zero")
 	}
 	// a/b = (ca·10^sb) / (cb·10^sa); scale the top by 10^(maxScale+1) and round.
-	top := new(big.Int).Mul(a.coef, pow10(b.scale+maxDecimalScale+1))
-	bottom := new(big.Int).Mul(b.coef, pow10(a.scale))
+	top := new(big.Int).Mul(a.coef(), pow10(b.scale+maxDecimalScale+1))
+	bottom := new(big.Int).Mul(b.coef(), pow10(a.scale))
 	q := new(big.Int).Quo(top, bottom)
-	d := (&Decimal{coef: q, scale: maxDecimalScale + 1}).Round(maxDecimalScale)
+	d := (&Decimal{big: q, scale: maxDecimalScale + 1}).Round(maxDecimalScale)
 	return d.trim(), nil
 }
 
 func (a *Decimal) Mod(b *Decimal) (*Decimal, error) {
-	if b.coef.Sign() == 0 {
+	if b.sign() == 0 {
 		return nil, errors.New("you can't divide by zero")
 	}
+	if x, y, s, ok := alignSmall(a, b); ok {
+		return &Decimal{small: x % y, scale: s}, nil
+	}
 	x, y, s := align(a, b)
-	return &Decimal{coef: new(big.Int).Rem(x, y), scale: s}, nil
+	return mkDec(new(big.Int).Rem(x, y), s), nil
 }
 
 func (a *Decimal) Neg() *Decimal {
-	return &Decimal{coef: new(big.Int).Neg(a.coef), scale: a.scale, literal: a.literal}
+	if a.big == nil && a.small != math.MinInt64 {
+		return &Decimal{small: -a.small, scale: a.scale, literal: a.literal}
+	}
+	d := mkDec(new(big.Int).Neg(a.coef()), a.scale)
+	d.literal = a.literal
+	return d
 }
 
 func (a *Decimal) Cmp(b *Decimal) int {
+	if x, y, _, ok := alignSmall(a, b); ok {
+		return cmp3(x < y, x > y)
+	}
 	x, y, _ := align(a, b)
 	return x.Cmp(y)
 }
@@ -152,24 +256,25 @@ func (d *Decimal) Round(places int32) *Decimal {
 		places = 0
 	}
 	if d.scale <= places {
-		return &Decimal{coef: new(big.Int).Mul(d.coef, pow10(places-d.scale)), scale: places}
+		return mkDec(new(big.Int).Mul(d.coef(), pow10(places-d.scale)), places)
 	}
+	c := d.coef()
 	div := pow10(d.scale - places)
-	q, r := new(big.Int).QuoRem(d.coef, div, new(big.Int))
+	q, r := new(big.Int).QuoRem(c, div, new(big.Int))
 	twice := new(big.Int).Mul(new(big.Int).Abs(r), big.NewInt(2))
 	if twice.Cmp(div) >= 0 {
-		if d.coef.Sign() < 0 {
+		if c.Sign() < 0 {
 			q.Sub(q, big.NewInt(1))
 		} else {
 			q.Add(q, big.NewInt(1))
 		}
 	}
-	return &Decimal{coef: q, scale: places}
+	return mkDec(q, places)
 }
 
 // trim removes trailing zeros after the point.
 func (d *Decimal) trim() *Decimal {
-	c, s := new(big.Int).Set(d.coef), d.scale
+	c, s := new(big.Int).Set(d.coef()), d.scale
 	m := new(big.Int)
 	for s > 0 {
 		q, r := new(big.Int).QuoRem(c, bigTen, m)
@@ -178,14 +283,17 @@ func (d *Decimal) trim() *Decimal {
 		}
 		c, s = q, s-1
 	}
-	return &Decimal{coef: c, scale: s}
+	return mkDec(c, s)
 }
 
 func (d *Decimal) IsWhole() bool { return d.trim().scale == 0 }
 
 // Int64 drops anything after the point (toward zero).
 func (d *Decimal) Int64() (int64, error) {
-	q := new(big.Int).Quo(d.coef, pow10(d.scale))
+	if d.big == nil && d.scale < int32(len(smallPow10)) {
+		return d.small / smallPow10[d.scale], nil
+	}
+	q := new(big.Int).Quo(d.coef(), pow10(d.scale))
 	if !q.IsInt64() {
 		return 0, errRange
 	}
@@ -193,6 +301,9 @@ func (d *Decimal) Int64() (int64, error) {
 }
 
 func (d *Decimal) Float64() float64 {
+	if d.big == nil && d.scale < int32(len(smallPow10)) && d.small > -(1<<53) && d.small < 1<<53 {
+		return float64(d.small) / float64(smallPow10[d.scale])
+	}
 	f, _ := strconv.ParseFloat(d.String(), 64)
 	return f
 }
