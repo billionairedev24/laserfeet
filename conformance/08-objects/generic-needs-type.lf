@@ -1,0 +1,7 @@
+object Page[T] {
+    items: List[T]
+}
+
+beam size(p: Page) gives Int {
+    send count(p.items)
+}

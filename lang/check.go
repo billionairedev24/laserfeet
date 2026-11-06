@@ -94,6 +94,7 @@ type checker struct {
 	seen      map[string]bool
 	classes   map[string]*Class
 	choices   map[string]*Choice
+	tparams   map[string]bool // type names of the generic being checked (T)
 	rules     map[string]*RuleDef
 	beam      *beamCtx
 	read      func(string) (string, error)
@@ -201,7 +202,7 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 		case *RuleDecl:
 			c.rules[d.Name] = &RuleDef{Name: d.Name, Methods: d.Methods, Sigs: d.Sigs}
 		case *ObjectDecl:
-			cl := &Class{Name: d.Name, Fields: d.Fields, Methods: map[string]*BeamDecl{}, Follows: d.Follows, index: map[string]int{}}
+			cl := &Class{Name: d.Name, Fields: d.Fields, Methods: map[string]*BeamDecl{}, Follows: d.Follows, index: map[string]int{}, TypeParams: d.TypeParams}
 			for i, f := range d.Fields {
 				if _, dup := cl.index[f.Name]; dup {
 					c.report(f.Line, "object %s has two fields called '%s'", d.Name, f.Name)
@@ -231,17 +232,21 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 	}
 	for name, cl := range c.classes {
 		cl.types = make([]*Type, len(cl.Fields))
-		for i, f := range cl.Fields {
-			cl.types[i] = c.resolve(f.Type)
-		}
+		c.withTypeParams(cl.TypeParams, func() {
+			for i, f := range cl.Fields {
+				cl.types[i] = c.resolve(f.Type)
+			}
+		})
 		top.vars[name] = &cvar{t: &Type{Kind: KClassRef, Class: cl}, locked: true}
 	}
 	for name, ch := range c.choices {
 		for _, o := range ch.Options {
 			o.types = make([]*Type, len(o.Fields))
-			for i, f := range o.Fields {
-				o.types[i] = c.resolve(f.Type)
-			}
+			c.withTypeParams(ch.TypeParams, func() {
+				for i, f := range o.Fields {
+					o.types[i] = c.resolve(f.Type)
+				}
+			})
 		}
 		top.vars[name] = &cvar{t: &Type{Kind: KChoiceRef, Choice: ch}, locked: true}
 	}
@@ -282,8 +287,14 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 			}
 		}
 		for _, m := range d.Methods {
-			inner := &cscope{vars: map[string]*cvar{"me": {t: &Type{Kind: KObject, Class: cl}, locked: true}}, parent: top, obj: cl}
-			c.beamBody(m.Name, m.Params, m.Sig, m.Body, inner, m.Line)
+			me := &Type{Kind: KObject, Class: cl}
+			for _, tp := range cl.TypeParams {
+				me.Args = append(me.Args, &Type{Kind: KParam, Name: tp})
+			}
+			inner := &cscope{vars: map[string]*cvar{"me": {t: me, locked: true}}, parent: top, obj: cl}
+			c.withTypeParams(cl.TypeParams, func() {
+				c.beamBody(m.Name, m.Params, m.Sig, m.Body, inner, m.Line)
+			})
 		}
 	}
 	for _, s := range prog.Stmts {
@@ -320,6 +331,17 @@ func (c *checker) sigType(params []string, sig *Sig) *Type {
 		}
 		return t
 	}
+	if len(sig.TypeParams) > 0 {
+		var out *Type
+		tps := sig.TypeParams
+		c.withTypeParams(tps, func() {
+			sig.TypeParams = nil
+			out = c.sigType(params, sig)
+			sig.TypeParams = tps
+		})
+		out.TParams = tps
+		return out
+	}
 	for _, te := range sig.Params {
 		if te == nil {
 			t.Params = append(t.Params, tUnknown)
@@ -339,6 +361,11 @@ func (c *checker) resolve(te *TypeExpr) *Type {
 	}
 	var t *Type
 	switch {
+	case c.tparams[te.Name]:
+		if len(te.Args) > 0 {
+			c.report(te.Line, "%s stands for a type, so it doesn't take anything in [ ]", te.Name)
+		}
+		t = &Type{Kind: KParam, Name: te.Name}
 	case simpleTypes[te.Name] != nil:
 		base := *simpleTypes[te.Name]
 		t = &base
@@ -362,11 +389,13 @@ func (c *checker) resolve(te *TypeExpr) *Type {
 	case libraryTypes[te.Name]:
 		t = lib(te.Name)
 	case c.classes[te.Name] != nil:
-		t = &Type{Kind: KObject, Class: c.classes[te.Name]}
+		cl := c.classes[te.Name]
+		t = &Type{Kind: KObject, Class: cl, Args: c.typeArgs(te, cl.TypeParams)}
 	case c.rules[te.Name] != nil:
 		t = &Type{Kind: KRule, Rule: c.rules[te.Name]}
 	case c.choices[te.Name] != nil:
-		t = &Type{Kind: KChoice, Choice: c.choices[te.Name]}
+		ch := c.choices[te.Name]
+		t = &Type{Kind: KChoice, Choice: ch, Args: c.typeArgs(te, ch.TypeParams)}
 	default:
 		var names []string
 		for k := range simpleTypes {
@@ -461,6 +490,15 @@ func (c *checker) use(u *UseStmt, top *cscope) {
 // ---------- beams ----------
 
 func (c *checker) beamBody(name string, params []string, sig *Sig, body []Stmt, parent *cscope, line int) {
+	if sig != nil && len(sig.TypeParams) > 0 {
+		tps := sig.TypeParams
+		c.withTypeParams(tps, func() {
+			sig.TypeParams = nil
+			c.beamBody(name, params, sig, body, parent, line)
+			sig.TypeParams = tps
+		})
+		return
+	}
 	bt := c.sigType(params, sig)
 	sc := &cscope{vars: map[string]*cvar{}, parent: parent, scope: true}
 	for i, p := range params {
@@ -1216,11 +1254,14 @@ func (c *checker) member(line int, obj *Type, name string, forSet bool) *Type {
 	}
 	switch obj.Kind {
 	case KObject:
+		binds := paramBinds(obj.Class.TypeParams, obj.Args)
 		if i, ok := obj.Class.index[name]; ok {
-			return obj.Class.types[i]
+			return subst(obj.Class.types[i], binds)
 		}
 		if m, ok := obj.Class.Methods[name]; ok && !forSet {
-			return c.sigType(m.Params, m.Sig)
+			var st *Type
+			c.withTypeParams(obj.Class.TypeParams, func() { st = c.sigType(m.Params, m.Sig) })
+			return subst(st, binds)
 		}
 		c.report(line, "%s has no field or beam called '%s'%s", obj.Class.Name, name, didYouMean(name, fieldNames(obj.Class)))
 		return tUnknown
@@ -1239,7 +1280,7 @@ func (c *checker) member(line int, obj *Type, name string, forSet bool) *Type {
 	case KChoiceRef:
 		if o := obj.Choice.option(name); o != nil {
 			if o.single != nil {
-				return &Type{Kind: KChoice, Choice: obj.Choice}
+				return &Type{Kind: KChoice, Choice: obj.Choice, Args: argsFrom(obj.Choice.TypeParams, nil)}
 			}
 			return &Type{Kind: KClassRef, Class: o} // Status.Shipped(...) makes a Status
 		}
@@ -1371,6 +1412,9 @@ func (c *checker) call(x *Call, sc *cscope, first *Type, hasFirst bool) *Type {
 		return c.callWith(x, sc, first)
 	}
 	fn := c.expr(x.Callee, sc, nil)
+	if fn.Kind == KBeam && len(fn.TParams) > 0 {
+		return c.genericCall(x.Line, fn, nil, false, x.Args, sc)
+	}
 	var args []*Type
 	var names []string
 	var exprs []Expr
@@ -1425,6 +1469,9 @@ func (c *checker) isRouteCall(x *Call) bool {
 
 func (c *checker) callWith(x *Call, sc *cscope, first *Type) *Type {
 	fn := c.expr(x.Callee, sc, nil)
+	if fn.Kind == KBeam && len(fn.TParams) > 0 {
+		return c.genericCall(x.Line, fn, first, true, x.Args, sc)
+	}
 	args := []*Type{first}
 	names := []string{""}
 	exprs := []Expr{nil}
@@ -1517,6 +1564,29 @@ func resultOf(fn *Type) *Type {
 }
 
 func (c *checker) construct(line int, cl *Class, args []*Type, names []string) *Type {
+	var binds map[string]*Type
+	fieldType := func(i int) *Type { return cl.types[i] }
+	if len(cl.TypeParams) > 0 {
+		// work out the type names from the values, then check against them
+		binds = map[string]*Type{}
+		pos := 0
+		for i, a := range args {
+			idx := pos
+			if i < len(names) && names[i] != "" {
+				j, ok := cl.index[names[i]]
+				if !ok {
+					continue
+				}
+				idx = j
+			} else {
+				pos++
+			}
+			if idx < len(cl.types) {
+				unify(cl.types[idx], a, binds)
+			}
+		}
+		fieldType = func(i int) *Type { return subst(cl.types[i], binds) }
+	}
 	given := make([]bool, len(cl.Fields))
 	pos := 0
 	for i, a := range args {
@@ -1536,7 +1606,7 @@ func (c *checker) construct(line int, cl *Class, args []*Type, names []string) *
 			break
 		}
 		given[idx] = true
-		c.assignable(line, a, cl.types[idx], cl.Name+"."+cl.Fields[idx].Name)
+		c.assignable(line, a, fieldType(idx), cl.Name+"."+cl.Fields[idx].Name)
 	}
 	for i, f := range cl.Fields {
 		if !given[i] && f.Default == nil && !cl.types[i].Optional {
@@ -1544,9 +1614,9 @@ func (c *checker) construct(line int, cl *Class, args []*Type, names []string) *
 		}
 	}
 	if cl.Choice != nil {
-		return &Type{Kind: KChoice, Choice: cl.Choice}
+		return &Type{Kind: KChoice, Choice: cl.Choice, Args: argsFrom(cl.TypeParams, binds)}
 	}
-	return &Type{Kind: KObject, Class: cl}
+	return &Type{Kind: KObject, Class: cl, Args: argsFrom(cl.TypeParams, binds)}
 }
 
 // ---------- assignability ----------
@@ -1596,9 +1666,11 @@ func fits(from, to *Type) (bool, string) {
 		}
 		return false, ""
 	case KObject:
-		return from.Kind == KObject && from.Class == to.Class, ""
+		return from.Kind == KObject && from.Class == to.Class && sameArgs(from.Args, to.Args), ""
 	case KChoice:
-		return from.Kind == KChoice && from.Choice == to.Choice, ""
+		return from.Kind == KChoice && from.Choice == to.Choice && sameArgs(from.Args, to.Args), ""
+	case KParam:
+		return from.Kind == KParam && from.Name == to.Name, ""
 	case KRule:
 		if from.Kind == KRule {
 			return from.Rule == to.Rule, ""
@@ -1642,9 +1714,11 @@ func sameType(a, b *Type) bool {
 	case KList, KMap:
 		return sameType(a.Elem, b.Elem)
 	case KObject:
-		return a.Class.Name == b.Class.Name
+		return a.Class.Name == b.Class.Name && sameArgs(a.Args, b.Args)
 	case KChoice:
-		return a.Choice == b.Choice
+		return a.Choice == b.Choice && sameArgs(a.Args, b.Args)
+	case KParam:
+		return a.Name == b.Name
 	case KRule:
 		return a.Rule.Name == b.Rule.Name
 	case KLibrary:
@@ -1748,10 +1822,12 @@ func (c *checker) focus(s *FocusStmt, sc *cscope) {
 			if len(arm.Binds) > 0 && len(arm.Binds) != len(o.Fields) {
 				c.report(arm.Line, "%s has %d value%s (%s), so name all of them or none", o.Name, len(o.Fields), plural(len(o.Fields)), strings.Join(fieldNames(o), ", "))
 			}
+			binds := paramBinds(ch.TypeParams, subject.Args)
 			for j, b := range arm.Binds {
 				if j < len(o.types) {
-					armSc.vars[b] = &cvar{t: o.types[j], declared: true}
-					c.note(arm.Line, b, o.types[j])
+					bt := subst(o.types[j], binds)
+					armSc.vars[b] = &cvar{t: bt, declared: true}
+					c.note(arm.Line, b, bt)
 				}
 			}
 		default:
@@ -1819,4 +1895,36 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// typeArgs reads the types given to a generic object or choice: Page[Product].
+func (c *checker) typeArgs(te *TypeExpr, params []string) []*Type {
+	if len(params) == 0 {
+		if len(te.Args) > 0 {
+			c.report(te.Line, "%s doesn't take types in [ ]", te.Name)
+		}
+		return nil
+	}
+	if len(te.Args) != len(params) {
+		c.report(te.Line, "say what %s holds, like %s[%s]", te.Name, te.Name, strings.Repeat("Text, ", len(params)-1)+"Text")
+		return argsFrom(params, nil)
+	}
+	out := make([]*Type, len(te.Args))
+	for i, a := range te.Args {
+		out[i] = c.resolve(a)
+	}
+	return out
+}
+
+// sameArgs compares the types of two generic values; one not yet known matches anything.
+func sameArgs(a, b []*Type) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return true
+	}
+	for i := range a {
+		if i < len(b) && !sameType(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
 }

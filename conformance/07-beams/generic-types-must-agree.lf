@@ -1,0 +1,10 @@
+beam firstOr[T](items: List[T], fallback: T) gives T {
+    when count(items) is 0 {
+        send fallback
+    }
+    send items[0]
+}
+
+launch {
+    show firstOr([1, 2], "none")
+}

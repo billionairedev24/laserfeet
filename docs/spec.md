@@ -70,6 +70,7 @@ meaning only in `transaction with ... as ... { }` and `f(...) as name { }`.
 | `Map[T]` | Named entries, each holding a value of type `T`. |
 | `T?` | A value of type `T`, or `nothing`. |
 | `Beam(A, B) gives R` | A beam (function) taking `A` and `B` and giving `R`. |
+| `Page[T]` | A generic object or choice, with the types it holds (sections 7 and 8). |
 | object names | Objects (section 8). |
 | rule names | Any object that follows the rule. |
 | choice names | Exactly one of the choice's options (section 8). |
@@ -187,6 +188,19 @@ beam total(items: List[Item]) gives Decimal {
   for one input and one expression.
 - In `keepIf`, `dropIf`, `turn`, `sortBy` and `findFirst`, the fields of the
   item can be used directly (`keepIf(age >= 18)`), and `it` is the item itself.
+- **Generic beams** name the types they work with in `[ ]` after their name.
+  Each call works out what the names stand for from the values given:
+
+```
+beam firstOr[T](items: List[T], fallback: T) gives T { ... }
+firstOr([3, 4], 0)          -- T is Int, so this gives an Int
+firstOr(["a"], 0)           -- refused: T can't be Text and Int at once
+```
+
+  Inside the beam, a value of type `T` could be anything, so it can be stored,
+  passed, sent and compared with `is`, but not used as a number or text.
+  Values are worked out before beams, so in `mapAll(xs, x => x * 2)` the
+  checker already knows what `x` is.
 - **A block after a call** is passed as a beam: `server.get("/") { ... }`.
   `f(...) as name { ... }` gives that beam one input, called `name`.
 
@@ -213,6 +227,14 @@ object Item {
 - A **rule** lists beams with their types. `object Square follows Shape`
   promises those beams, and the checker holds the object to it. A rule name can
   be used as a type.
+
+**Generic objects and choices** name their types in `[ ]`:
+`object Page[T] { items: List[T], total: Int }`,
+`choice Result[T] { Ok(value: T), Failed(reason: Text) }`. Making one works out
+the types from the values (`Page(products, 3)` is a `Page[Product]`). Written as
+a type, a generic must say what it holds: `Page[Product]`, never just `Page`.
+An option that doesn't mention a type name (`Result.Failed("empty")`) fits
+any `Result`.
 
 **Choices.** A choice is a type whose value is exactly one of its options.
 Options may carry data, written like an object's fields:
@@ -379,11 +401,12 @@ statement   = "launch" block
             | expr ;
 target      = NAME | postfix "." NAME | postfix "[" expr "]" ;
 
-beamDecl    = "beam" NAME "(" [ param { "," param } ] ")" [ "gives" type ] block ;
+beamDecl    = "beam" NAME [ typeParams ] "(" [ param { "," param } ] ")" [ "gives" type ] block ;
+typeParams  = "[" NAME { "," NAME } "]" ;      (* names start with a capital letter *)
 param       = NAME ":" type ;
-objectDecl  = "object" NAME [ "follows" NAME { "," NAME } ] "{" { member NL } "}" ;
+objectDecl  = "object" NAME [ typeParams ] [ "follows" NAME { "," NAME } ] "{" { member NL } "}" ;
 member      = NAME ":" type [ "=" expr ] | beamDecl ;
-choiceDecl  = "choice" NAME "{" option { ( "," | NL ) option } "}" ;
+choiceDecl  = "choice" NAME [ typeParams ] "{" option { ( "," | NL ) option } "}" ;
 option      = NAME [ "(" param { "," param } ")" ] ;
 arm         = ( NAME [ "(" NAME { "," NAME } ")" ] | or | "otherwise" ) block ;
 ruleDecl    = "rule" NAME "{" { "beam" NAME "(" [ param { "," param } ] ")" [ "gives" type ] NL } "}" ;

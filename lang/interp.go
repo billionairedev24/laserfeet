@@ -231,7 +231,7 @@ func (in *Interp) loadInto(prog *Program, env *Env, main bool) {
 }
 
 func (in *Interp) declareObject(d *ObjectDecl, env *Env) {
-	c := &Class{Name: d.Name, Fields: d.Fields, Methods: map[string]*BeamDecl{}, Follows: d.Follows, Env: env, index: map[string]int{}}
+	c := &Class{Name: d.Name, Fields: d.Fields, Methods: map[string]*BeamDecl{}, Follows: d.Follows, Env: env, index: map[string]int{}, TypeParams: d.TypeParams}
 	for i, f := range d.Fields {
 		if _, dup := c.index[f.Name]; dup {
 			in.fail(d.Line, "object %s has two fields called '%s'", d.Name, f.Name)
@@ -877,6 +877,9 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		}
 		vals := in.matchArgs(label, f.Params, args, names, line)
 		parent := f.Closure
+		if f.Sig != nil && len(f.Sig.TypeParams) > 0 {
+			parent = withTypeParams(parent, f.Sig.TypeParams) // so 'out: List[T] = []' can be read
+		}
 		if f.Self != nil {
 			parent = &Env{names: []string{"me"}, binds: []binding{{v: f.Self, locked: true}}, parent: f.Closure, obj: f.Self}
 		}
@@ -1005,7 +1008,7 @@ func (in *Interp) get(obj Value, name string, line int) Value {
 			return v
 		}
 		if m, ok := o.Class.Methods[name]; ok {
-			return &Beam{Name: m.Name, Params: m.Params, Sig: m.Sig, Body: m.Body, Closure: o.Class.Env, Self: o}
+			return &Beam{Name: m.Name, Params: m.Params, Sig: m.Sig, Body: m.Body, Closure: withTypeParams(o.Class.Env, o.Class.TypeParams), Self: o}
 		}
 		in.fail(line, "%s has no field or beam called '%s'", o.Class.Name, name)
 	case *Class:
@@ -1145,7 +1148,7 @@ func (in *Interp) sigTypes(f *Beam) ([]*Type, *Type) {
 		return nil, nil
 	}
 	if !sig.resolved {
-		env := f.Closure
+		env := withTypeParams(f.Closure, sig.TypeParams)
 		ps := make([]*Type, len(sig.Params))
 		for i, te := range sig.Params {
 			ps[i] = in.resolveType(te, env)

@@ -1,0 +1,8 @@
+object Page[T] {
+    items: List[T]
+}
+
+launch {
+    words = Page(["a", "b"])
+    numbers: Page[Int] = words
+}

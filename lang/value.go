@@ -45,15 +45,16 @@ type Builtin struct {
 }
 
 type Class struct {
-	Name    string
-	Fields  []FieldDecl
-	Methods map[string]*BeamDecl
-	Follows []string
-	Env     *Env
-	index   map[string]int // field name -> slot
-	types   []*Type        // field types, by slot
-	Choice  *Choice        // set when this is an option of a choice
-	single  *Instance      // the one value of an option without data
+	Name       string
+	Fields     []FieldDecl
+	Methods    map[string]*BeamDecl
+	Follows    []string
+	Env        *Env
+	index      map[string]int // field name -> slot
+	types      []*Type        // field types, by slot
+	Choice     *Choice        // set when this is an option of a choice
+	TypeParams []string       // object Page[T]: the names standing for types
+	single     *Instance      // the one value of an option without data
 }
 
 type RuleDef struct {

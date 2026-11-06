@@ -422,14 +422,16 @@ func (p *parser) signature(typed bool, what string) ([]string, *Sig) {
 func (p *parser) beamDecl() *BeamDecl {
 	t := p.next() // beam
 	name := p.expectIdent("a name for the beam")
+	tps := p.typeParams()
 	ps, sig := p.signature(true, "beam "+name.Text)
+	sig.TypeParams = tps
 	return &BeamDecl{Line: t.Line, Name: name.Text, Params: ps, Sig: sig, Body: p.block("beam " + name.Text)}
 }
 
 func (p *parser) objectDecl() Stmt {
 	t := p.next()
 	name := p.expectIdent("a name for the object")
-	d := &ObjectDecl{Line: t.Line, Name: name.Text}
+	d := &ObjectDecl{Line: t.Line, Name: name.Text, TypeParams: p.typeParams()}
 	if p.acceptKw("follows") {
 		for {
 			d.Follows = append(d.Follows, p.expectIdent("a rule name after 'follows'").Text)
@@ -462,12 +464,33 @@ func (p *parser) objectDecl() Stmt {
 	}
 }
 
+// typeParams reads the names of a generic's types: [T] or [K, V]. They must be
+// written with a capital letter, like other type names.
+func (p *parser) typeParams() []string {
+	if !p.acceptSym("[") {
+		return nil
+	}
+	var out []string
+	for !p.isSym("]") {
+		n := p.expectIdent("a name for the type, like T")
+		if n.Text[0] < 'A' || n.Text[0] > 'Z' {
+			p.fail(n.Line, "type names start with a capital letter, like T or Item, but '%s' doesn't", n.Text)
+		}
+		out = append(out, n.Text)
+		if !p.acceptSym(",") {
+			break
+		}
+	}
+	p.expectSym("]", "to close the list of type names")
+	return out
+}
+
 // choiceDecl reads: choice Status { Pending, Shipped(on: Text, carrier: Text), Lost }
 // Options are separated by commas or new lines.
 func (p *parser) choiceDecl() Stmt {
 	t := p.next()
 	name := p.expectIdent("a name for the choice")
-	d := &ChoiceDecl{Line: t.Line, Name: name.Text}
+	d := &ChoiceDecl{Line: t.Line, Name: name.Text, TypeParams: p.typeParams()}
 	p.expectSym("{", "to start choice "+name.Text)
 	for {
 		p.skipNewlines()

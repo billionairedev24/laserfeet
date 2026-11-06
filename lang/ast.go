@@ -86,11 +86,12 @@ type Lambda struct {
 // Sig holds the written types of a beam's inputs and result, and their resolved
 // form once the beam has been used (resolved once, then reused for every call).
 type Sig struct {
-	Params   []*TypeExpr // nil entries for inputs without a written type
-	Result   *TypeExpr   // nil when the beam gives nothing
-	resolved bool
-	params   []*Type
-	result   *Type
+	TypeParams []string    // beam first[T](items: List[T]) gives T?
+	Params     []*TypeExpr // nil entries for inputs without a written type
+	Result     *TypeExpr   // nil when the beam gives nothing
+	resolved   bool
+	params     []*Type
+	result     *Type
 }
 
 // FastExpr starts work at the same time as the rest of the program: job = fast f()
@@ -175,19 +176,21 @@ type FieldDecl struct {
 	Line    int
 }
 type ObjectDecl struct {
-	Line    int
-	Name    string
-	Follows []string
-	Fields  []FieldDecl
-	Methods []*BeamDecl
+	Line       int
+	Name       string
+	TypeParams []string // object Page[T] { ... }
+	Follows    []string
+	Fields     []FieldDecl
+	Methods    []*BeamDecl
 }
 
 // ChoiceDecl declares a value that is exactly one of a few options:
 // choice Status { Pending, Shipped(on: Text), Lost }
 type ChoiceDecl struct {
-	Line    int
-	Name    string
-	Options []*ObjectDecl // each option is like a small object (no beams)
+	Line       int
+	Name       string
+	TypeParams []string      // choice Result[T] { ... }
+	Options    []*ObjectDecl // each option is like a small object (no beams)
 }
 
 // FocusStmt runs the arm that matches a value: focus status { Pending { } Shipped(on) { } }

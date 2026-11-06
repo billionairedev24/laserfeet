@@ -70,6 +70,7 @@ const (
 	KModule    // a library or a file brought in with use
 	KBuiltin   // a built-in beam, checked by its own rule
 	KChoiceRef // a choice's name used as a value: Status.Pending
+	KParam     // a generic's type name inside it: the T in first[T]
 )
 
 // Type is a resolved type.
@@ -79,6 +80,8 @@ type Type struct {
 	Class    *Class
 	Rule     *RuleDef
 	Choice   *Choice
+	Args     []*Type  // a generic object or choice's types: Page[Product]
+	TParams  []string // a generic beam's type names
 	Params   []*Type
 	Result   *Type
 	Name     string // library types; built-in beam names
@@ -137,10 +140,18 @@ func (t *Type) name() string {
 		s = "Map[" + t.Elem.name() + "]"
 	case KObject:
 		s = t.Class.Name
+		if len(t.Args) > 0 {
+			s += argNames(t.Args)
+		}
+	case KParam:
+		s = t.Name
 	case KRule:
 		s = t.Rule.Name
 	case KChoice:
 		s = t.Choice.Name
+		if len(t.Args) > 0 {
+			s += argNames(t.Args)
+		}
 	case KChoiceRef:
 		s = "the choice " + t.Choice.Name
 	case KLibrary, KModule:
@@ -208,6 +219,8 @@ func (in *Interp) resolveType(te *TypeExpr, env *Env) *Type {
 			t = &Type{Kind: KRule, Rule: x}
 		case *Choice:
 			t = &Type{Kind: KChoice, Choice: x}
+		case typeParam:
+			t = &Type{Kind: KJson} // lf check has made sure the values fit; nothing to check here
 		default:
 			msg := fmt.Sprintf("there is no type called '%s'", te.Name)
 			if !ok {
@@ -437,8 +450,24 @@ func (in *Interp) classTypes(c *Class) {
 		return
 	}
 	types := make([]*Type, len(c.Fields))
+	env := withTypeParams(c.Env, c.TypeParams)
 	for i, f := range c.Fields {
-		types[i] = in.resolveType(f.Type, c.Env)
+		types[i] = in.resolveType(f.Type, env)
 	}
 	c.types = types
+}
+
+// typeParam stands for a generic's type (the T in Page[T]) while the engine
+// reads the types of its fields and inputs.
+type typeParam struct{}
+
+func withTypeParams(env *Env, names []string) *Env {
+	if len(names) == 0 {
+		return env
+	}
+	e := newEnv(env)
+	for _, n := range names {
+		e.define(n, typeParam{}, true)
+	}
+	return e
 }

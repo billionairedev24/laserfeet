@@ -1,0 +1,67 @@
+object Page[T] {
+    items: List[T]
+    total: Int
+    beam first() gives T? {
+        when count(me.items) is 0 {
+            send nothing
+        }
+        send me.items[0]
+    }
+}
+
+choice Result[T] {
+    Ok(value: T)
+    Failed(reason: Text)
+}
+
+object Product {
+    name: Text
+    price: Decimal
+}
+
+beam firstOr[T](items: List[T], fallback: T) gives T {
+    when count(items) is 0 {
+        send fallback
+    }
+    send items[0]
+}
+
+beam mapAll[A, B](items: List[A], change: Beam(A) gives B) gives List[B] {
+    out: List[B] = []
+    each it in items {
+        out.add(change(it))
+    }
+    send out
+}
+
+beam parse(t: Text) gives Result[Int] {
+    when t is "" {
+        send Result.Failed("empty")
+    }
+    send Result.Ok(int(t))
+}
+
+launch {
+    show firstOr([3, 4], 0) + 1
+    show firstOr(["a"], "z").upper()
+    show mapAll([1, 2, 3], x => x * 10)
+    show mapAll(["a", "bb"], s => s.size())
+    p = Page([Product("Lamp", 19.99)], 1)
+    show p.items[0].name
+    f = p.first()
+    when f is not nothing {
+        show f.price
+    }
+    pp: Page[Product] = p
+    show pp.total
+    r = parse("42")
+    focus r {
+        Ok(value) {
+            show value + 1
+        }
+        Failed(reason) {
+            show reason.upper()
+        }
+    }
+    show [5, 6] then firstOr(0)
+}

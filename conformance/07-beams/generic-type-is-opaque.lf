@@ -1,0 +1,4 @@
+beam twice[T](x: T) gives T {
+    show x + x
+    send x
+}

@@ -7,9 +7,10 @@ import "fmt"
 // Each option is a small Class (its data are its fields) that points back at the
 // choice, so making and checking option values works like making objects.
 type Choice struct {
-	Name    string
-	Options []*Class
-	index   map[string]int
+	Name       string
+	TypeParams []string
+	Options    []*Class
+	index      map[string]int
 }
 
 // option finds an option by name.
@@ -30,12 +31,12 @@ func (c *Choice) optionNames() []string {
 
 // newChoice builds a Choice from its declaration (used by the engine and lf check).
 func newChoice(d *ChoiceDecl, env *Env) (*Choice, string) {
-	ch := &Choice{Name: d.Name, index: map[string]int{}}
+	ch := &Choice{Name: d.Name, index: map[string]int{}, TypeParams: d.TypeParams}
 	for i, o := range d.Options {
 		if _, dup := ch.index[o.Name]; dup {
 			return nil, fmt.Sprintf("choice %s has two options called '%s'", d.Name, o.Name)
 		}
-		cl := &Class{Name: o.Name, Fields: o.Fields, Methods: map[string]*BeamDecl{}, Env: env, index: map[string]int{}, Choice: ch}
+		cl := &Class{Name: o.Name, Fields: o.Fields, Methods: map[string]*BeamDecl{}, Env: env, index: map[string]int{}, Choice: ch, TypeParams: d.TypeParams}
 		for j, f := range o.Fields {
 			if _, dup := cl.index[f.Name]; dup {
 				return nil, fmt.Sprintf("option %s.%s has two values called '%s'", d.Name, o.Name, f.Name)
