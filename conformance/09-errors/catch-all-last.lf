@@ -1,0 +1,9 @@
+launch {
+    attempt {
+        fail "x"
+    } fails problem {
+        show problem
+    } fails p: Text {
+        show p
+    }
+}

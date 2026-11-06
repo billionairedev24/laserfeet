@@ -371,6 +371,24 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 		return lib("Database")
 	case "database.query", "database.first", "database.run":
 		what := n[9:]
+		if len(a) > 0 && a[0] != nil && a[0].Kind == KClassRef && what != "run" {
+			// db.query(Product, sql, values): rows become checked Products
+			cl := a[0].Class
+			if len(cl.TypeParams) > 0 || cl.Choice != nil {
+				c.report(line, "db.%s can make rows into objects, but %s isn't a plain object", what, cl.Name)
+			}
+			if c.argCount(line, what, a, 2, 3) {
+				c.need(line, a[1], tText, "the SQL")
+				if len(a) == 3 && a[2] != nil && a[2].Kind != KList && a[2].Kind != KJson && a[2].Kind != KUnknown {
+					c.report(line, "the values for db.%s must be a list, like [id, name]", what)
+				}
+			}
+			obj := &Type{Kind: KObject, Class: cl}
+			if what == "query" {
+				return listOf(obj)
+			}
+			return opt(obj)
+		}
 		if c.argCount(line, what, a, 1, 2) {
 			c.need(line, a[0], tText, "the SQL")
 			if len(a) == 2 && a[1] != nil && a[1].Kind != KList && a[1].Kind != KJson && a[1].Kind != KUnknown {
@@ -505,7 +523,7 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 // checking what's written there (like a list of mixed SQL values).
 func builtinWant(name string, i int) *Type {
 	switch {
-	case i == 1 && (name == "database.query" || name == "database.first" || name == "database.run"):
+	case i == 1 && name == "database.run", (i == 1 || i == 2) && (name == "database.query" || name == "database.first"):
 		return listOf(tJson)
 	case i == 1 && (name == "store.add" || name == "web.status"):
 		return tJson

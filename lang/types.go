@@ -457,6 +457,12 @@ func (in *Interp) objectFrom(c *Class, m *Map, where string) (Value, string) {
 			name = where + "." + f.Name
 		}
 		raw, present := m.M[f.Name]
+		if f.Private { // never filled from outside data
+			if f.Default == nil {
+				return nil, fmt.Sprintf("%s.%s is private, so it can't come from outside data; give it a default value", c.Name, f.Name)
+			}
+			present = false
+		}
 		if !present && f.Default != nil {
 			inst.Slots[i] = in.eval(f.Default, c.Env)
 			continue
@@ -471,7 +477,7 @@ func (in *Interp) objectFrom(c *Class, m *Map, where string) (Value, string) {
 		inst.Slots[i] = v
 	}
 	for _, k := range m.Keys {
-		if _, ok := c.index[k]; !ok {
+		if i, ok := c.index[k]; !ok || c.Fields[i].Private {
 			field := k
 			if where != "" {
 				field = where + "." + k

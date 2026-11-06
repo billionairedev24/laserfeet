@@ -509,15 +509,23 @@ func (in *Interp) attempt(s *AttemptStmt, env *Env) (c ctrl, v Value) {
 	if caught == nil {
 		return c, v
 	}
-	e := newEnv(env)
-	if s.ErrName != "" {
-		var val Value = caught.Msg
-		if caught.Value != nil {
-			val = caught.Value
-		}
-		e.define(s.ErrName, val, false)
+	var val Value = caught.Msg
+	if caught.Value != nil {
+		val = caught.Value
 	}
-	return in.execBlock(s.Handler, e)
+	for _, h := range s.Handlers {
+		if h.Type != nil {
+			if _, ok := conform(caught.Value, in.resolveType(h.Type, env)); !ok || caught.Value == nil {
+				continue // not this kind of problem
+			}
+		}
+		e := newEnv(env)
+		if h.Name != "" {
+			e.define(h.Name, val, false)
+		}
+		return in.execBlock(h.Body, e)
+	}
+	panic(caught) // no 'fails' here is for this problem: it carries on outwards
 }
 
 func (in *Interp) expect(s *ExpectStmt, env *Env) {

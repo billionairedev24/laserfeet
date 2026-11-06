@@ -95,6 +95,7 @@ type checker struct {
 	classes   map[string]*Class
 	choices   map[string]*Choice
 	tparams   map[string]bool // type names of the generic being checked (T)
+	selfClass *Class          // the object whose beam is being checked
 	rules     map[string]*RuleDef
 	beam      *beamCtx
 	read      func(string) (string, error)
@@ -292,9 +293,11 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 				me.Args = append(me.Args, &Type{Kind: KParam, Name: tp})
 			}
 			inner := &cscope{vars: map[string]*cvar{"me": {t: me, locked: true}}, parent: top, obj: cl}
+			c.selfClass = cl
 			c.withTypeParams(cl.TypeParams, func() {
 				c.beamBody(m.Name, m.Params, m.Sig, m.Body, inner, m.Line)
 			})
+			c.selfClass = nil
 		}
 	}
 	for _, s := range prog.Stmts {
@@ -480,8 +483,11 @@ func (c *checker) use(u *UseStmt, top *cscope) {
 	c.file, c.beam = savedFile, savedBeam
 	delete(c.loading, clean)
 	m := &Type{Kind: KModule, Name: name, Members: map[string]*Type{}}
+	hidden := privateNames(prog)
 	for k, v := range scope.vars {
-		m.Members[k] = v.t
+		if !hidden[k] {
+			m.Members[k] = v.t
+		}
 	}
 	c.modules[clean] = m
 	top.vars[name] = &cvar{t: m, locked: true}
@@ -535,7 +541,15 @@ func alwaysExits(stmts []Stmt) bool {
 	case *WhenStmt:
 		return s.Otherwise != nil && alwaysExits(s.Body) && alwaysExits(s.Otherwise)
 	case *AttemptStmt:
-		return alwaysExits(s.Body) && alwaysExits(s.Handler)
+		if !alwaysExits(s.Body) {
+			return false
+		}
+		for _, h := range s.Handlers {
+			if !alwaysExits(h.Body) {
+				return false
+			}
+		}
+		return true
 	case *FocusStmt:
 		if !s.Complete {
 			return false
@@ -656,12 +670,27 @@ func (c *checker) stmt(s Stmt, sc *cscope) {
 		inner := &cscope{vars: map[string]*cvar{}, parent: sc}
 		c.block(s.Body, inner)
 		c.merge(inner, sc)
-		handler := &cscope{vars: map[string]*cvar{}, parent: sc}
-		if s.ErrName != "" {
-			handler.vars[s.ErrName] = &cvar{t: tJson}
+		for i, h := range s.Handlers {
+			handler := &cscope{vars: map[string]*cvar{}, parent: sc}
+			t := tJson
+			if h.Type != nil {
+				t = c.resolve(h.Type)
+				if h.Name == "" {
+					c.report(h.Line, "name the problem, like: fails p: %s { ... }", h.Type)
+				}
+			} else if i < len(s.Handlers)-1 {
+				c.report(h.Line, "a 'fails' without a type catches every problem, so it must come last")
+			}
+			if h.Name != "" {
+				handler.vars[h.Name] = &cvar{t: t, declared: true}
+				c.note(h.Line, h.Name, t)
+			}
+			c.block(h.Body, handler)
+			if h.Name != "" {
+				delete(handler.vars, h.Name)
+			}
+			c.merge(handler, sc)
 		}
-		c.block(s.Handler, handler)
-		c.merge(handler, sc)
 	case *FailStmt:
 		c.expr(s.Value, sc, nil)
 	case *UseStmt:
@@ -1263,9 +1292,15 @@ func (c *checker) member(line int, obj *Type, name string, forSet bool) *Type {
 	case KObject:
 		binds := paramBinds(obj.Class.TypeParams, obj.Args)
 		if i, ok := obj.Class.index[name]; ok {
+			if obj.Class.Fields[i].Private && c.selfClass != obj.Class {
+				c.report(line, "'%s' is private to %s, so only %s's own beams can use it", name, obj.Class.Name, obj.Class.Name)
+			}
 			return subst(obj.Class.types[i], binds)
 		}
 		if m, ok := obj.Class.Methods[name]; ok && !forSet {
+			if m.Private && c.selfClass != obj.Class {
+				c.report(line, "the beam '%s' is private to %s, so only %s's own beams can call it", name, obj.Class.Name, obj.Class.Name)
+			}
 			var st *Type
 			c.withTypeParams(obj.Class.TypeParams, func() { st = c.sigType(m.Params, m.Sig) })
 			return subst(st, binds)
@@ -2024,4 +2059,15 @@ func clockMemberType(k Kind, name string) *Type {
 		}
 	}
 	return nil
+}
+
+// privateNames lists a file's private beams, which 'use' doesn't share.
+func privateNames(prog *Program) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range prog.Stmts {
+		if b, ok := s.(*BeamDecl); ok && b.Private {
+			out[b.Name] = true
+		}
+	}
+	return out
 }

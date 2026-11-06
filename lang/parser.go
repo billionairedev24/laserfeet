@@ -247,6 +247,14 @@ func (p *parser) statement() Stmt {
 			return p.ruleDecl()
 		case "choice":
 			return p.choiceDecl()
+		case "private":
+			p.next()
+			if !p.isKw("beam") {
+				p.fail(t.Line, "'private' goes before a beam, or before a field or beam inside an object")
+			}
+			b := p.beamDecl()
+			b.Private = true
+			return b
 		case "focus":
 			return p.focusStmt()
 		case "when":
@@ -295,15 +303,23 @@ func (p *parser) statement() Stmt {
 		case "attempt":
 			p.next()
 			body := p.block("the attempt block")
-			if !p.keywordAfterNewlines("fails") {
+			s := &AttemptStmt{Line: t.Line, Body: body}
+			for p.keywordAfterNewlines("fails") {
+				ft := p.next()
+				h := &FailsClause{Line: ft.Line}
+				if p.peek().Type == IDENT {
+					h.Name = p.next().Text
+					if p.acceptSym(":") {
+						h.Type = p.typeExpr()
+					}
+				}
+				h.Body = p.block("the fails block")
+				s.Handlers = append(s.Handlers, h)
+			}
+			if len(s.Handlers) == 0 {
 				p.fail(t.Line, "an 'attempt' block needs a 'fails' block after it")
 			}
-			p.next()
-			name := ""
-			if p.peek().Type == IDENT {
-				name = p.next().Text
-			}
-			return &AttemptStmt{t.Line, body, name, p.block("the fails block")}
+			return s
 		case "fail":
 			p.next()
 			return &FailStmt{t.Line, p.expr()}
@@ -446,11 +462,14 @@ func (p *parser) objectDecl() Stmt {
 		if p.acceptSym("}") {
 			return d
 		}
+		private := p.acceptKw("private")
 		if p.isKw("beam") {
-			d.Methods = append(d.Methods, p.beamDecl())
+			b := p.beamDecl()
+			b.Private = private
+			d.Methods = append(d.Methods, b)
 		} else {
 			f := p.expectIdent("a field name or a beam inside the object")
-			fd := FieldDecl{Name: f.Text, Line: f.Line}
+			fd := FieldDecl{Name: f.Text, Line: f.Line, Private: private}
 			if !p.acceptSym(":") {
 				p.fail(f.Line, "give the field '%s' a type, like %s: Text", f.Text, f.Text)
 			}

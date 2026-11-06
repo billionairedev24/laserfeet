@@ -1,0 +1,31 @@
+use json
+
+object Account {
+    owner: Text
+    private balance: Decimal = 0
+
+    beam deposit(amount: Decimal) {
+        me.balance = me.balance + amount
+        me.note("deposit {amount}")
+    }
+
+    beam total() gives Decimal {
+        send me.balance
+    }
+
+    private beam note(what: Text) {
+        show "{owner}: {what}"
+    }
+}
+
+launch {
+    a = Account("Ada")
+    a.deposit(5)
+    show a.total()
+    show json.write(a)
+    attempt {
+        Account.from({owner: "Bo", balance: 1000000})
+    } fails problem {
+        show problem
+    }
+}

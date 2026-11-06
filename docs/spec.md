@@ -48,7 +48,7 @@ Source files are UTF-8 text with the `.lf` extension.
 ```
 launch show beam send lock object rule follows when otherwise each in loop
 while times then fast attempt fails fail use test expect is not and or yes no
-nothing me stop skip to gives wait choice focus
+nothing me stop skip to gives wait choice focus private
 ```
 
 Keywords may be used as entry names in a map (`{to: "x"}`) and after a dot.
@@ -247,6 +247,10 @@ object Item {
   fields in order; `Item(name: "Lamp", price: 19.99)` by name. Every field
   without a default needs a value.
 - `me` is the object a beam belongs to.
+- `private` before a field or beam keeps it inside the object: only the
+  object's own beams can use it. Private fields are never written as JSON, and
+  `Item.from(json)` never fills them (they need a default value). `private`
+  before a beam at the top of a file keeps it out of what `use` shares.
 - `Item.from(json)` builds an Item from outside data, checking every field.
   A mismatch is a problem that names the field; in a web route it becomes a
   400 reply.
@@ -298,7 +302,12 @@ focus status {
 
 - `fail value` stops with a problem.
 - `attempt { ... } fails problem { ... }` runs the first block; if it fails,
-  the second block runs with the problem's message in `problem`.
+  the second block runs with the problem in `problem`: the value given to
+  `fail`, or the message for problems the engine finds.
+- `fails p: Type { ... }` catches only problems whose value is that type (a
+  choice is the usual kind), with `p` of that type. An attempt may have several
+  `fails`; they are tried in order, and a `fails` without a type must come last.
+  A problem that no `fails` matches carries on outwards.
 - A problem that nothing catches ends the program, reported as
   `file, line N: message`.
 - `test "name" { ... }` declares a test, run by `lf test`. Inside it,
@@ -413,7 +422,7 @@ statement   = "launch" block
             | "lock" NAME [ ":" type ] "=" expr
             | NAME ":" type "=" expr
             | target "=" expr
-            | beamDecl | objectDecl | ruleDecl | choiceDecl
+            | [ "private" ] beamDecl | objectDecl | ruleDecl | choiceDecl
             | "focus" expr "{" { arm NL } "}"
             | "when" expr block { "otherwise" "when" expr block } [ "otherwise" block ]
             | "each" NAME "in" expr block
@@ -421,7 +430,7 @@ statement   = "launch" block
             | "loop" expr "times" block
             | "stop" | "skip"
             | "fast" block
-            | "attempt" block "fails" [ NAME ] block
+            | "attempt" block "fails" [ NAME [ ":" type ] ] block { "fails" [ NAME [ ":" type ] ] block }
             | "fail" expr
             | "use" ( NAME | TEXT )
             | "test" TEXT block
@@ -434,7 +443,7 @@ beamDecl    = "beam" NAME [ typeParams ] "(" [ param { "," param } ] ")" [ "give
 typeParams  = "[" NAME { "," NAME } "]" ;      (* names start with a capital letter *)
 param       = NAME ":" type ;
 objectDecl  = "object" NAME [ typeParams ] [ "follows" NAME { "," NAME } ] "{" { member NL } "}" ;
-member      = NAME ":" type [ "=" expr ] | beamDecl ;
+member      = [ "private" ] ( NAME ":" type [ "=" expr ] | beamDecl ) ;
 choiceDecl  = "choice" NAME [ typeParams ] "{" option { ( "," | NL ) option } "}" ;
 option      = NAME [ "(" param { "," param } ")" ] ;
 arm         = ( NAME [ "(" NAME { "," NAME } ")" ] | or | "otherwise" ) block ;

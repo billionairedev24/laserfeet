@@ -208,7 +208,7 @@
         },
         {
           "name": "storage.modifier.laserfeet",
-          "match": "\\b(lock|follows)\\b"
+          "match": "\\b(lock|follows|private)\\b"
         },
         {
           "name": "storage.type.laserfeet",

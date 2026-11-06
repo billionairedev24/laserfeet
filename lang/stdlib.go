@@ -57,8 +57,11 @@ func (in *Interp) loadFile(p string, line int) *Module {
 	delete(in.loading, clean)
 
 	m := &Module{Name: name, Members: map[string]Value{}}
+	hidden := privateNames(prog)
 	for i, n := range env.names {
-		m.Members[n] = env.binds[i].v
+		if !hidden[n] {
+			m.Members[n] = env.binds[i].v
+		}
 	}
 	for n, b := range env.big {
 		m.Members[n] = b.v

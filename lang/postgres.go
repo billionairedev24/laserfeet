@@ -162,13 +162,24 @@ func databaseMethod(in *Interp, db *Database, name string) *Builtin {
 	switch name {
 	case "query":
 		return builtin("query", func(in *Interp, line int, a []Value) Value {
-			return rowsOf(in.dbExec(line, db, "query", a))
+			cl, a := rowClass(a)
+			rows := rowsOf(in.dbExec(line, db, "query", a))
+			if cl != nil {
+				for i, r := range rows.Items {
+					rows.Items[i] = in.rowObject(line, cl, r.(*Map))
+				}
+			}
+			return rows
 		})
 	case "first":
 		return builtin("first", func(in *Interp, line int, a []Value) Value {
+			cl, a := rowClass(a)
 			rows := rowsOf(in.dbExec(line, db, "first", a))
 			if len(rows.Items) == 0 {
 				return nil
+			}
+			if cl != nil {
+				return in.rowObject(line, cl, rows.Items[0].(*Map))
 			}
 			return rows.Items[0]
 		})
@@ -222,4 +233,41 @@ func databaseMethod(in *Interp, db *Database, name string) *Builtin {
 func isTransactionCall(callee Expr) bool {
 	g, ok := callee.(*Get)
 	return ok && strings.EqualFold(g.Name, "transaction")
+}
+
+// rowClass takes the object from db.query(Product, sql, values), if there is one.
+func rowClass(a []Value) (*Class, []Value) {
+	if len(a) > 0 {
+		if cl, ok := a[0].(*Class); ok {
+			return cl, a[1:]
+		}
+	}
+	return nil, a
+}
+
+// rowObject makes a database row into an object, checking every field. Column
+// names match field names without regard to case or underscores, so the column
+// created_at fills the field createdAt.
+func (in *Interp) rowObject(line int, cl *Class, row *Map) Value {
+	byName := map[string]string{}
+	for _, f := range cl.Fields {
+		byName[looseName(f.Name)] = f.Name
+	}
+	m := NewMap()
+	for _, col := range row.Keys {
+		field, ok := byName[looseName(col)]
+		if !ok {
+			in.fail(line, "the query gives a column '%s', but %s has no field for it. Select only the columns %s has, or add a field", col, cl.Name, cl.Name)
+		}
+		m.Set(field, row.M[col])
+	}
+	v, problem := in.objectFrom(cl, m, "")
+	if problem != "" {
+		in.fail(line, "a row doesn't fit %s: %s", cl.Name, problem)
+	}
+	return v
+}
+
+func looseName(s string) string {
+	return strings.ToLower(strings.ReplaceAll(s, "_", ""))
 }

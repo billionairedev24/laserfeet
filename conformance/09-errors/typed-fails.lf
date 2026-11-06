@@ -1,0 +1,37 @@
+choice PayProblem {
+    Declined(reason: Text)
+    TooBig(limit: Decimal)
+}
+
+beam pay(amount: Decimal) gives Text {
+    when amount > 100 {
+        fail PayProblem.TooBig(100)
+    }
+    when amount < 0 {
+        fail "a negative amount"
+    }
+    send "paid {amount}"
+}
+
+beam attemptPay(amount: Decimal) {
+    attempt {
+        show pay(amount)
+    } fails p: PayProblem {
+        focus p {
+            TooBig(limit) {
+                show "over the limit of {limit}"
+            }
+            Declined(reason) {
+                show "declined: {reason}"
+            }
+        }
+    } fails problem {
+        show "another problem: {problem}"
+    }
+}
+
+launch {
+    attemptPay(20)
+    attemptPay(500)
+    attemptPay(-1)
+}

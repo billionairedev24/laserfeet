@@ -1,0 +1,9 @@
+object Account {
+    owner: Text
+    private balance: Decimal = 0
+}
+
+launch {
+    a = Account("Ada")
+    show a.balance
+}

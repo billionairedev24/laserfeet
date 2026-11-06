@@ -159,11 +159,12 @@ type ExprStmt struct {
 	X    Expr
 }
 type BeamDecl struct {
-	Line   int
-	Name   string
-	Params []string
-	Sig    *Sig
-	Body   []Stmt
+	Line    int
+	Name    string
+	Params  []string
+	Sig     *Sig
+	Body    []Stmt
+	Private bool // in an object: only its own beams can call it; in a file: not shared by use
 }
 type SendStmt struct {
 	Line  int
@@ -174,6 +175,7 @@ type FieldDecl struct {
 	Type    *TypeExpr
 	Default Expr
 	Line    int
+	Private bool // only the object's own beams can use it; never sent as JSON
 }
 type ObjectDecl struct {
 	Line       int
@@ -242,10 +244,17 @@ type FastStmt struct {
 	Body []Stmt
 }
 type AttemptStmt struct {
-	Line    int
-	Body    []Stmt
-	ErrName string
-	Handler []Stmt
+	Line     int
+	Body     []Stmt
+	Handlers []*FailsClause // tried in order; a typed one catches only problems of its type
+}
+
+// FailsClause is one 'fails' after an attempt: fails problem { } or fails p: PaymentProblem { }.
+type FailsClause struct {
+	Line int
+	Name string
+	Type *TypeExpr // nil: catches every problem
+	Body []Stmt
 }
 type FailStmt struct {
 	Line  int

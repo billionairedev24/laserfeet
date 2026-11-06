@@ -347,7 +347,11 @@ func writeJSON(b *strings.Builder, v Value) {
 			n = 1
 		}
 		for i, f := range x.Class.Fields {
-			field(i+n, f.Name, x.Slots[i])
+			if f.Private {
+				continue // private fields stay inside the program
+			}
+			field(n, f.Name, x.Slots[i])
+			n++
 		}
 		b.WriteByte('}')
 	case Date, Moment, Duration, UUID:

@@ -1,0 +1,1 @@
+line 8: 'balance' is private to Account, so only Account's own beams can use it
