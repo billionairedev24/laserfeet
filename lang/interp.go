@@ -169,7 +169,11 @@ type Interp struct {
 	// ListAssets, when set, lists the files in one of those folders.
 	ListAssets func(dir string) ([]string, error)
 	tests      []*TestStmt
-	outMu      sync.Mutex
+	// NoCompile runs everything on the tree-walking engine (for differential tests).
+	NoCompile bool
+	codes     sync.Map // compiled beams, by declaration
+	exprCodes sync.Map // compiled per-item rules, by expression
+	outMu     sync.Mutex
 }
 
 func NewInterp(out io.Writer) *Interp {
@@ -217,7 +221,7 @@ func (in *Interp) loadInto(prog *Program, env *Env, main bool) {
 	for _, s := range prog.Stmts {
 		switch d := s.(type) {
 		case *BeamDecl:
-			env.define(d.Name, &Beam{Name: d.Name, Params: d.Params, Sig: d.Sig, Body: d.Body, Closure: env}, true)
+			env.define(d.Name, &Beam{Name: d.Name, Params: d.Params, Sig: d.Sig, Body: d.Body, Closure: env, code: in.codeFor(d)}, true)
 		case *ObjectDecl:
 			in.declareObject(d, env)
 		case *ChoiceDecl:
@@ -313,7 +317,7 @@ func (in *Interp) Run(src string) (err error) {
 		defer in.catch(&err)
 		in.load(prog)
 		if in.launch != nil {
-			in.execBlock(in.launch.Body, newScope(in.globals))
+			in.runBlock(in.launch.Body, newScope(in.globals))
 		}
 	}()
 	in.gil.Unlock()
@@ -500,7 +504,7 @@ func (in *Interp) exec(s Stmt, env *Env) (ctrl, Value) {
 	case *ExpectStmt:
 		in.expect(s, env)
 	case *BeamDecl:
-		env.define(s.Name, &Beam{Name: s.Name, Params: s.Params, Sig: s.Sig, Body: s.Body, Closure: env}, true)
+		env.define(s.Name, &Beam{Name: s.Name, Params: s.Params, Sig: s.Sig, Body: s.Body, Closure: env, code: in.codeFor(s)}, true)
 	case *ObjectDecl, *RuleDecl, *ChoiceDecl:
 		in.fail(s.Ln(), "objects and rules must be created at the top of the file, not inside a block")
 	case *LaunchStmt:
@@ -745,7 +749,7 @@ func (in *Interp) eval(x Expr, env *Env) Value {
 		}
 		return in.waitJob(x.Line, j, limit)
 	case *Lambda:
-		return &Beam{Params: x.Params, Sig: x.Sig, Body: x.Body, Expr: x.Expr, Closure: env}
+		return &Beam{Params: x.Params, Sig: x.Sig, Body: x.Body, Expr: x.Expr, Closure: env, code: in.codeFor(x)}
 	case *Call:
 		return in.callExpr(x, env, nil, false)
 	case *Then:
@@ -793,7 +797,11 @@ func (in *Interp) binary(x *Binary, env *Env) Value {
 		}
 		return in.truth(x.Right, env, x.Op)
 	}
-	l, r := in.eval(x.Left, env), in.eval(x.Right, env)
+	return in.binaryValues(x, in.eval(x.Left, env), in.eval(x.Right, env))
+}
+
+// binaryValues works out an operator once both sides are known.
+func (in *Interp) binaryValues(x *Binary, l, r Value) Value {
 	switch x.Op {
 	case "is":
 		return equal(l, r)
@@ -844,7 +852,11 @@ func (in *Interp) binary(x *Binary, env *Env) Value {
 }
 
 func (in *Interp) callExpr(c *Call, env *Env, first Value, hasFirst bool) Value {
-	fn := in.eval(c.Callee, env)
+	return in.callExprWith(c, env, in.eval(c.Callee, env), first, hasFirst)
+}
+
+// callExprWith is callExpr with the beam already worked out.
+func (in *Interp) callExprWith(c *Call, env *Env, fn Value, first Value, hasFirst bool) Value {
 	if b, ok := fn.(*Builtin); ok && b.Lazy != nil {
 		rest := []Expr{}
 		args := c.Args
@@ -940,10 +952,18 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		for k, v := range extra {
 			e.define(k, v, false)
 		}
-		if f.Expr != nil {
+		var c ctrl
+		var v Value
+		if code := in.compiled(f); code != nil {
+			if code.expr != nil {
+				return code.expr(e)
+			}
+			c, v = code.body(e)
+		} else if f.Expr != nil {
 			return in.eval(f.Expr, e)
+		} else {
+			c, v = in.execBlock(f.Body, e)
 		}
-		c, v := in.execBlock(f.Body, e)
 		if c == cStop || c == cSkip {
 			in.fail(line, "'stop' and 'skip' only work inside a loop")
 		}
@@ -959,8 +979,14 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		}
 		return v
 	case *Class:
-		inst := &Instance{Class: f, Slots: make([]Value, len(f.Fields))}
-		given := make([]bool, len(f.Fields))
+		inst := newInstance(f)
+		var givenBuf [8]bool
+		given := givenBuf[:0]
+		if len(f.Fields) <= len(givenBuf) {
+			given = givenBuf[:len(f.Fields)]
+		} else {
+			given = make([]bool, len(f.Fields))
+		}
 		pos := 0
 		for i, a := range args {
 			if names == nil || names[i] == "" {
@@ -1040,7 +1066,7 @@ func (in *Interp) get(obj Value, name string, line int) Value {
 			return v
 		}
 		if m, ok := o.Class.Methods[name]; ok {
-			return &Beam{Name: m.Name, Params: m.Params, Sig: m.Sig, Body: m.Body, Closure: withTypeParams(o.Class.Env, o.Class.TypeParams), Self: o}
+			return &Beam{Name: m.Name, Params: m.Params, Sig: m.Sig, Body: m.Body, Closure: withTypeParams(o.Class.Env, o.Class.TypeParams), Self: o, code: in.codeFor(m)}
 		}
 		in.fail(line, "%s has no field or beam called '%s'", o.Class.Name, name)
 	case *Class:
@@ -1186,4 +1212,39 @@ func (in *Interp) sigTypes(f *Beam) ([]*Type, *Type) {
 		sig.params, sig.result, sig.resolved = ps, in.resolveType(sig.Result, env), true
 	}
 	return sig.params, sig.result
+}
+
+// runBlock runs a block at the top of a program (launch, a test): compiled,
+// unless compiling is switched off.
+func (in *Interp) runBlock(stmts []Stmt, env *Env) (ctrl, Value) {
+	if in.NoCompile {
+		return in.execBlock(stmts, env)
+	}
+	return in.compileBlock(stmts)(env)
+}
+
+// small objects keep their fields next to the object: one allocation, not two
+type instance2 struct {
+	Instance
+	slots [2]Value
+}
+
+type instance4 struct {
+	Instance
+	slots [4]Value
+}
+
+func newInstance(c *Class) *Instance {
+	n := len(c.Fields)
+	switch {
+	case n <= 2:
+		x := new(instance2)
+		x.Class, x.Slots = c, x.slots[:n]
+		return &x.Instance
+	case n <= 4:
+		x := new(instance4)
+		x.Class, x.Slots = c, x.slots[:n]
+		return &x.Instance
+	}
+	return &Instance{Class: c, Slots: make([]Value, n)}
 }

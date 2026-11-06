@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,9 @@ func (u UUID) String() string {
 // String writes a duration the short way: 90 seconds is 1m30s, two days is 2d.
 func (d Duration) String() string {
 	if d < 0 {
+		if d == Duration(math.MinInt64) { // can't be made positive
+			return "-" + time.Duration(d).String()[1:]
+		}
 		return "-" + (-d).String()
 	}
 	if time.Duration(d) >= day {
@@ -125,15 +129,13 @@ func (in *Interp) clockOp(line int, op string, l, r Value) (Value, bool) {
 		switch b := r.(type) {
 		case Duration:
 			switch op {
-			case "+":
-				return a + b, true
-			case "-":
-				return a - b, true
+			case "+", "-":
+				return in.durationOp(line, op, int64(a), int64(b)), true
 			}
 		case int64:
 			switch op {
 			case "*":
-				return a * Duration(b), true
+				return in.durationOp(line, "*", int64(a), b), true
 			case "/":
 				if b == 0 {
 					in.fail(line, "a duration can't be split into zero parts")
@@ -147,7 +149,7 @@ func (in *Interp) clockOp(line int, op string, l, r Value) (Value, bool) {
 		}
 	case int64:
 		if b, ok := r.(Duration); ok && op == "*" {
-			return Duration(a) * b, true
+			return in.durationOp(line, "*", a, int64(b)), true
 		}
 	case Moment:
 		switch b := r.(type) {
@@ -160,7 +162,7 @@ func (in *Interp) clockOp(line int, op string, l, r Value) (Value, bool) {
 			}
 		case Moment:
 			if op == "-" {
-				return Duration(a.t.Sub(b.t)), true
+				return in.span(line, a.t, b.t), true
 			}
 		}
 	case Date:
@@ -177,11 +179,29 @@ func (in *Interp) clockOp(line int, op string, l, r Value) (Value, bool) {
 			}
 		case Date:
 			if op == "-" {
-				return Duration(a.t.Sub(b.t)), true
+				return in.span(line, a.t, b.t), true
 			}
 		}
 	}
 	return nil, false
+}
+
+// durationOp does Duration arithmetic, refusing to wrap around (like Int).
+func (in *Interp) durationOp(line int, op string, a, b int64) Duration {
+	v, ok := intOp(op, a, b)
+	if !ok {
+		in.fail(line, "this Duration is too long (a Duration holds up to about 292 years)")
+	}
+	return Duration(v)
+}
+
+// span is a - b as a Duration, which holds up to about 292 years either way.
+func (in *Interp) span(line int, a, b time.Time) Duration {
+	d := a.Sub(b)
+	if d == math.MaxInt64 || d == math.MinInt64 { // Go stops at the limit instead of overflowing
+		in.fail(line, "these are too far apart for a Duration (it holds up to about 292 years)")
+	}
+	return Duration(d)
 }
 
 // clockCmp compares two dates, two times or two durations.

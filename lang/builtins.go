@@ -325,17 +325,23 @@ func (in *Interp) perItem(env *Env, x Expr, item Value) Value {
 	if lam, ok := x.(*Lambda); ok {
 		return in.call(in.eval(lam, env), []Value{item}, nil, x.Ln(), nil)
 	}
-	e := newEnv(env)
+	// one allocation per item: the item's scope with "it" in it
+	fr := new(frame1)
+	e := &fr.Env
+	e.parent, e.names, e.binds = env, itName, fr.slots[:1]
+	fr.slots[0].v = item
 	switch o := item.(type) {
 	case *Instance:
-		e = &Env{parent: env, obj: o}
+		e.obj = o
 	case *Map:
 		for _, k := range o.Keys {
 			e.define(k, o.M[k], false)
 		}
 	}
-	e.define("it", item, false)
-	return in.eval(x, e)
+	if in.NoCompile {
+		return in.eval(x, e)
+	}
+	return in.exprCode(x)(e)
 }
 
 func (in *Interp) perItemTruth(env *Env, x Expr, item Value, name string) bool {
@@ -440,4 +446,16 @@ func mapMethod(m *Map, name string) *Builtin {
 		})
 	}
 	return nil
+}
+
+var itName = []string{"it"}[:1:1] // shared; a scope that adds names copies it first
+
+// exprCode is the compiled form of an expression used for every item of a list
+// (keepIf(age > 18)), made once.
+func (in *Interp) exprCode(x Expr) cexpr {
+	if c, ok := in.exprCodes.Load(x); ok {
+		return c.(cexpr)
+	}
+	c, _ := in.exprCodes.LoadOrStore(x, in.compileExpr(x))
+	return c.(cexpr)
 }

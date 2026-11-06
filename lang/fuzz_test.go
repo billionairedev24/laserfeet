@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -128,5 +129,38 @@ func FuzzTemplate(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, src string) {
 		parseTemplate("t.html", src)
+	})
+}
+
+// Any program gives the same output and the same problem on the compiled
+// engine and the tree-walking engine.
+func FuzzEngines(f *testing.F) {
+	seed(f)
+	f.Fuzz(func(t *testing.T, src string) {
+		for _, risky := range []string{"start(", "pause", "fetch", "files.", "store.", "postgres", "uuid(", "now()", "auth.", "fast", "wait"} {
+			if strings.Contains(src, risky) {
+				return
+			}
+		}
+		if _, err := Parse(src); err != nil {
+			return
+		}
+		run := func(compile bool) (string, string) {
+			var out bytes.Buffer
+			in := NewInterp(&out)
+			in.NoCompile = !compile
+			in.MaxSteps = 20000
+			err := in.Run(src)
+			msg := ""
+			if err != nil {
+				msg = err.Error()
+			}
+			return out.String(), msg
+		}
+		o1, e1 := run(true)
+		o2, e2 := run(false)
+		if o1 != o2 || e1 != e2 {
+			t.Fatalf("the engines disagree on\n%s\ncompiled: %q %q\ntree:     %q %q", src, o1, e1, o2, e2)
+		}
 	})
 }

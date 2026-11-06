@@ -34,6 +34,7 @@ type Beam struct {
 	Expr    Expr
 	Closure *Env
 	Self    *Instance
+	code    *beamCode // compiled body, shared by every beam from the same code
 }
 
 type Builtin struct {
