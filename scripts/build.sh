@@ -39,5 +39,8 @@ else
   echo "npx not found: skipping the VS Code extension" >&2
 fi
 
+# the software bill of materials: what's inside, and each file's checksum
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || echo 0)}" go run ./scripts/sbom "$version" dist
+
 (cd dist && sha256sum -- * > SHA256SUMS)
 cat dist/SHA256SUMS

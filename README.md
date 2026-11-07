@@ -194,7 +194,7 @@ The website source is `site/template.html`. `scripts/build.sh` turns it into `si
 
 ## Releases and security
 
-Changing the `VERSION` file on `main` runs the release workflow, which tags the version and publishes the binaries with checksums and signed build provenance. See [SECURITY.md](SECURITY.md) for how to verify a download and how to report a problem.
+Changing the `VERSION` file on `main` runs the release workflow, which tags the version and publishes the binaries with checksums and signed build provenance. Every release also carries a software bill of materials (`laserfeet.spdx.json`). See [SECURITY.md](SECURITY.md) for how to verify a download and how to report a problem, [THREAT_MODEL.md](THREAT_MODEL.md) for what Laser Feet protects against, and [COMPATIBILITY.md](COMPATIBILITY.md) for what 1.x promises.
 
 ## Layout
 

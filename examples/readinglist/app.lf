@@ -1,0 +1,83 @@
+-- A reading list: the app the website's tutorial builds, step by step.
+--
+--   lf run app.lf     then open http://localhost:8080/books
+--   lf test app.lf
+
+use web
+use store
+
+db = store.open(env("BOOKS_DB", "books.json"))
+server = web.open(int(env("PORT", "8080")))
+server.metrics()
+
+-- what's wrong with a new book, or nothing if it's fine
+beam problemWith(title: Text, author: Text) gives Text? {
+    when title.trim().size() is 0 {
+        send "a book needs a title"
+    }
+    when author.trim().size() is 0 {
+        send "a book needs an author"
+    }
+    send nothing
+}
+
+server.get("/books") as request {
+    books = db.all("books")
+    when request.query.unread is "yes" {
+        books = books then keepIf(not read)
+    }
+    send books
+}
+
+server.post("/books") as request {
+    body = request.json
+    when body.title is nothing or body.author is nothing {
+        send web.status(400, {error: "a book needs a title and an author"})
+    }
+    title = text(body.title)
+    author = text(body.author)
+    problem = problemWith(title, author)
+    when problem is not nothing {
+        send web.status(400, {error: problem})
+    }
+    book = db.add("books", {title: title.trim(), author: author.trim(), read: no})
+    send web.status(201, book)
+}
+
+server.post("/books/:id/read") as request {
+    book = db.update("books", int(request.params.id), {read: yes})
+    when book is nothing {
+        send web.status(404, {error: "no book with that id"})
+    }
+    send book
+}
+
+launch {
+    show "{db.count("books")} books on the list"
+    fast server.start()
+}
+
+test "a book can be added and listed" {
+    db = store.memory()
+    added = server.visit("/books", "POST", {title: "Things Fall Apart", author: "Chinua Achebe"}).json
+    expect added.title is "Things Fall Apart"
+    expect added.read is no
+    expect count(server.visit("/books").json) is 1
+}
+
+test "a book needs a title and an author" {
+    db = store.memory()
+    expect server.visit("/books", "POST", {title: "  "}).status is 400
+    expect server.visit("/books", "POST", {title: "Beloved"}).json.error is "a book needs a title and an author"
+    expect server.visit("/books", "POST", {title: "Beloved", author: " "}).json.error is "a book needs an author"
+}
+
+test "reading a book takes it off the unread list" {
+    db = store.memory()
+    server.visit("/books", "POST", {title: "Half of a Yellow Sun", author: "Chimamanda Ngozi Adichie"})
+    server.visit("/books", "POST", {title: "Purple Hibiscus", author: "Chimamanda Ngozi Adichie"})
+    server.visit("/books/1/read", "POST")
+    unread = server.visit("/books?unread=yes").json
+    expect count(unread) is 1
+    expect unread[0].title is "Purple Hibiscus"
+}

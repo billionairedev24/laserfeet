@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -158,5 +160,62 @@ server.get("/items/:id") as request {
 	req.Header.Set("Authorization", "Bearer s3cret")
 	if r, _ := http.DefaultClient.Do(req); r.StatusCode != 200 {
 		t.Errorf("the token opens the page, got %d", r.StatusCode)
+	}
+}
+
+// Static files stay inside their folder: no climbing out, no hidden files.
+// Rate limits answer 429 once a visitor has used their requests.
+func TestStaticFilesAndRateLimits(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "public"), 0o755)
+	os.WriteFile(filepath.Join(dir, "public", "site.css"), []byte("body{}"), 0o644)
+	os.WriteFile(filepath.Join(dir, "public", ".env"), []byte("SECRET=1"), 0o644)
+	os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("top secret"), 0o644)
+	in := NewInterp(io.Discard)
+	in.Dir = dir
+	if err := in.Run(`use web
+server = web.open(8080)
+server.quiet()
+server.files("/static", "public")
+server.limit("/login", 2, minutes(1))
+server.post("/login") {
+    send "ok"
+}
+`); err != nil {
+		t.Fatal(err)
+	}
+	v, _ := in.globals.lookup("server")
+	ts := httptest.NewServer(newHandler(in, v.(*Server)))
+	defer ts.Close()
+	get := func(path string) (int, string) {
+		req, _ := http.NewRequest("GET", ts.URL+path, nil)
+		req.URL.Opaque = path // send the path exactly as written, not cleaned by the client
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		return r.StatusCode, string(b)
+	}
+	if code, body := get("/static/site.css"); code != 200 || body != "body{}" {
+		t.Errorf("a static file: %d %q", code, body)
+	}
+	for _, p := range []string{"/static/../secret.txt", "/static/%2e%2e/secret.txt", "/static/..%2fsecret.txt", "/static/.env", "/static/%2eenv"} {
+		if code, body := get(p); code == 200 || strings.Contains(body, "top secret") || strings.Contains(body, "SECRET=1") {
+			t.Errorf("%s must not be served: %d %q", p, code, body)
+		}
+	}
+	codes := []int{}
+	for i := 0; i < 3; i++ {
+		r, err := http.Post(ts.URL+"/login", "text/plain", strings.NewReader(""))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		codes = append(codes, r.StatusCode)
+	}
+	if codes[0] != 200 || codes[1] != 200 || codes[2] != 429 {
+		t.Errorf("two requests a minute, then 429: got %v", codes)
 	}
 }

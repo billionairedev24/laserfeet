@@ -377,7 +377,8 @@ lf test app.lf</lf-code></div></li>
         <li style="--wl: var(--l405)"><span class="ver">0.11</span><strong>Every core for the web</strong><p>Web requests run in parallel on every core, safely: a request can't change what other requests use. Calls and loops are about 4&times; faster than 0.9.</p></li>
         <li style="--wl: var(--l405)"><span class="ver">0.12</span><strong>Tools for bigger code</strong><p>Go to definition, find references, rename and an outline in VS Code, and packages that use packages, each installed once and locked.</p></li>
         <li style="--wl: var(--l405)"><span class="ver">0.13</span><strong>Whole-number speed</strong><p>Int-only beams run on plain machine integers: recursive and numeric code is 8&times; faster than 0.9. Beams change only their own names, and CI tracks speed on every push.</p></li>
-        <li class="now" style="--wl: var(--l405)"><span class="ver">0.14</span><strong>Everyday tools</strong><p>Problems show the calls that led to them; <code>lf test</code> runs whole folders with coverage; signature help in VS Code; <code>lf get -u</code>, <code>lf audit</code>, <code>lf doc</code> and <code>lf try</code>.</p></li>
+        <li style="--wl: var(--l405)"><span class="ver">0.14</span><strong>Everyday tools</strong><p>Problems show the calls that led to them; <code>lf test</code> runs whole folders with coverage; signature help in VS Code; <code>lf get -u</code>, <code>lf audit</code>, <code>lf doc</code> and <code>lf try</code>.</p></li>
+        <li class="now" style="--wl: var(--l405)"><span class="ver">0.15</span><strong>The 1.0 candidate</strong><p>Fast jobs on every core; loops 5&times; faster than 0.9; traces, request IDs and Prometheus metrics; a software bill of materials with every release; the language frozen for 1.0.</p></li>
       </ul>
     </div>
   </div>
@@ -389,7 +390,7 @@ lf test app.lf</lf-code></div></li>
     <div class="pagehead">
       <span class="lambda">Learn</span>
       <h2>The Laser Feet guide</h2>
-      <p class="lede">Seventeen short chapters. Every example has a Try it button that runs it in the playground.</p>
+      <p class="lede">Twenty short chapters, ending with a tutorial that builds a web app and a guide to running it for real. Every example has a Try it button that runs it in the playground.</p>
     </div>
     <div class="docs">
       <nav class="toc" aria-label="Guide chapters">
@@ -411,6 +412,9 @@ lf test app.lf</lf-code></div></li>
         <a href="#learn" data-jump="g14">Splitting code into files</a>
         <a href="#learn" data-jump="g15">Databases</a>
         <a href="#learn" data-jump="g16">Packages</a>
+        <a href="#learn" data-jump="g17">Tutorial: a reading list</a>
+        <a href="#learn" data-jump="g18">Going to production</a>
+        <a href="#learn" data-jump="g19">Everyday tools</a>
       </nav>
       <article>
         <h2 id="g1"><span class="num">01</span>Your first program</h2>
@@ -940,6 +944,119 @@ launch {
         </table></div>
         <p class="note"><b>Safe by default:</b> installing never runs any code, and only <code>.lf</code> files are installed. The lock pins exact commits, so a moved tag or a branch with new commits can't change what you get. Before every <code>run</code>, <code>test</code> and <code>build</code>, each package is checked against its SHA-256, and changed code is refused. A package can only use its own files and other packages, never your project's files.</p>
         <p><b>Making a package</b> is just a repository with a <code>package.lf</code>; its beams and objects are what users reach through its name. Tag releases as <code>v1.0.0</code>, <code>v1.1.0</code>, and so on. A package that needs other packages lists them in its own <code>sole.list</code> (<code>need github.com/someone/words v1.2.0</code>); <code>lf get</code> installs them too. Each package is installed once: when two ask for different versions, the newer one is used, so keep newer versions working for code written for older ones.</p>
+
+        <h2 id="g17"><span class="num">18</span>Tutorial: a reading list</h2>
+        <p>This chapter builds a small web app from nothing: a reading list you can add books to and tick off. It takes about fifteen minutes. The finished app is <code>examples/readinglist/app.lf</code>.</p>
+        <p><b>1. Start a project.</b> <code>lf new</code> makes a folder with an app, a test, a Dockerfile and a <code>.gitignore</code>.</p>
+<lf-code>lf new reading
+cd reading
+lf run app.lf        # then open http://localhost:8080</lf-code>
+        <p><b>2. Keep the books.</b> Replace <code>app.lf</code> with a server and a store. <code>store.open</code> saves to a JSON file, written safely so a crash never leaves half a file.</p>
+<lf-code>use web
+use store
+
+db = store.open(env("BOOKS_DB", "books.json"))
+server = web.open(int(env("PORT", "8080")))
+
+server.get("/books") as request {
+    send db.all("books")
+}
+
+launch {
+    show "{db.count("books")} books on the list"
+    fast server.start()
+}</lf-code>
+        <p><code>send</code> with a list answers with JSON. <code>fast server.start()</code> serves in the background, so <code>launch</code> can carry on (here it just ends, and the server keeps going).</p>
+        <p><b>3. Add books, carefully.</b> Anything a visitor sends is checked before it's kept. A beam that says what's wrong, or <code>nothing</code>, keeps the route short. Its result type, <code>Text?</code>, means "some text, or nothing", and the checker makes you test which before using it.</p>
+<lf-code>beam problemWith(title: Text, author: Text) gives Text? {
+    when title.trim().size() is 0 {
+        send "a book needs a title"
+    }
+    when author.trim().size() is 0 {
+        send "a book needs an author"
+    }
+    send nothing
+}
+
+server.post("/books") as request {
+    body = request.json
+    when body.title is nothing or body.author is nothing {
+        send web.status(400, {error: "a book needs a title and an author"})
+    }
+    title = text(body.title)
+    author = text(body.author)
+    problem = problemWith(title, author)
+    when problem is not nothing {
+        send web.status(400, {error: problem})
+    }
+    book = db.add("books", {title: title.trim(), author: author.trim(), read: no})
+    send web.status(201, book)
+}</lf-code>
+        <p><b>4. Tick books off.</b> <code>:id</code> in a route is part of the path; <code>request.params.id</code> holds it as text.</p>
+<lf-code>server.post("/books/:id/read") as request {
+    book = db.update("books", int(request.params.id), {read: yes})
+    when book is nothing {
+        send web.status(404, {error: "no book with that id"})
+    }
+    send book
+}</lf-code>
+        <p>And let <code>/books?unread=yes</code> leave out the ones you've read, by changing the first route:</p>
+<lf-code>server.get("/books") as request {
+    books = db.all("books")
+    when request.query.unread is "yes" {
+        books = books then keepIf(not read)
+    }
+    send books
+}</lf-code>
+        <p><b>5. Test it.</b> Tests sit beside the code. <code>server.visit</code> sends a request without a network, and <code>store.memory()</code> gives each test a fresh, empty store.</p>
+<lf-code>test "reading a book takes it off the unread list" {
+    db = store.memory()
+    server.visit("/books", "POST", {title: "Half of a Yellow Sun", author: "Chimamanda Ngozi Adichie"})
+    server.visit("/books", "POST", {title: "Purple Hibiscus", author: "Chimamanda Ngozi Adichie"})
+    server.visit("/books/1/read", "POST")
+    unread = server.visit("/books?unread=yes").json
+    expect count(unread) is 1
+    expect unread[0].title is "Purple Hibiscus"
+}</lf-code>
+        <p>Run them with <code>lf test</code>; <code>lf test --cover</code> also lists any lines no test reaches.</p>
+        <p><b>6. Try it for real.</b></p>
+<lf-code>lf run app.lf
+curl -X POST localhost:8080/books -d '{"title":"Things Fall Apart","author":"Chinua Achebe"}'
+curl localhost:8080/books</lf-code>
+        <p><b>7. Ship it.</b> <code>lf build app.lf</code> makes one program that runs with nothing installed; <code>docker build -t reading .</code> uses the Dockerfile <code>lf new</code> wrote. The next chapter covers running it.</p>
+
+        <h2 id="g18"><span class="num">19</span>Going to production</h2>
+        <p>A Laser Feet app is one program. This is what to set up around it.</p>
+        <div class="tablewrap"><table>
+          <tr><th>Need</th><th>What to do</th></tr>
+          <tr><td>Build</td><td><code>lf build app.lf</code> (it carries its templates, static files and migrations inside), or the project's Dockerfile, which runs the tests and ships only the built program, as an unprivileged user</td></tr>
+          <tr><td>Settings</td><td>Read them with <code>env("NAME", default)</code>. Locally, a <code>.env</code> file next to the app is read too; in production, set real environment variables. Make secrets with <code>lf secret</code></td></tr>
+          <tr><td>Database</td><td><code>lf migrate</code> applies the files in <code>migrations/</code> in order, once each. Run it before starting a new version</td></tr>
+          <tr><td>Health</td><td><code>GET /health</code> answers 200 while the server runs: point your load balancer or platform at it</td></tr>
+          <tr><td>Stopping</td><td>A stop signal (from Docker, say) lets requests in progress finish, for up to 10 seconds</td></tr>
+          <tr><td>Logs</td><td>One JSON line per request on standard error, with <code>request_id</code>, <code>trace_id</code> and <code>span_id</code>. <code>use log</code> writes your own lines the same way</td></tr>
+          <tr><td>Traces</td><td>A <code>traceparent</code> header from a caller is continued, so the app's requests join a distributed trace; every reply carries <code>traceparent</code> and <code>X-Request-Id</code></td></tr>
+          <tr><td>Metrics</td><td><code>server.metrics()</code> adds <code>/metrics</code> in Prometheus' format: requests by route and status, how long each route takes, requests in progress, memory. It answers only the machine itself unless you set <code>METRICS_TOKEN</code>; then a scraper sends it as a bearer token</td></tr>
+          <tr><td>Cores</td><td>Requests run in parallel on every core. Keep data requests share in a store or a database: a request can't change values made outside it</td></tr>
+          <tr><td>Memory</td><td>By default the garbage collector keeps memory under a soft limit of 512 MiB; set <code>GOMEMLIMIT</code> to match your container</td></tr>
+          <tr><td>Packages</td><td>Commit <code>sole.list</code> and <code>sole.lock</code>; run <code>lf audit</code> in CI to catch packages with known security problems</td></tr>
+        </table></div>
+        <p class="note"><b>Before going live:</b> turn sessions on with a secret of at least 32 characters (<code>server.sessions(env("SESSION_SECRET", ""))</code>) if visitors sign in; put <code>server.limit</code> on sign-in routes; serve over HTTPS (cookies get <code>Secure</code> automatically off localhost); and read <a href="https://github.com/billionairedev24/laserfeet/blob/main/THREAT_MODEL.md">the threat model</a> for what Laser Feet does and doesn't protect against.</p>
+
+        <h2 id="g19"><span class="num">20</span>Everyday tools</h2>
+        <p>Everything comes with <code>lf</code>; nothing else to install.</p>
+        <div class="tablewrap"><table>
+          <tr><th>Command</th><th>What it's for</th></tr>
+          <tr><td><code>lf check app.lf</code></td><td>Find type and name mistakes without running anything (run, test and build do this first anyway)</td></tr>
+          <tr><td><code>lf fmt</code></td><td>Lay out every file the standard way; <code>--check</code> for CI</td></tr>
+          <tr><td><code>lf fix</code></td><td>Update older code for a new version, without changing what it does</td></tr>
+          <tr><td><code>lf test --cover</code></td><td>Run every test in the folder and list lines never run</td></tr>
+          <tr><td><code>lf try</code></td><td>Type code a line at a time and see what it gives</td></tr>
+          <tr><td><code>lf doc</code></td><td>Documentation from the <code>--</code> comments above beams, objects and choices; <code>--html docs.html</code> for a page</td></tr>
+          <tr><td><code>lf get -u</code></td><td>Update packages to their newest compatible versions</td></tr>
+          <tr><td><code>lf audit</code></td><td>Check packages against known security problems</td></tr>
+        </table></div>
+        <p>When something goes wrong, the problem names the file and line, then the calls that led there, innermost first, so you can follow it back. In VS Code, the Laser Feet extension shows mistakes as you type, completes names, shows types on hover and a beam's inputs as you call it, goes to definitions (F12), finds references (Shift+F12), renames (F2) and outlines each file.</p>
       </article>
     </div>
   </div>

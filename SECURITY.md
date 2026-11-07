@@ -12,6 +12,9 @@ Every release includes:
 
 - **SHA256SUMS**, the SHA-256 checksum of every file.
 - **Signed build provenance**: a GitHub attestation proving each file was built by this repository's release workflow from a specific commit.
+- **A software bill of materials** (`laserfeet.spdx.json`, SPDX 2.3): what's inside `lf` (Laser Feet and the Go toolchain and standard library it was built with) and the SHA-256 of every file.
+
+The threats Laser Feet is designed against, and what it does about each, are in [THREAT_MODEL.md](THREAT_MODEL.md).
 
 Check both before running `lf`:
 
@@ -33,6 +36,7 @@ On a Mac, use `shasum -a 256 --check --ignore-missing SHA256SUMS`. On Windows, c
 | `govulncheck` on every push | Shipping with a known vulnerability in Go or the code |
 | Dependabot updates for the pinned actions | Pins going stale |
 | Tests with the race detector on every push | Concurrency bugs |
+| A software bill of materials (`laserfeet.spdx.json`, SPDX 2.3) with every release, listing what is inside and each file's SHA-256 | Not knowing what a release contains when a problem is found in Go or a file |
 | Nightly fuzzing of the parser, checker, formatter, JSON, web requests and the PostgreSQL protocol | Crashes or hangs on unexpected input, including from a hostile database server |
 
 ## How the website is protected

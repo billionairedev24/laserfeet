@@ -1,6 +1,8 @@
 # The Laser Feet Language Specification
 
-Version 0.14. This document says exactly what Laser Feet code means. Where the
+Version 0.15, the 1.0 candidate: the language is frozen, so from here it
+only gains additions and fixes, under the promise in
+[COMPATIBILITY.md](../COMPATIBILITY.md). This document says exactly what Laser Feet code means. Where the
 website explains, this specification decides. Every section has matching
 programs in `conformance/<section>/`: each one prints exactly its `.out` file,
 or is refused with exactly the message in its `.err` file. `go test ./lang -run
