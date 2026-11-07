@@ -380,6 +380,9 @@ a position outside the list is a problem. Methods: `add(x)`, `remove(x)`,
 - Other code (`launch`, a single `fast` job) runs between requests, never
   during one, and takes turns with other jobs; each lets others run while it
   waits for a database, the network, a timer or `wait`.
+- `fast` work started inside parallel work (a `fast each` item or a web
+  request) is done on the spot, before the next line runs, so it can never
+  run beside the code that started it.
 
 ## 12. Web
 

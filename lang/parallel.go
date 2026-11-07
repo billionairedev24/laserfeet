@@ -37,8 +37,6 @@ type regionStamp struct{ gen int64 }
 // start and finish regions at the same time, so changes go through mu.
 type regions struct {
 	mu    sync.Mutex
-	done  sync.Cond // signalled when fast work started inside a region finishes
-	jobs  int       // fast work started inside the running region, still going
 	stamp atomic.Pointer[regionStamp]
 }
 
@@ -107,38 +105,13 @@ func (in *Interp) enterRegion() bool {
 	return started
 }
 
-// leaveRegion leaves the region. With wait, it first waits for fast work
-// started inside the region: that work runs without the lock, so it must
-// finish while the region still holds everyone else off.
-func (in *Interp) leaveRegion(wait bool) {
+// leaveRegion leaves the region. (Fast work started inside a region is done
+// on the spot, so nothing started inside can outlive it.)
+func (in *Interp) leaveRegion(bool) {
 	r := &in.region
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if wait {
-		if r.done.L == nil {
-			r.done.L = &r.mu
-		}
-		for r.jobs > 0 {
-			r.done.Wait()
-		}
-	}
 	if in.parallel.Add(-1) == 0 {
 		r.stamp.Store(nil)
 	}
-}
-
-func (in *Interp) regionJobStarted() {
-	in.region.mu.Lock()
-	in.region.jobs++
-	in.region.mu.Unlock()
-}
-
-func (in *Interp) regionJobDone() {
-	r := &in.region
-	r.mu.Lock()
-	r.jobs--
-	if r.jobs == 0 && r.done.L != nil {
-		r.done.Broadcast()
-	}
-	r.mu.Unlock()
 }

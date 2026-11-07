@@ -15,22 +15,33 @@ type Job struct {
 	err   *RuntimeError
 }
 
-// startJob runs work at the same time as the rest of the program. Normally
-// it takes turns with other work; started inside a parallel region it runs
-// in parallel, like the region's items, and the region waits for it.
+// startJob runs work at the same time as the rest of the program, taking
+// turns with other work. Started inside parallel work it's done at once.
 func (in *Interp) startJob(line int, work func() Value) *Job {
 	j := &Job{done: make(chan struct{})}
-	inRegion := in.parallel.Load() > 0
-	if inRegion {
-		in.regionJobStarted()
-	} else {
-		atomic.AddInt32(&in.fastLive, 1)
+	if in.parallel.Load() > 0 {
+		// Inside parallel work (a fast each item, a web request), the work is
+		// done right here, before going on. Run beside the code that started
+		// it, both could change the values they share at the same time.
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					if re, ok := r.(*RuntimeError); ok {
+						j.err = re
+					} else {
+						j.err = &RuntimeError{Line: line, Msg: fmt.Sprint(r)}
+					}
+				}
+				close(j.done)
+			}()
+			j.value = work()
+		}()
+		return j
 	}
+	atomic.AddInt32(&in.fastLive, 1)
 	in.wg.Add(1)
 	go func() {
-		if !inRegion {
-			in.gil.Lock()
-		}
+		in.gil.Lock()
 		defer func() {
 			if r := recover(); r != nil {
 				if re, ok := r.(*RuntimeError); ok {
@@ -40,19 +51,13 @@ func (in *Interp) startJob(line int, work func() Value) *Job {
 				}
 			}
 			close(j.done)
-			if inRegion {
-				in.regionJobDone()
-			} else {
-				atomic.AddInt32(&in.fastLive, -1)
-				in.gil.Unlock()
-			}
+			atomic.AddInt32(&in.fastLive, -1)
+			in.gil.Unlock()
 			in.wg.Done()
 		}()
 		j.value = work()
 	}()
-	if !inRegion {
-		in.tick(line) // let the work get started
-	}
+	in.tick(line) // let the work get started
 	return j
 }
 
