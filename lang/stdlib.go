@@ -54,6 +54,9 @@ func (in *Interp) loadFile(p string, line int) *Module {
 	in.useStack = append(in.useStack, next)
 	env := newScope(in.builtins)
 	in.files.Store(env, clean)
+	if in.Cover != nil {
+		in.Cover.addFile(clean, prog)
+	}
 	in.loadInto(prog, env, false)
 	in.useStack = in.useStack[:len(in.useStack)-1]
 	delete(in.loading, clean)

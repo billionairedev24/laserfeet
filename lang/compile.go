@@ -117,6 +117,13 @@ func (in *Interp) compileBlock(stmts []Stmt) cblock {
 	for i, s := range stmts {
 		parts[i] = in.compileStmt(s)
 		lines[i] = s.Ln()
+		if c := in.Cover; c != nil { // lf test --cover
+			p, st := parts[i], s
+			parts[i] = func(e *Env) (ctrl, Value) {
+				c.mark(st)
+				return p(e)
+			}
+		}
 	}
 	switch len(parts) {
 	case 0:

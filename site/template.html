@@ -783,7 +783,7 @@ server.post("/login") as request {
         <p>A template is HTML with Laser Feet in braces: <code>{name}</code>, <code>{each p in products} … {end}</code>, <code>{when user is nothing} … {otherwise} … {end}</code> and <code>{use "views/header.html"}</code>. <code>lf check</code> reads your templates too. Replies can carry headers and cookies: <code>web.reply(data).header("Cache-Control", "no-store").cookie("theme", "dark", days(30))</code>. The complete example in <a href="https://github.com/billionairedev24/laserfeet/tree/main/examples/shipments">examples/shipments</a> has sign-up, sign-in, pages, a JSON API and PostgreSQL, with tests.</p>
 
         <h2 id="g10"><span class="num">11</span>Testing</h2>
-        <p>A <code>test</code> block holds <code>expect</code> checks. <code>lf test file.lf</code> runs every test and reports which passed. In the playground, press Run tests.</p>
+        <p>A <code>test</code> block holds <code>expect</code> checks. <code>lf test file.lf</code> runs every test and reports which passed; <code>lf test</code> alone runs every file with tests in the folder, and <code>lf test --cover</code> also lists the lines your tests never reach. In the playground, press Run tests.</p>
 <lf-code data-try data-mode="test">beam discount(total: Decimal) gives Decimal {
     when total >= 100 {
         send total * 0.9
@@ -1098,6 +1098,7 @@ launch {
           <tr><td><code>lf new name</code></td><td>Create a starter project with an app and tests</td></tr>
           <tr><td><code>lf run app.lf</code></td><td>Run a program (<code>lf app.lf</code> works too)</td></tr>
           <tr><td><code>lf test app.lf</code></td><td>Run its test blocks</td></tr>
+          <tr><td><code>lf test --cover</code></td><td>Run every file's tests in this folder, and show lines never run</td></tr>
           <tr><td><code>lf check app.lf</code></td><td>Find type mistakes without running anything (<code>run</code>, <code>test</code> and <code>build</code> check first too)</td></tr>
           <tr><td><code>lf build app.lf</code></td><td>Make a standalone program file (<code>-o name</code> picks its name)</td></tr>
           <tr><td><code>lf fmt</code></td><td>Lay out every <code>.lf</code> file in the folder the standard way (<code>--check</code> only reports, for CI). VS Code does this on save</td></tr>

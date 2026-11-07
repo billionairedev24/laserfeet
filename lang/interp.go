@@ -274,6 +274,7 @@ type Interp struct {
 	parallel    atomic.Int32 // parallel regions running (fast each)
 	frames      frames       // call frames to use again
 	files       sync.Map     // *Env of each used file -> its path, for traces
+	Cover       *Coverage    // set before running to record which statements run
 	regionStart atomic.Int64 // when the outermost one began
 	region      regions      // bookkeeping for parallel regions
 	serving     atomic.Int32 // web requests being answered right now
@@ -445,6 +446,9 @@ func (in *Interp) RunTests(src string) (results []TestResult, err error) {
 	if perr != nil {
 		return nil, perr
 	}
+	if in.Cover != nil {
+		in.Cover.addFile("", prog)
+	}
 	in.gil.Lock()
 	defer in.gil.Unlock()
 	func() {
@@ -493,6 +497,9 @@ func (in *Interp) tick(line int) {
 func (in *Interp) execBlock(stmts []Stmt, env *Env) (ctrl, Value) {
 	for _, s := range stmts {
 		in.tick(s.Ln())
+		if in.Cover != nil {
+			in.Cover.mark(s)
+		}
 		if c, v := in.exec(s, env); c != cNone {
 			return c, v
 		}

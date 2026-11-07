@@ -323,7 +323,9 @@ focus status {
   there, innermost first: `in safeShare, called from app.lf, line 5`. The
   same call repeated (recursion) is shown once with a count. Failed tests and
   problems in web requests (in the server's log) show the same calls.
-- `test "name" { ... }` declares a test, run by `lf test`. Inside it,
+- `test "name" { ... }` declares a test, run by `lf test` (a file, or every
+  `.lf` file with tests under a folder, the current one by default; installed
+  packages are left out; `--cover` reports the statements that never ran). Inside it,
   `expect condition` fails the test if the condition is `no`. `lf run` doesn't
   run tests.
 

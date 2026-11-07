@@ -3,9 +3,11 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"laserfeet/auth"
@@ -19,7 +21,8 @@ var help = `Laser Feet ` + version + `
 Usage:
   lf new <name>        create a starter project
   lf run <file.lf>     run a program
-  lf test <file.lf>    run the test blocks in a file
+  lf test [paths]      run the test blocks in files, or every file under folders
+                       (default: this folder); --cover shows which lines ran
   lf check <file.lf>   find type mistakes without running anything
   lf migrate [folder]  apply new .sql migrations to DATABASE_URL
   lf secret            print a new random secret (for server.sessions)
@@ -96,8 +99,7 @@ func main() {
 		need(args)
 		os.Exit(run(args[1]))
 	case "test":
-		need(args)
-		os.Exit(test(args[1]))
+		os.Exit(testCommand(args[1:]))
 	default:
 		if strings.HasSuffix(args[0], ".lf") {
 			os.Exit(run(args[0]))
@@ -177,15 +179,118 @@ func run(path string) int {
 	return 0
 }
 
-func test(path string) int {
-	if !checkFile(path) {
+// testCommand runs lf test: files, or every file with tests under folders
+// (the current folder if none is named), optionally with coverage.
+func testCommand(args []string) int {
+	cover := false
+	var paths []string
+	for _, a := range args {
+		switch a {
+		case "--cover", "-cover":
+			cover = true
+		default:
+			paths = append(paths, a)
+		}
+	}
+	if len(paths) == 0 {
+		paths = []string{"."}
+	}
+	var files []string
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "I couldn't open %s: %v\n", p, err)
+			return 1
+		}
+		if !info.IsDir() {
+			files = append(files, p)
+			continue
+		}
+		found, err := filesWithTests(p)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		files = append(files, found...)
+	}
+	if len(files) == 0 {
+		fmt.Println("No tests found. Tests are 'test \"name\" { ... }' blocks in .lf files.")
+		return 0
+	}
+	passed, failed, broken := 0, 0, 0
+	for _, f := range files {
+		if len(files) > 1 {
+			fmt.Printf("%s\n", f)
+		}
+		p, n, ok := test(f, cover)
+		passed, failed = passed+p, failed+n
+		if !ok {
+			broken++
+		}
+	}
+	if len(files) > 1 {
+		fmt.Printf("\n%d files: %d passed, %d failed", len(files), passed, failed)
+		if broken == 1 {
+			fmt.Print(", 1 file couldn't run")
+		} else if broken > 1 {
+			fmt.Printf(", %d files couldn't run", broken)
+		}
+		fmt.Println()
+	}
+	if failed > 0 || broken > 0 {
 		return 1
 	}
+	return 0
+}
+
+// filesWithTests finds the .lf files under dir that have test blocks,
+// leaving out installed packages and hidden folders.
+func filesWithTests(dir string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if p != dir && (strings.HasPrefix(d.Name(), ".") || d.Name() == lang.SoleDir || d.Name() == "node_modules") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".lf") {
+			return nil
+		}
+		src, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if prog, perr := lang.Parse(string(src)); perr == nil {
+			for _, s := range prog.Stmts {
+				if _, ok := s.(*lang.TestStmt); ok {
+					out = append(out, p)
+					break
+				}
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
+// test runs one file's tests. It reports how many passed and failed, and
+// whether the file could run at all.
+func test(path string, cover bool) (int, int, bool) {
+	if !checkFile(path) {
+		return 0, 0, false
+	}
 	in := newInterp(path)
+	if cover {
+		in.Cover = lang.NewCoverage()
+	}
 	results, err := in.RunTests(read(path))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, describeError(path, err))
-		return 1
+		return 0, 0, false
 	}
 	failed := 0
 	for _, r := range results {
@@ -193,14 +298,47 @@ func test(path string) int {
 			fmt.Printf("  ✓ %s\n", r.Name)
 		} else {
 			failed++
-			fmt.Printf("  ✗ %s\n      %s\n", r.Name, r.Msg)
+			fmt.Printf("  ✗ %s\n      %s\n", r.Name, strings.ReplaceAll(r.Msg, "\n", "\n      "))
 		}
 	}
 	fmt.Printf("\n%d passed, %d failed\n", len(results)-failed, failed)
-	if failed > 0 {
-		return 1
+	if cover {
+		for _, fc := range in.Cover.Report() {
+			name := placeOf(path, fc.File)
+			pct := 100.0
+			if fc.Total > 0 {
+				pct = 100 * float64(fc.Run) / float64(fc.Total)
+			}
+			fmt.Printf("coverage: %s %.0f%% of %d statements", name, pct, fc.Total)
+			if len(fc.Missed) > 0 {
+				fmt.Printf("; not run: %s", lineRanges(fc.Missed))
+			}
+			fmt.Println()
+		}
 	}
-	return 0
+	return len(results) - failed, failed, true
+}
+
+// lineRanges writes sorted line numbers briefly: "line 4" or "lines 4, 9-12".
+func lineRanges(lines []int) string {
+	var parts []string
+	for i := 0; i < len(lines); {
+		j := i
+		for j+1 < len(lines) && lines[j+1] == lines[j]+1 {
+			j++
+		}
+		if i == j {
+			parts = append(parts, strconv.Itoa(lines[i]))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d-%d", lines[i], lines[j]))
+		}
+		i = j + 1
+	}
+	word := "lines "
+	if len(lines) == 1 {
+		word = "line "
+	}
+	return word + strings.Join(parts, ", ")
 }
 
 // placeOf names a file a problem happened in: the program's own, a file it

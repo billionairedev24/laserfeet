@@ -129,6 +129,13 @@ func (c *intCompiler) block(stmts []Stmt, set map[string]bool, code *intCode) (i
 		if !ok {
 			return nil, false
 		}
+		if cv := c.in.Cover; cv != nil { // lf test --cover
+			inner, s := p, st
+			p = func(stack *istack, b int) (ctrl, int64) {
+				cv.mark(s)
+				return inner(stack, b)
+			}
+		}
 		parts = append(parts, p)
 		lines = append(lines, st.Ln())
 	}
