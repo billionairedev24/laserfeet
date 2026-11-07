@@ -541,6 +541,10 @@ transaction with db as tx {
 - `lf get -u` moves each package in `sole.list` (or the one named) to its
   newest `vX.Y.Z` with the same `X`; a new `X` is taken only when asked for by
   name (`lf get name@v2.0.0`). A branch is fetched at its newest commit.
+- `lf doc` documents a file or folder from its comments: the `--` lines
+  right above a beam, object, field, choice or rule describe it, and the
+  comment at the top of a file describes the file. Private beams and fields are
+  left out.
 - `lf audit` checks every installed package against the list of known security
   problems kept in the Laser Feet repository (`advisories/advisories.list`)
   and fails if one is affected; `lf get` warns about them too.

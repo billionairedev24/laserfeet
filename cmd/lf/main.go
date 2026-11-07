@@ -33,6 +33,9 @@ Usage:
   lf get -u [package]  update packages to their newest version with the same first number
   lf remove <package>  stop using a package
   lf audit             check installed packages against known security problems
+  lf doc [paths]       documentation from the comments above beams, objects and
+                       choices (Markdown; --html file.html for a web page)
+  lf try               type Laser Feet and see what it gives, line by line
   lf lsp               start the language server for editors (VS Code uses this)
   lf build <file.lf>   make a standalone program (add -o name to pick its name)
   lf version           show the version
@@ -74,6 +77,10 @@ func main() {
 		os.Exit(soleRemove(args[1:]))
 	case "audit":
 		os.Exit(soleAudit())
+	case "doc":
+		os.Exit(docCommand(args[1:]))
+	case "try":
+		os.Exit(tryCommand(os.Stdin, os.Stdout))
 	case "migrate":
 		os.Exit(migrate(args[1:]))
 	case "secret":

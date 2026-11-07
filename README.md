@@ -81,6 +81,8 @@ lf fmt --check       # change nothing; fail if a file isn't laid out (for CI)
 lf fix               # update code written for an older Laser Feet
 ```
 
+`lf doc` writes documentation from the `--` comments above beams, objects and choices (Markdown, or a web page with `--html docs.html`); private ones are left out. `lf try` lets you type Laser Feet a line at a time and see what each piece gives.
+
 `lf fmt` only changes spaces and blank lines, and checks that the code reads exactly the same afterwards. The VS Code extension formats on save. `lf fix` makes the changes a new version needs without changing what the code does: in 0.7 it names route requests (`as request`), writes transactions as `transaction with db as tx { }`, and adds brackets where `then` was unclear.
 
 ## Packages
