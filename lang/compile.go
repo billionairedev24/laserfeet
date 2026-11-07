@@ -239,14 +239,18 @@ func (in *Interp) compileAssign(s *AssignStmt, name string) cblock {
 		v := val(e)
 		inBeam := true // names past the beam's own can't be changed, only fields of its object
 		for env := e; env != nil && !env.isBuiltins; env = env.parent {
-			if b := env.find(name); b != nil && inBeam {
+			if !inBeam { // past the beam: only its object's fields can still be changed
+				if env.obj == nil {
+					continue
+				}
+			} else if b := env.find(name); b != nil {
 				if b.locked {
 					in.fail(s.Line, "'%s' is locked, so it can't be changed", name)
 				}
 				if b.t != nil {
-					v = in.mustConform(s.Line, v, b.t, "'"+name+"'")
+					v = in.mustConformName(s.Line, v, b.t, name)
 				}
-				in.mayChange(env.born, s.Line, "'"+name+"'")
+				in.mayChangeName(env.born, s.Line, name)
 				b.v = v
 				return cNone, nil
 			}
@@ -262,7 +266,7 @@ func (in *Interp) compileAssign(s *AssignStmt, name string) cblock {
 			}
 		}
 		sc := e.scope()
-		in.mayChange(sc.born, s.Line, "'"+name+"'")
+		in.mayChangeName(sc.born, s.Line, name)
 		sc.define(name, v, false)
 		return cNone, nil
 	}
@@ -359,6 +363,14 @@ func capturesNames(stmts []Stmt) bool {
 }
 
 func (in *Interp) compileEach(s *EachStmt) cblock {
+	if t := in.loopTier(s); t != nil {
+		return t
+	}
+	return in.compileEachPlain(s)
+}
+
+// compileEachPlain is the ordinary compiled loop.
+func (in *Interp) compileEachPlain(s *EachStmt) cblock {
 	body := in.compileBlock(s.Body)
 	fresh := capturesNames(s.Body) // each round needs its own name only if something keeps it
 	run := func(e *Env, items []Value) (ctrl, Value) {
@@ -765,6 +777,17 @@ type frame3 struct {
 
 // fastCall runs a compiled beam: inputs go straight into its frame.
 func (in *Interp) fastCall(f *Beam, code *beamCode, firstVal Value, hasFirst bool, args []cexpr, caller *Env, line int) Value {
+	return in.callFrame(f, code, firstVal, hasFirst, args, caller, nil, line)
+}
+
+// fastCallValues is fastCall with inputs already worked out.
+func (in *Interp) fastCallValues(f *Beam, code *beamCode, vals []Value, line int) Value {
+	return in.callFrame(f, code, nil, false, nil, nil, vals, line)
+}
+
+// callFrame runs a compiled beam in a new frame: its inputs are args worked
+// out in caller (after firstVal, for 'then'), or vals.
+func (in *Interp) callFrame(f *Beam, code *beamCode, firstVal Value, hasFirst bool, args []cexpr, caller *Env, vals []Value, line int) Value {
 	defer func() {
 		if !in.traceFull.Load() {
 			if r := recover(); r != nil {
@@ -773,7 +796,7 @@ func (in *Interp) fastCall(f *Beam, code *beamCode, firstVal Value, hasFirst boo
 			}
 		}
 	}()
-	n := len(args)
+	n := len(args) + len(vals)
 	if hasFirst {
 		n++
 	}
@@ -809,6 +832,9 @@ func (in *Interp) fastCall(f *Beam, code *beamCode, firstVal Value, hasFirst boo
 	}
 	for i, a := range args {
 		e.binds[k+i].v = a(caller)
+	}
+	for i, v := range vals {
+		e.binds[i].v = v
 	}
 	code.intOnce.Do(func() { code.ints = in.intTier(f) })
 	if ic := code.ints; ic != nil && !ic.broken.Load() {

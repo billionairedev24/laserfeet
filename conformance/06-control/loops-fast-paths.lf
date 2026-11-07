@@ -1,0 +1,77 @@
+-- Loops whose bodies only use names that already exist run on a faster path;
+-- everything they do and every problem they meet is the same as anywhere.
+object Point {
+    x: Int
+    y: Int
+
+    beam spread() gives Int {
+        total = 0
+        each i in 1 to 3 {
+            total = total + x * i
+        }
+        send total
+    }
+}
+
+beam square(n: Int) gives Int {
+    send n * n
+}
+
+launch {
+    i = 100
+    total = 0
+    count: Int = 0
+    points: List[Point] = []
+    each i in 1 to 6 {
+        points.add(Point(i, square(i)))
+    }
+    show i
+    each p in points {
+        when p.x % 2 is 0 {
+            skip
+        }
+        when p.y > 20 {
+            stop
+        }
+        total = total + p.y
+        count = count + 1
+    }
+    show "{total} from {count}"
+    grid = 0
+    each a in 1 to 3 {
+        each b in 1 to 3 {
+            when b > a {
+                stop
+            }
+            grid = grid + a * b
+        }
+    }
+    show grid
+    show Point(3, 0).spread()
+    letters = 0
+    each ch in "héllo" {
+        letters = letters + 1
+    }
+    show letters
+    words = ["a", "bb", "ccc"]
+    sizes = 0
+    each w in words {
+        sizes = sizes + w.size()
+        words.add(w)
+    }
+    show "{sizes} {words.size()}"
+    attempt {
+        each n in 1 to 3 {
+            total = total + 9223372036854775807
+        }
+    } fails problem {
+        show "problem: {problem}"
+    }
+    attempt {
+        each n in 0 to 2 {
+            total = 10 % n
+        }
+    } fails problem {
+        show "problem: {problem}"
+    }
+}

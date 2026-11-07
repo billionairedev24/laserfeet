@@ -283,20 +283,21 @@ type Interp struct {
 	tests      []*TestStmt
 	// NoCompile runs everything on the tree-walking engine (for differential tests).
 	NoCompile     bool
-	turns         int64        // statements run while other work waits for a turn
-	typesMu       sync.Mutex   // fills the type caches of signatures and objects
-	parallel      atomic.Int32 // parallel regions running (fast each)
-	frames        frames       // call frames to use again
-	files         sync.Map     // *Env of each used file -> its path, for traces
-	Cover         *Coverage    // set before running to record which statements run
-	traceFull     atomic.Bool  // the problem being raised has recorded traceLimit calls
-	writing       atomic.Bool  // the main code holds the lock whole (parallel.go)
-	writerWaiting atomic.Int32 // main code waiting for its turn
-	regionStart   atomic.Int64 // when the outermost one began
-	region        regions      // bookkeeping for parallel regions
-	serving       atomic.Int32 // web requests being answered right now
-	codes         sync.Map     // compiled beams, by declaration
-	exprCodes     sync.Map     // compiled per-item rules, by expression
+	turns         int64                     // statements run while other work waits for a turn
+	typesMu       sync.Mutex                // fills the type caches of signatures and objects
+	parallel      atomic.Int32              // parallel regions running (fast each)
+	frames        frames                    // call frames to use again
+	files         sync.Map                  // *Env of each used file -> its path, for traces
+	Cover         *Coverage                 // set before running to record which statements run
+	traceFull     atomic.Bool               // the problem being raised has recorded traceLimit calls
+	writing       atomic.Bool               // the main code holds the lock whole (parallel.go)
+	lastRule      atomic.Pointer[ruleEntry] // the per-item rule used last, found without a map
+	writerWaiting atomic.Int32              // main code waiting for its turn
+	regionStart   atomic.Int64              // when the outermost one began
+	region        regions                   // bookkeeping for parallel regions
+	serving       atomic.Int32              // web requests being answered right now
+	codes         sync.Map                  // compiled beams, by declaration
+	exprCodes     sync.Map                  // compiled per-item rules, by expression
 	outMu         sync.Mutex
 }
 
@@ -718,11 +719,11 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 		var declared *Type
 		if s.Type != nil {
 			declared = in.resolveType(s.Type, env)
-			v = in.mustConform(s.Line, v, declared, "'"+t.Name+"'")
+			v = in.mustConformName(s.Line, v, declared, t.Name)
 		}
 		if s.Lock || s.Type != nil {
 			sc := env.scope()
-			in.mayChange(sc.born, s.Line, "'"+t.Name+"'")
+			in.mayChangeName(sc.born, s.Line, t.Name)
 			if b := sc.find(t.Name); b != nil {
 				if s.Lock {
 					in.fail(s.Line, "'%s' already exists here, so it can't be locked again", t.Name)
@@ -740,9 +741,9 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 					in.fail(s.Line, "'%s' is locked, so it can't be changed", t.Name)
 				}
 				if b.t != nil {
-					v = in.mustConform(s.Line, v, b.t, "'"+t.Name+"'")
+					v = in.mustConformName(s.Line, v, b.t, t.Name)
 				}
-				in.mayChange(e.born, s.Line, "'"+t.Name+"'")
+				in.mayChangeName(e.born, s.Line, t.Name)
 				b.v = v
 				return
 			}
@@ -758,7 +759,7 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 			}
 		}
 		sc := env.scope()
-		in.mayChange(sc.born, s.Line, "'"+t.Name+"'")
+		in.mayChangeName(sc.born, s.Line, t.Name)
 		sc.define(t.Name, v, false)
 	case *Get:
 		obj := in.eval(t.Object, env)
@@ -1358,6 +1359,15 @@ func (in *Interp) mustConform(line int, v Value, t *Type, what string) Value {
 	return out
 }
 
+// mustConformName is mustConform for a name, saying it only when refusing.
+func (in *Interp) mustConformName(line int, v Value, t *Type, name string) Value {
+	out, ok := conform(v, t)
+	if !ok {
+		in.fail(line, "'%s' must be %s, but got %s", name, t.Describe(), describeValue(v))
+	}
+	return out
+}
+
 // sigTypes resolves a beam's written types once and remembers them.
 func (in *Interp) sigTypes(f *Beam) ([]*Type, *Type) {
 	sig := f.Sig
@@ -1365,17 +1375,19 @@ func (in *Interp) sigTypes(f *Beam) ([]*Type, *Type) {
 		return nil, nil
 	}
 	if !sig.resolved.Load() {
-		in.typesMu.Lock()
-		if !sig.resolved.Load() {
-			env := withTypeParams(f.Closure, sig.TypeParams)
-			ps := make([]*Type, len(sig.Params))
-			for i, te := range sig.Params {
-				ps[i] = in.resolveType(te, env)
+		func() {
+			in.typesMu.Lock()
+			defer in.typesMu.Unlock() // a type that doesn't exist is a problem: let go of the lock then too
+			if !sig.resolved.Load() {
+				env := withTypeParams(f.Closure, sig.TypeParams)
+				ps := make([]*Type, len(sig.Params))
+				for i, te := range sig.Params {
+					ps[i] = in.resolveType(te, env)
+				}
+				sig.params, sig.result = ps, in.resolveType(sig.Result, env)
+				sig.resolved.Store(true)
 			}
-			sig.params, sig.result = ps, in.resolveType(sig.Result, env)
-			sig.resolved.Store(true)
-		}
-		in.typesMu.Unlock()
+		}()
 	}
 	return sig.params, sig.result
 }

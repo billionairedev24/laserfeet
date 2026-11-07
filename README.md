@@ -105,15 +105,16 @@ The built file checks a SHA-256 of the program inside it and refuses to start if
 
 Beams compile, the first time they run, into Go closures with fast paths for whole-number arithmetic, comparisons, fields, loops and calls; anything not compiled runs on the original tree-walking engine, and a differential test (plus a fuzzer) checks that both engines always give the same results. Timings on a 2-core machine, `lf run`, best of three:
 
-Measured on one machine (2 cores), best of 15 runs:
+Measured on one machine (2 cores), best of 15 runs, with `lf run`:
 
-| Benchmark | 0.9 | 0.12 | 0.13 | 0.13 vs 0.9 |
+| Benchmark | 0.9 | 0.14 | 0.15 | 0.15 vs 0.9 |
 |---|---|---|---|---|
-| `bench/fib.lf` (calls, arithmetic) | 242 ms | 81 ms | 30 ms | 8.1× |
-| `bench/loops.lf` (loops, lists, objects) | 298 ms | 91 ms | 86 ms | 3.5× |
-| `bench/parallel.lf` (`fast each`, CPU work) | 1408 ms | 220 ms | 29 ms | 48× |
+| `bench/fib.lf` (calls, arithmetic) | 240 ms | 29 ms | 29 ms | 8.3× |
+| `bench/loops.lf` (loops, lists, objects) | 300 ms | 82 ms | 55 ms | 5.4× |
+| `bench/parallel.lf` (`fast each`, CPU work) | 1329 ms | 33 ms | 32 ms | 41× |
+| `bench/jobs.lf` (four `fast` jobs, CPU work) | 434 ms | 153 ms | 57 ms | 7.6× |
 
-Beams that take and give `Int` and only work with whole numbers inside run on a whole-number tier: plain machine integers, no boxing and no name lookups. It has no side effects, so on anything unusual (a number too big, dividing by zero) it hands the call back to the ordinary engine, which gives the usual answer or message. CI measures the benchmarks and the reference app's requests per second on every push (see the run's summary).
+Loops whose bodies only use names that already exist find each name once, when the loop starts, instead of every round, and a counting loop that builds a list makes room for it at once. Fast jobs run in parallel on every core. Beams that take and give `Int` and only work with whole numbers inside run on a whole-number tier: plain machine integers, no boxing and no name lookups. It has no side effects, so on anything unusual (a number too big, dividing by zero) it hands the call back to the ordinary engine, which gives the usual answer or message. CI measures the benchmarks and the reference app's requests per second on every push (see the run's summary).
 
 Web requests run in parallel on every core, so the last row grows with the number of cores. Requests can't change values made outside them (the checker and the engine both refuse it), so they can't race; shared data lives in a store or a database.
 

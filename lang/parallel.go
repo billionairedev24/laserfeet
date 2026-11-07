@@ -75,6 +75,13 @@ func (in *Interp) mayChange(born int64, line int, what string) {
 	}
 }
 
+// mayChangeName is mayChange for a name, saying it only when refusing.
+func (in *Interp) mayChangeName(born int64, line int, name string) {
+	if in.parallel.Load() > 0 && !in.writing.Load() && (born < in.regionStart.Load() || born&1 == 1) {
+		in.refuseChange(line, "'"+name+"'")
+	}
+}
+
 // refuseChange explains why the change isn't allowed, for fast each or for a
 // web request.
 func (in *Interp) refuseChange(line int, what string) {

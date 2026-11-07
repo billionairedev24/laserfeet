@@ -467,6 +467,11 @@ var itName = []string{"it"}[:1:1] // shared; a scope that adds names copies it f
 
 // exprCode is the compiled form of an expression used for every item of a list
 // (keepIf(age > 18)), made once.
+type ruleEntry struct {
+	x  Expr
+	rc *ruleCode
+}
+
 // ruleCode is a per-item rule, compiled once.
 type ruleCode struct {
 	code  cexpr
@@ -474,8 +479,13 @@ type ruleCode struct {
 }
 
 func (in *Interp) exprCode(x Expr) *ruleCode {
+	if last := in.lastRule.Load(); last != nil && last.x == x { // the same rule as the item before
+		return last.rc
+	}
 	if c, ok := in.exprCodes.Load(x); ok {
-		return c.(*ruleCode)
+		rc := c.(*ruleCode)
+		in.lastRule.Store(&ruleEntry{x, rc})
+		return rc
 	}
 	rc := &ruleCode{code: in.compileExpr(x), reuse: !capturesNames([]Stmt{&ExprStmt{X: x}})}
 	c, _ := in.exprCodes.LoadOrStore(x, rc)
