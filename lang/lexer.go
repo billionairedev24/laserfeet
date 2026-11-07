@@ -60,6 +60,8 @@ func Lex(src string, startLine int) ([]Token, error) {
 	rs := []rune(src)
 	i := 0
 	emit := func(t TokenType, text string) { toks = append(toks, Token{Type: t, Text: text, Line: line}) }
+	// each name is kept once, so comparing two uses of it is one pointer check
+	names := map[string]string{}
 	marked, from := 0, 0 // tokens before marked have their positions set; from is where this step began
 	mark := func() {
 		for ; marked < len(toks); marked++ {
@@ -104,6 +106,11 @@ func Lex(src string, startLine int) ([]Token, error) {
 			if keywords[word] {
 				emit(KEYWORD, word)
 			} else {
+				if same, ok := names[word]; ok {
+					word = same
+				} else {
+					names[word] = word
+				}
 				emit(IDENT, word)
 			}
 		case c == '"' && i+2 < len(rs) && rs[i+1] == '"' && rs[i+2] == '"':

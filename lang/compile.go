@@ -484,10 +484,11 @@ func (in *Interp) compileExpr(x Expr) cexpr {
 	case *Get:
 		obj := in.compileExpr(x.Object)
 		name, line := x.Name, x.Line
+		var hint fieldHint
 		return func(e *Env) Value {
 			o := obj(e)
 			if inst, ok := o.(*Instance); ok {
-				if i, ok := inst.Class.index[name]; ok {
+				if i := hint.index(inst.Class, name); i >= 0 {
 					return inst.Slots[i]
 				}
 			}
@@ -859,6 +860,28 @@ func (in *Interp) fastCall(f *Beam, code *beamCode, firstVal Value, hasFirst boo
 // names at the top of a program are remembered once found, so calls to them
 // skip the search of the program's names (the scopes in between are still
 // checked, so a name there still comes first).
+// fieldHint remembers where a field was found for the last kind of object
+// seen at one place in the code, so the next look is one comparison.
+type fieldHint struct{ last atomic.Pointer[fieldAt] }
+
+type fieldAt struct {
+	cl *Class
+	i  int
+}
+
+// index finds the field's position in objects of class cl, or -1.
+func (h *fieldHint) index(cl *Class, name string) int {
+	if f := h.last.Load(); f != nil && f.cl == cl {
+		return f.i
+	}
+	i, ok := cl.index[name]
+	if !ok {
+		return -1
+	}
+	h.last.Store(&fieldAt{cl, i})
+	return i
+}
+
 func (in *Interp) compileIdent(x *Ident) cexpr {
 	name := x.Name
 	type place struct {
@@ -866,6 +889,7 @@ func (in *Interp) compileIdent(x *Ident) cexpr {
 		b   *binding
 	}
 	var cache atomic.Pointer[place]
+	var field fieldHint
 	return func(e *Env) Value {
 		if p := cache.Load(); p != nil {
 			for s := e; s != nil; s = s.parent {
@@ -885,6 +909,9 @@ func (in *Interp) compileIdent(x *Ident) cexpr {
 				return b.v
 			}
 			if s.obj != nil {
+				if i := field.index(s.obj.Class, name); i >= 0 { // a field of the object, as the engine finds it
+					return s.obj.Slots[i]
+				}
 				break
 			}
 		}
