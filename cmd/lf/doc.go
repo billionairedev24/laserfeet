@@ -17,7 +17,7 @@ import (
 
 type docItem struct {
 	Kind, Name, Sig, About string
-	Parts              []docItem // an object's fields and beams, a choice's options
+	Parts                  []docItem // an object's fields and beams, a choice's options
 }
 
 type docFile struct {

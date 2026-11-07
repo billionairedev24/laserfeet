@@ -1,0 +1,2 @@
+go test fuzz v1
+string("beam fib(n:Int)gives Int{fib(n-1)+(2)}\nlaunch{show fib(20)c")
