@@ -46,7 +46,7 @@ var libraryMembers = map[string]bool{
 	"text.startsWith": true, "text.split": true, "text.replace": true,
 	"server.get": true, "server.post": true, "server.on": true, "server.start": true, "server.visit": true, "server.routes": true,
 	"server.put": true, "server.patch": true, "server.delete": true, "server.before": true, "server.allow": true,
-	"server.files": true, "server.limit": true, "server.sessions": true, "server.bodyLimit": true, "server.quiet": true,
+	"server.files": true, "server.limit": true, "server.sessions": true, "server.bodyLimit": true, "server.quiet": true, "server.metrics": true,
 	"request.header": true, "request.cookie": true,
 	"response.header": true, "response.cookie": true, "response.forget": true,
 	"session.get": true, "session.set": true, "session.has": true, "session.remove": true, "session.clear": true,
@@ -527,6 +527,11 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 		return tNothing
 	case "server.quiet":
 		c.argCount(line, "quiet", a, 0, 0)
+		return tNothing
+	case "server.metrics":
+		if c.argCount(line, "metrics", a, 0, 1) && len(a) == 1 {
+			c.need(line, a[0], tText, "the path")
+		}
 		return tNothing
 	case "request.header", "request.cookie":
 		if c.argCount(line, n[8:], a, 1, 1) {

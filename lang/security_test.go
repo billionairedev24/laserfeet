@@ -4,6 +4,7 @@ package lang
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -95,5 +96,67 @@ func TestLargeBodiesAreRefused(t *testing.T) {
 	}
 	if r.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Errorf("expected 413 for a too-large body, got %d", r.StatusCode)
+	}
+}
+
+// Requests carry trace and request IDs, and the metrics page is only for the
+// machine itself (or whoever has METRICS_TOKEN), counting routes by pattern.
+func TestTracesAndMetrics(t *testing.T) {
+	in := NewInterp(io.Discard)
+	if err := in.Run(`use web
+server = web.open(8080)
+server.metrics()
+server.quiet()
+server.get("/items/:id") as request {
+    id = request.header("x-request-id")
+    when id is nothing {
+        send "none"
+    }
+    send id
+}
+`); err != nil {
+		t.Fatal(err)
+	}
+	v, _ := in.globals.lookup("server")
+	ts := httptest.NewServer(newHandler(in, v.(*Server)))
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/items/7", nil)
+	req.Header.Set("Traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	req.Header.Set("X-Request-Id", "abc-123")
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if string(body) != "abc-123" || r.Header.Get("X-Request-Id") != "abc-123" {
+		t.Errorf("the request ID must reach the program and the reply: %q %q", body, r.Header.Get("X-Request-Id"))
+	}
+	if tp := r.Header.Get("Traceparent"); !strings.HasPrefix(tp, "00-4bf92f3577b34da6a3ce929d0e0e4736-") || strings.Contains(tp, "00f067aa0ba902b7") {
+		t.Errorf("the reply continues the caller's trace with its own span: %q", tp)
+	}
+	req, _ = http.NewRequest("GET", ts.URL+"/items/8", nil)
+	req.Header.Set("X-Request-Id", "bad id with spaces <script>")
+	r, _ = http.DefaultClient.Do(req)
+	r.Body.Close()
+	if id := r.Header.Get("X-Request-Id"); strings.Contains(id, " ") || len(id) != 16 {
+		t.Errorf("an unsafe request ID is replaced: %q", id)
+	}
+
+	r, _ = http.Get(ts.URL + "/metrics")
+	page, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if r.StatusCode != 200 || !strings.Contains(string(page), `lf_requests_total{method="GET",route="/items/:id",status="200"} 2`) || !strings.Contains(string(page), "lf_request_seconds_bucket") {
+		t.Errorf("metrics page: %d\n%s", r.StatusCode, page)
+	}
+	t.Setenv("METRICS_TOKEN", "s3cret")
+	if r, _ := http.Get(ts.URL + "/metrics"); r.StatusCode != 403 {
+		t.Errorf("with METRICS_TOKEN set, the page needs the token, got %d", r.StatusCode)
+	}
+	req, _ = http.NewRequest("GET", ts.URL+"/metrics", nil)
+	req.Header.Set("Authorization", "Bearer s3cret")
+	if r, _ := http.DefaultClient.Do(req); r.StatusCode != 200 {
+		t.Errorf("the token opens the page, got %d", r.StatusCode)
 	}
 }

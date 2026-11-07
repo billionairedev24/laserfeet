@@ -80,11 +80,29 @@ var securityHeaders = map[string]string{
 // newHandler turns a Laser Feet server into a protected HTTP handler.
 func newHandler(in *Interp, s *Server) http.Handler {
 	mux := http.NewServeMux()
+	if s.stats == nil {
+		s.stats = newMetrics()
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		for k, v := range securityHeaders {
 			w.Header().Set(k, v)
 		}
+		// every request is part of a trace: the caller's, or a new one
+		tr := newTrace(r.Header.Get("Traceparent"), r.Header.Get("X-Request-Id"))
+		w.Header().Set("Traceparent", tr.header())
+		w.Header().Set("X-Request-Id", tr.RequestID)
+		if s.metricsPath != "" && r.URL.Path == s.metricsPath && r.Method == "GET" {
+			if !metricsAllowed(clientIP(r), r.Header.Get("Authorization")) {
+				http.Error(w, "Not allowed", http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+			io.WriteString(w, s.stats.page())
+			return
+		}
+		s.stats.inFlight.Add(1)
+		defer s.stats.inFlight.Add(-1)
 		limit := int64(maxBodyBytes)
 		if s.maxBody > 0 {
 			limit = s.maxBody
@@ -105,6 +123,8 @@ func newHandler(in *Interp, s *Server) http.Handler {
 		}
 		req.header["cookie"] = strings.Join(r.Header.Values("Cookie"), "; ")
 		req.header["host"] = r.Host
+		req.header["x-request-id"] = tr.RequestID // the program sees the ID its log lines carry
+		req.header["traceparent"] = tr.header()
 		resp := s.serve(in, req)
 		secure := secureHost(req)
 		for _, h := range resp.Headers {
@@ -121,8 +141,10 @@ func newHandler(in *Interp, s *Server) http.Handler {
 		if r.Method != "HEAD" {
 			io.WriteString(w, resp.Body)
 		}
+		took := time.Since(start)
+		s.stats.record(r.Method, resp.Route, resp.Status, took)
 		if !s.quiet {
-			logRequest(r.Method, r.URL.Path, resp.Status, time.Since(start), req.ip)
+			logRequest(r.Method, r.URL.Path, resp.Status, took, req.ip, tr)
 		}
 	})
 	return mux
@@ -139,11 +161,16 @@ func clientIP(r *http.Request) string {
 }
 
 // logRequest writes one line of JSON per request to standard error, for log tools.
-func logRequest(method, path string, status int, took time.Duration, ip string) {
-	fmt.Fprintln(os.Stderr, jsonString(map[string]any{
+func logRequest(method, path string, status int, took time.Duration, ip string, tr trace) {
+	line := map[string]any{
 		"time": time.Now().UTC().Format(time.RFC3339), "method": method, "path": path,
 		"status": status, "ms": took.Milliseconds(), "ip": ip,
-	}))
+		"request_id": tr.RequestID, "trace_id": tr.TraceID, "span_id": tr.SpanID,
+	}
+	if tr.Parent != "" {
+		line["parent_span_id"] = tr.Parent
+	}
+	fmt.Fprintln(os.Stderr, jsonString(line))
 }
 
 // startServer serves real HTTP requests until the program is stopped.

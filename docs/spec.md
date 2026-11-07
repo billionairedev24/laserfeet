@@ -483,6 +483,19 @@ signal lets requests in progress finish (for up to 10 seconds) before the
 program ends. `server.visit(path, method, body, headers)` calls the server
 without a network, for tests; everything above applies to visits too.
 
+**Watching a running app.** Every request is part of a trace (W3C Trace
+Context): a valid `traceparent` header from the caller is continued, or a new
+trace starts; the reply carries `traceparent` with the request's own span, and
+`X-Request-Id` (the caller's, if it is 1 to 64 letters, digits, `.`, `_` or
+`-`; otherwise a new one). Both reach the program as the `x-request-id` and
+`traceparent` headers, and each log line carries `request_id`, `trace_id` and
+`span_id`. `server.metrics()` (or `server.metrics("/path")`) adds a page in
+Prometheus' text format: requests by method, route pattern and status, how
+long each route takes, requests in progress, memory, garbage collections and
+uptime. Only the machine itself may read it, unless the `METRICS_TOKEN` setting
+is given: then whoever sends it as `Authorization: Bearer <token>` may, and
+nobody else.
+
 ## 13. Databases
 
 `use postgres` connects to PostgreSQL with Laser Feet's own driver.

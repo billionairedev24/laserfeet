@@ -11,15 +11,17 @@ import (
 
 // Server is a Laser Feet web server.
 type Server struct {
-	Port    int
-	routes  []*route
-	before  []Value        // beams run before every route (server.before)
-	origins []string       // other sites allowed to call this server (server.allow)
-	statics []staticFolder // folders served as files (server.files)
-	limits  []*limiter     // requests allowed per visitor (server.limit)
-	session *sessionKeys   // signed session cookies (server.sessions)
-	maxBody int64          // largest request body, in bytes
-	quiet   bool           // no request log lines
+	Port        int
+	routes      []*route
+	before      []Value        // beams run before every route (server.before)
+	origins     []string       // other sites allowed to call this server (server.allow)
+	statics     []staticFolder // folders served as files (server.files)
+	limits      []*limiter     // requests allowed per visitor (server.limit)
+	session     *sessionKeys   // signed session cookies (server.sessions)
+	maxBody     int64          // largest request body, in bytes
+	quiet       bool           // no request log lines
+	metricsPath string         // where the metrics page is (server.metrics), "" for none
+	stats       *metrics       // counts for the metrics page
 }
 
 type route struct {
@@ -35,6 +37,7 @@ type Response struct {
 	Body        string
 	ContentType string
 	Headers     [][2]string // extra headers, in order (Set-Cookie may repeat)
+	Route       string      // the route pattern that answered, for metrics
 }
 
 func loadModule(in *Interp, name string) *Module {
@@ -269,6 +272,22 @@ func serverMethod(in *Interp, s *Server, name string) *Builtin {
 	case "quiet":
 		return builtin("quiet", func(in *Interp, line int, a []Value) Value {
 			s.quiet = true
+			return nil
+		})
+	case "metrics":
+		return builtin("metrics", func(in *Interp, line int, a []Value) Value {
+			path := "/metrics"
+			if len(a) > 0 {
+				p, ok := a[0].(string)
+				if !ok {
+					in.fail(line, "server.metrics takes the path as Text")
+				}
+				path = p
+			}
+			if !strings.HasPrefix(path, "/") {
+				in.fail(line, "server.metrics takes a path starting with /, like \"/metrics\"")
+			}
+			s.metricsPath = path
 			return nil
 		})
 	case "start":

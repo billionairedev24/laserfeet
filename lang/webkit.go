@@ -197,6 +197,7 @@ func (s *Server) route(in *Interp, req *incoming, u *url.URL) *Response {
 		}
 		request, sess := s.request(in, req, u, params)
 		resp := s.run(in, r.pattern, request, r.handler)
+		resp.Route = r.pattern
 		if sess != nil && sess.changed {
 			resp.Headers = append(resp.Headers, [2]string{"Set-Cookie", s.session.cookie(sess)})
 		}
