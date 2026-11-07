@@ -1,0 +1,2 @@
+go test fuzz v1
+string("use web\nserver=web.open(1)\nserver.sessions(\"000000000000\ufffd\ufffd\ufffd\ufffd00000000\")\nserver.before()as A000000{whe%A00000000000000000000000(\"0\"){A00000000000(\"0\")}}\nserver.post(\"00000\")as A000000{A0000000000000000000000000000000(\"\"%A000)%A00000000000(\"0\")}\nserver.get(\"admin\"){0}\nlaunch{A0000=server.visit(\"00000\"+\"0000\")\nA00000=server.visit(\"/admin\")[0]}\n")

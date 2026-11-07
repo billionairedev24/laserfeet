@@ -164,3 +164,22 @@ func FuzzEngines(f *testing.F) {
 		}
 	})
 }
+
+// A value is worked out once even when using it fails: x[k] and not x used to
+// work x out a second time on the compiled engine to word the problem.
+func TestFailingUsesWorkOutOnce(t *testing.T) {
+	for _, use := range []string{"x = f()[0]", "y = not f()"} {
+		src := "beam f() gives Json {\n    show \"f ran\"\n    send 3\n}\nlaunch {\n    " + use + "\n}\n"
+		for _, compile := range []bool{true, false} {
+			var out bytes.Buffer
+			in := NewInterp(&out)
+			in.NoCompile = !compile
+			if err := in.Run(src); err == nil {
+				t.Fatalf("%s: expected a problem", use)
+			}
+			if got := strings.Count(out.String(), "f ran"); got != 1 {
+				t.Fatalf("%s, compile=%v: f ran %d times, want once", use, compile, got)
+			}
+		}
+	}
+}

@@ -491,9 +491,10 @@ func (in *Interp) compileExpr(x Expr) cexpr {
 		if x.Op == "not" {
 			v := in.compileExpr(x.Operand)
 			return func(e *Env) Value {
-				b, ok := v(e).(bool)
+				got := v(e)
+				b, ok := got.(bool)
 				if !ok {
-					return in.eval(x, e) // same message as the engine
+					in.fail(x.Line, "'not' needs yes or no, but got %s", typeName(got))
 				}
 				return !b
 			}
@@ -523,7 +524,7 @@ func (in *Interp) compileExpr(x Expr) cexpr {
 			if m, ok := o.(*Map); ok {
 				return m.M[in.mapKey(x.Line, k)]
 			}
-			return in.eval(x, e) // text, and the messages for everything else
+			return in.index(x.Line, o, k) // text, and the messages for everything else
 		}
 	case *ListLit:
 		items := make([]cexpr, len(x.Items))

@@ -868,21 +868,7 @@ func (in *Interp) eval(x Expr, env *Env) Value {
 		return in.get(in.eval(x.Object, env), x.Name, x.Line)
 	case *Index:
 		obj := in.eval(x.Object, env)
-		key := in.eval(x.Key, env)
-		switch o := obj.(type) {
-		case *List:
-			return o.Items[in.listIndex(x.Line, o, key)]
-		case *Map:
-			return o.M[in.mapKey(x.Line, key)]
-		case string:
-			rs := []rune(o)
-			l := newList(make([]Value, len(rs)))
-			for i, r := range rs {
-				l.Items[i] = string(r)
-			}
-			return l.Items[in.listIndex(x.Line, l, key)]
-		}
-		in.fail(x.Line, "I can't use [ ] on %s", typeName(obj))
+		return in.index(x.Line, obj, in.eval(x.Key, env))
 	case *FastExpr:
 		return in.startJob(x.Line, func() Value { return in.eval(x.X, env) })
 	case *FastEach:
@@ -1446,4 +1432,24 @@ func (in *Interp) newInstance(c *Class) *Instance {
 		return &x.Instance
 	}
 	return &Instance{Class: c, Slots: make([]Value, n)}
+}
+
+// index gives o[k] for values already worked out, so neither engine works
+// out the object or the key twice.
+func (in *Interp) index(line int, obj, key Value) Value {
+	switch o := obj.(type) {
+	case *List:
+		return o.Items[in.listIndex(line, o, key)]
+	case *Map:
+		return o.M[in.mapKey(line, key)]
+	case string:
+		rs := []rune(o)
+		l := newList(make([]Value, len(rs)))
+		for i, r := range rs {
+			l.Items[i] = string(r)
+		}
+		return l.Items[in.listIndex(line, l, key)]
+	}
+	in.fail(line, "I can't use [ ] on %s", typeName(obj))
+	return nil
 }
