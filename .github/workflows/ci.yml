@@ -37,6 +37,24 @@ jobs:
         run: go test -race ./...
       - name: Check memory budgets
         run: go test ./lang -run TestMemoryBudgets -v
+      - name: Measure speed (benchmarks and the reference app's requests per second)
+        env:
+          LF_PERF: "1"
+          LF_PERF_OUT: ${{ runner.temp }}/speed.json
+          LF_TEST_DATABASE: postgres://laser:ci-only-password@127.0.0.1:5432/postgres
+        run: |
+          go test ./cmd/lf -run TestReferenceAppSpeed -count=1 -v
+          {
+            echo "### Speed"
+            echo "| Measure | Result |"
+            echo "|---|---|"
+            jq -r 'to_entries | sort_by(.key)[] | "| \(.key) | \(.value) |"' "$LF_PERF_OUT"
+          } >> "$GITHUB_STEP_SUMMARY"
+          cp "$LF_PERF_OUT" speed.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: speed
+          path: speed.json
       - name: Scan for known vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0

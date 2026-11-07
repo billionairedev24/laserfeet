@@ -1,0 +1,7 @@
+{
+  "bench_fib_ms": 150,
+  "bench_loops_ms": 300,
+  "bench_parallel_ms": 800,
+  "app_page_requests_per_second": 200,
+  "app_api_requests_per_second": 200
+}
