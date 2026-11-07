@@ -182,9 +182,9 @@ server.get("/nested") {
 				return
 			default:
 			}
-			in.gil.Lock()
+			in.lockWhole()
 			in.call(bump, nil, nil, 0, nil)
-			in.gil.Unlock()
+			in.unlockWhole()
 		}
 	}()
 
@@ -244,5 +244,66 @@ server.get("/nested") {
 	}
 	if !strings.Contains(log.String(), "a web request can't change a list made outside it") {
 		t.Errorf("the refused change must be logged, got %q", log.String())
+	}
+}
+
+// Fast jobs run at the same time as each other while the main code takes
+// turns changing its own values and top-level names. Run with -race.
+func TestParallelJobsStress(t *testing.T) {
+	src := `
+object Box {
+    v: Int
+}
+
+shared: List[Int] = []
+total = 0
+
+beam crunch(k: Int) gives Int {
+    own: List[Box] = []
+    each i in 1 to 300 {
+        own.add(Box(i * k))
+    }
+    each b in own {
+        b.v = b.v + shared.size()
+    }
+    sum = 0
+    each b in own {
+        sum = sum + b.v % 7
+    }
+    send sum
+}
+
+launch {
+    each i in 1 to 50 {
+        shared.add(i)
+    }
+    first = [fast crunch(1), fast crunch(2), fast crunch(3), fast crunch(4), fast crunch(5), fast crunch(6), fast crunch(7), fast crunch(8)]
+    each k in 1 to 8 {
+        total = total + k
+        shared.add(k)
+    }
+    second = [fast crunch(9), fast crunch(10), fast crunch(11), fast crunch(12), fast crunch(13), fast crunch(14), fast crunch(15), fast crunch(16)]
+    each k in 9 to 16 {
+        total = total + k
+        shared.add(k)
+    }
+    jobs = first + second
+    results: List[Int] = []
+    each j in jobs {
+        results.add(wait j)
+    }
+    show results.size()
+    show total
+}
+`
+	for i := 0; i < 3; i++ {
+		var out bytes.Buffer
+		in := NewInterp(&out)
+		if err := in.Run(src); err != nil {
+			t.Fatal(err)
+		}
+		if out.String() != "16\n136\n" {
+			t.Fatalf("got %q", out.String())
+		}
 	}
 }

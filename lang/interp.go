@@ -282,20 +282,22 @@ type Interp struct {
 	ListAssets func(dir string) ([]string, error)
 	tests      []*TestStmt
 	// NoCompile runs everything on the tree-walking engine (for differential tests).
-	NoCompile   bool
-	turns       int64        // statements run while other work waits for a turn
-	typesMu     sync.Mutex   // fills the type caches of signatures and objects
-	parallel    atomic.Int32 // parallel regions running (fast each)
-	frames      frames       // call frames to use again
-	files       sync.Map     // *Env of each used file -> its path, for traces
-	Cover       *Coverage    // set before running to record which statements run
-	traceFull   atomic.Bool  // the problem being raised has recorded traceLimit calls
-	regionStart atomic.Int64 // when the outermost one began
-	region      regions      // bookkeeping for parallel regions
-	serving     atomic.Int32 // web requests being answered right now
-	codes       sync.Map     // compiled beams, by declaration
-	exprCodes   sync.Map     // compiled per-item rules, by expression
-	outMu       sync.Mutex
+	NoCompile     bool
+	turns         int64        // statements run while other work waits for a turn
+	typesMu       sync.Mutex   // fills the type caches of signatures and objects
+	parallel      atomic.Int32 // parallel regions running (fast each)
+	frames        frames       // call frames to use again
+	files         sync.Map     // *Env of each used file -> its path, for traces
+	Cover         *Coverage    // set before running to record which statements run
+	traceFull     atomic.Bool  // the problem being raised has recorded traceLimit calls
+	writing       atomic.Bool  // the main code holds the lock whole (parallel.go)
+	writerWaiting atomic.Int32 // main code waiting for its turn
+	regionStart   atomic.Int64 // when the outermost one began
+	region        regions      // bookkeeping for parallel regions
+	serving       atomic.Int32 // web requests being answered right now
+	codes         sync.Map     // compiled beams, by declaration
+	exprCodes     sync.Map     // compiled per-item rules, by expression
+	outMu         sync.Mutex
 }
 
 func NewInterp(out io.Writer) *Interp {
@@ -436,11 +438,11 @@ func (in *Interp) Run(src string) (err error) {
 	if perr != nil {
 		return perr
 	}
-	in.gil.Lock()
+	in.lockWhole()
 	locked := true
 	defer func() {
 		if locked {
-			in.gil.Unlock()
+			in.unlockWhole()
 		}
 	}()
 	func() {
@@ -450,7 +452,7 @@ func (in *Interp) Run(src string) (err error) {
 			in.runBlock(in.launch.Body, newScope(in.globals))
 		}
 	}()
-	in.gil.Unlock()
+	in.unlockWhole()
 	locked = false
 	in.wg.Wait() // let fast work finish
 	return err
@@ -472,8 +474,8 @@ func (in *Interp) RunTests(src string) (results []TestResult, err error) {
 	if in.Cover != nil {
 		in.Cover.addFile("", prog)
 	}
-	in.gil.Lock()
-	defer in.gil.Unlock()
+	in.lockWhole()
+	defer in.unlockWhole()
 	func() {
 		defer in.catch(&err)
 		in.load(prog)
@@ -506,14 +508,18 @@ func (in *Interp) tick(line int) {
 			in.fail(line, "the program ran for too long and was stopped (is there a loop that never ends?)")
 		}
 	}
-	// let other work have a turn now and then (not inside a parallel region,
-	// where nothing holds the lock and everything runs at once)
-	if atomic.LoadInt32(&in.fastLive) > 0 && in.parallel.Load() == 0 {
-		if atomic.AddInt64(&in.turns, 1)%32 == 0 {
-			in.gil.Unlock()
+	// give the other kind of code a turn now and then: the main code lets
+	// fast jobs run, and parallel work lets waiting main code run
+	if in.writing.Load() {
+		if atomic.LoadInt32(&in.fastLive) > 0 && atomic.AddInt64(&in.turns, 1)%32 == 0 {
+			in.unlockWhole()
 			runtime.Gosched()
-			in.gil.Lock()
+			in.lockWhole()
 		}
+	} else if in.writerWaiting.Load() > 0 && atomic.AddInt64(&in.turns, 1)%32 == 0 {
+		in.gil.RUnlock()
+		runtime.Gosched()
+		in.gil.RLock()
 	}
 }
 

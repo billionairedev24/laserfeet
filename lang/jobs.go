@@ -15,8 +15,10 @@ type Job struct {
 	err   *RuntimeError
 }
 
-// startJob runs work at the same time as the rest of the program, taking
-// turns with other work. Started inside parallel work it's done at once.
+// startJob runs work at the same time as the rest of the program: in
+// parallel with other fast work, on every core, and between turns of the
+// main code (see parallel.go). Started inside parallel work, it's done on the
+// spot instead.
 func (in *Interp) startJob(line int, work func() Value) *Job {
 	j := &Job{done: make(chan struct{})}
 	if in.parallel.Load() > 0 {
@@ -41,7 +43,8 @@ func (in *Interp) startJob(line int, work func() Value) *Job {
 	atomic.AddInt32(&in.fastLive, 1)
 	in.wg.Add(1)
 	go func() {
-		in.gil.Lock()
+		in.gil.RLock()
+		in.enterRegion()
 		defer func() {
 			if r := recover(); r != nil {
 				if re, ok := r.(*RuntimeError); ok {
@@ -50,9 +53,10 @@ func (in *Interp) startJob(line int, work func() Value) *Job {
 					j.err = &RuntimeError{Line: line, Msg: fmt.Sprint(r)}
 				}
 			}
+			in.leaveRegion(false)
 			close(j.done)
 			atomic.AddInt32(&in.fastLive, -1)
-			in.gil.Unlock()
+			in.gil.RUnlock()
 			in.wg.Done()
 		}()
 		j.value = work()
@@ -106,13 +110,22 @@ func (in *Interp) fastEach(x *FastEach, env *Env) Value {
 	if in.NoCompile {
 		body = func(e *Env) (ctrl, Value) { return in.execBlock(x.Body, e) }
 	}
+	// the code that started fast each waits while the items run, so it lets
+	// go of the lock; each item holds it shared
+	main := in.writing.Load()
+	if main {
+		in.unlockWhole()
+	} else {
+		in.gil.RUnlock()
+	}
 	started := in.enterRegion()
-	defer in.leaveRegion(started)
 	var next int64 = -1
 	var wg sync.WaitGroup
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go func() {
+			in.gil.RLock()
+			defer in.gil.RUnlock()
 			defer wg.Done()
 			for {
 				i := int(atomic.AddInt64(&next, 1))
@@ -140,6 +153,12 @@ func (in *Interp) fastEach(x *FastEach, env *Env) Value {
 		}()
 	}
 	wg.Wait()
+	in.leaveRegion(started)
+	if main {
+		in.lockWhole()
+	} else {
+		in.gil.RLock()
+	}
 	for _, err := range errs {
 		if err != nil {
 			panic(err)

@@ -1,0 +1,7 @@
+a: 3 squares, last 9
+b: 4 squares, last 16
+c: 5 squares, last 25
+refused: fast work can't change a list made outside it, because other work may be reading it at the same time. Send a result instead, and collect it with wait or fast each
+refused: fast work can't change a Tally made outside it, because other work may be reading it at the same time. Send a result instead, and collect it with wait or fast each
+["main can change its own list while jobs run"]
+10

@@ -1,0 +1,56 @@
+-- Fast jobs run in parallel with each other, between turns of the main code.
+-- A job makes and changes its own values freely, even after waiting; it
+-- can't change values made outside it, even through a beam it calls. The
+-- main code may change its own values while jobs run.
+object Tally {
+    n: Int
+}
+
+seen: List[Text] = []
+tally = Tally(0)
+
+beam work(name: Text, rounds: Int) gives Text {
+    mine: List[Int] = []
+    each i in 1 to rounds {
+        mine.add(i * i)
+        when i is 2 {
+            pause(0.005)
+        }
+    }
+    count = Tally(0)
+    count.n = mine.size()
+    send "{name}: {count.n} squares, last {mine[rounds - 1]}"
+}
+
+beam remember(name: Text) gives Text {
+    seen.add(name)
+    send name
+}
+
+beam bump() gives Int {
+    tally.n = tally.n + 1
+    send tally.n
+}
+
+launch {
+    jobs = [fast work("a", 3), fast work("b", 4), fast work("c", 5)]
+    seen.add("main can change its own list while jobs run")
+    tally.n = 10
+    each j in jobs {
+        show wait j
+    }
+    attempt {
+        job = fast remember("x")
+        show wait job
+    } fails problem {
+        show "refused: {problem}"
+    }
+    attempt {
+        job = fast bump()
+        show wait job
+    } fails problem {
+        show "refused: {problem}"
+    }
+    show seen
+    show tally.n
+}

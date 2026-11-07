@@ -369,25 +369,25 @@ a position outside the list is a problem. Methods: `add(x)`, `remove(x)`,
 - **Fast work may read the names around it but never change them.** The
   checker refuses any change, so fast work can't race. Results come back with
   `send`.
-- **`fast each` uses every core.** Its items run truly in parallel, one per
-  core, while the code that started it waits. While they run, nothing made
-  before they started can change: changing an older list, map, object or name,
-  even from inside a beam an item calls, is a problem that says so. Items make
-  and change their own values freely. `fast` work started inside an item runs
-  in parallel too, and finishes before the `fast each` does.
-- **Web requests use every core too.** Requests run at the same time as each
-  other, truly in parallel, under the same rule as `fast each` items: a
-  request can't change a list, map, object or name made before it started
-  (the checker refuses it in a route block, and the engine refuses it through
-  a beam the route calls, with a 500 reply and the reason in the log). A
-  request makes and changes its own values freely. Data that requests share
-  lives in a store or a database. `server.visit` runs a route the same way,
-  so tests catch the mistake too.
-- Other code (`launch`, a single `fast` job) runs between requests, never
-  during one, and takes turns with other jobs; each lets others run while it
-  waits for a database, the network, a timer or `wait`.
-- `fast` work started inside parallel work (a `fast each` item or a web
-  request) is done on the spot, before the next line runs, so it can never
+- **All fast work uses every core.** Fast jobs, `fast each` items and web
+  requests run truly in parallel with each other, one per core. The main code
+  (`launch`, tests, the top of a file) runs between them: while it waits
+  (`wait`, a database, a timer), or when it's given a turn. The two never run
+  at the same time.
+- **Parallel work can't change what it doesn't own.** While fast work runs, it
+  can't change a list, map, object or name made before it started, or made by
+  the main code meanwhile, even from inside a beam it calls: that's a problem
+  that says so. It makes and changes its own values freely, including after
+  it waits. The main code may change its own values while fast work runs.
+- `fast each` gives the list of what each item sent, in the list's order, and
+  the code that started it waits until all items are done.
+- **Web requests** follow the same rule: a request can't change values made
+  outside it (the checker refuses it in a route block, and the engine through a
+  beam the route calls, with a 500 reply and the reason in the log). Data that
+  requests share lives in a store or a database. `server.visit` runs a route
+  the same way, so tests catch the mistake too.
+- `fast` work started inside parallel work (a job, a `fast each` item or a
+  web request) is done on the spot, before the next line runs, so it can never
   run beside the code that started it.
 
 ## 12. Web

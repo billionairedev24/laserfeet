@@ -86,6 +86,14 @@ func (s *Server) serve(in *Interp, req *incoming) *Response {
 func (s *Server) inRequest(in *Interp, req *incoming, wait bool) *Response {
 	in.serving.Add(1)
 	defer in.serving.Add(-1)
+	if in.writing.Load() { // server.visit from the main code: run it as parallel work would
+		in.unlockWhole()
+		in.gil.RLock()
+		defer func() {
+			in.gil.RUnlock()
+			in.lockWhole()
+		}()
+	}
 	started := in.enterRegion()
 	defer in.leaveRegion(wait || started)
 	return s.handle(in, req)

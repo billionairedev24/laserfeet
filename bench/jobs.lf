@@ -1,0 +1,26 @@
+-- Four fast jobs doing CPU work at the same time: they run on every core.
+object Point {
+    x: Int
+    y: Int
+}
+
+beam work(k: Int) gives Int {
+    points: List[Point] = []
+    each i in 1 to 60000 {
+        points.add(Point(i, i * k))
+    }
+    total = 0
+    each p in points {
+        total = total + p.y % 7
+    }
+    send total
+}
+
+launch {
+    jobs = [fast work(1), fast work(2), fast work(3), fast work(4)]
+    sum = 0
+    each j in jobs {
+        sum = sum + wait j
+    }
+    show sum
+}

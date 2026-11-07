@@ -7,8 +7,8 @@ func (in *Interp) Try(src string) (err error) {
 	if perr != nil {
 		return perr
 	}
-	in.gil.Lock()
-	defer in.gil.Unlock()
+	in.lockWhole()
+	defer in.unlockWhole()
 	defer in.catch(&err)
 	if len(prog.Stmts) == 1 {
 		if x, ok := prog.Stmts[0].(*ExprStmt); ok {
