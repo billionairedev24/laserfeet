@@ -1,6 +1,6 @@
 # The Laser Feet Language Specification
 
-Version 0.12. This document says exactly what Laser Feet code means. Where the
+Version 0.13. This document says exactly what Laser Feet code means. Where the
 website explains, this specification decides. Every section has matching
 programs in `conformance/<section>/`: each one prints exactly its `.out` file,
 or is refused with exactly the message in its `.err` file. `go test ./lang -run
