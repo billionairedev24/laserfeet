@@ -1,7 +1,9 @@
 {"squares":[1,4,9],"counted":2}
 Problem while handling /note/:what: Problem on line 28: a web request can't change a list made outside it, because other requests may be using it at the same time. Keep data that requests share in a store or a database
+    in note, called from line 36
 500
 Problem while handling /hit: Problem on line 32: a web request can't change a Counter made outside it, because other requests may be using it at the same time. Keep data that requests share in a store or a database
+    in hit, called from line 41
 500
 1
 2

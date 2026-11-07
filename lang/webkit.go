@@ -382,7 +382,7 @@ func (s *Server) run(in *Interp, pattern string, req *Map, handler Value) (resp 
 				return
 			}
 			if re, ok := x.(*RuntimeError); ok {
-				in.print("Problem while handling " + pattern + ": " + re.Error())
+				in.print("Problem while handling " + pattern + ": " + re.Describe())
 				// details go to the server log only, never to the visitor
 				resp = textReply(500, "Something went wrong")
 				return

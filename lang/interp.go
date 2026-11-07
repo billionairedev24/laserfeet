@@ -17,6 +17,100 @@ type RuntimeError struct {
 	Msg    string
 	Value  Value // what was passed to `fail`, if anything
 	Status int   // for bad input from outside (like Item.from), 400; web replies use it
+	// File is the file the problem happened in, as written in 'use' ("" is
+	// the program's own file); Trace is the chain of calls that led there,
+	// innermost first.
+	File    string
+	Trace   []TraceStep
+	located bool
+}
+
+// TraceStep is one call on the way to a problem: the beam that was running,
+// and where it was called from.
+type TraceStep struct {
+	Beam     string // "" for a beam written inline
+	CallFile string // "" is the program's own file
+	CallLine int
+}
+
+// note records, as a problem passes out of a beam, which beam it was and
+// where that beam was called from. The first beam it leaves names its file.
+func (in *Interp) note(r any, f *Beam, line int) {
+	re, ok := r.(*RuntimeError)
+	if !ok {
+		return
+	}
+	file := in.fileOf(f.Closure)
+	if !re.located {
+		re.File, re.located = file, true
+	}
+	if n := len(re.Trace); n > 0 {
+		re.Trace[n-1].CallFile = file // the call it records happened in this beam's file
+	}
+	if len(re.Trace) < 1000 && line > 0 { // line 0: called by the engine itself (a route, a rule)
+		re.Trace = append(re.Trace, TraceStep{Beam: f.Name, CallLine: line})
+	}
+}
+
+// TraceText lists the calls that led to a problem, innermost first, one per
+// line. place names a file ("" is the program's own; place may give "" to
+// leave it out). The same call repeated (recursion) is shown once with a
+// count; a long chain shows its two ends.
+func TraceText(trace []TraceStep, place func(string) string) string {
+	type run struct {
+		st TraceStep
+		n  int
+	}
+	var runs []run
+	for _, st := range trace {
+		if k := len(runs); k > 0 && runs[k-1].st == st {
+			runs[k-1].n++
+		} else {
+			runs = append(runs, run{st, 1})
+		}
+	}
+	var b strings.Builder
+	for i, r := range runs {
+		if len(runs) > 14 && i == 10 {
+			fmt.Fprintf(&b, "\n    ... %d more ...", len(runs)-13)
+		}
+		if len(runs) > 14 && i >= 10 && i < len(runs)-3 {
+			continue
+		}
+		name := r.st.Beam
+		if name == "" {
+			name = "a beam written inline"
+		}
+		where := place(r.st.CallFile)
+		if where != "" {
+			where += ", "
+		}
+		fmt.Fprintf(&b, "\n    in %s, called from %sline %d", name, where, r.st.CallLine)
+		if r.n > 1 {
+			fmt.Fprintf(&b, " (%d times)", r.n)
+		}
+	}
+	return b.String()
+}
+
+// Describe is the problem with where it happened and how it got there, for
+// test results and server logs (files as written in 'use').
+func (e *RuntimeError) Describe() string {
+	at := ""
+	if e.File != "" {
+		at = " of " + e.File
+	}
+	return fmt.Sprintf("Problem on line %d%s: %s", e.Line, at, e.Msg) + TraceText(e.Trace, func(f string) string { return f })
+}
+
+// fileOf finds which file a beam's surroundings belong to.
+func (in *Interp) fileOf(e *Env) string {
+	for ; e != nil; e = e.parent {
+		if name, ok := in.files.Load(e); ok {
+			return name.(string)
+		}
+	}
+	return ""
 }
 
 func (e *RuntimeError) Error() string { return fmt.Sprintf("Problem on line %d: %s", e.Line, e.Msg) }
@@ -179,6 +273,7 @@ type Interp struct {
 	typesMu     sync.Mutex   // fills the type caches of signatures and objects
 	parallel    atomic.Int32 // parallel regions running (fast each)
 	frames      frames       // call frames to use again
+	files       sync.Map     // *Env of each used file -> its path, for traces
 	regionStart atomic.Int64 // when the outermost one began
 	region      regions      // bookkeeping for parallel regions
 	serving     atomic.Int32 // web requests being answered right now
@@ -366,7 +461,9 @@ func (in *Interp) RunTests(src string) (results []TestResult, err error) {
 			in.execBlock(t.Body, newScope(in.globals))
 		}()
 		r := TestResult{Name: t.Name, Passed: terr == nil}
-		if terr != nil {
+		if re, ok := terr.(*RuntimeError); ok {
+			r.Msg = re.Describe()
+		} else if terr != nil {
 			r.Msg = terr.Error()
 		}
 		results = append(results, r)
@@ -934,6 +1031,12 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		}
 		return f.Fn(in, line, args)
 	case *Beam:
+		defer func() {
+			if r := recover(); r != nil {
+				in.note(r, f, line)
+				panic(r)
+			}
+		}()
 		label := "this beam"
 		if f.Name != "" {
 			label = "beam " + f.Name // cheap: no formatting

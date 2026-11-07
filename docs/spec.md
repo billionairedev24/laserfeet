@@ -318,7 +318,11 @@ focus status {
   `fails`; they are tried in order, and a `fails` without a type must come last.
   A problem that no `fails` matches carries on outwards.
 - A problem that nothing catches ends the program, reported as
-  `file, line N: message`.
+  `file, line N: message`, where the file is the one the problem happened in
+  (a file the program uses, or a package), followed by the calls that led
+  there, innermost first: `in safeShare, called from app.lf, line 5`. The
+  same call repeated (recursion) is shown once with a count. Failed tests and
+  problems in web requests (in the server's log) show the same calls.
 - `test "name" { ... }` declares a test, run by `lf test`. Inside it,
   `expect condition` fails the test if the condition is `no`. `lf run` doesn't
   run tests.

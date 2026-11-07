@@ -203,11 +203,23 @@ func test(path string) int {
 	return 0
 }
 
+// placeOf names a file a problem happened in: the program's own, a file it
+// uses (next to it), or a package (as written in use).
+func placeOf(main, file string) string {
+	switch {
+	case file == "":
+		return main
+	case lang.IsPackagePath(file):
+		return file
+	}
+	return filepath.Join(filepath.Dir(main), filepath.FromSlash(file))
+}
+
 // describeError writes a problem the same way lf check does: file, line N: message.
 func describeError(path string, err error) string {
 	switch e := err.(type) {
 	case *lang.RuntimeError:
-		return fmt.Sprintf("%s, line %d: %s", path, e.Line, e.Msg)
+		return fmt.Sprintf("%s, line %d: %s", placeOf(path, e.File), e.Line, e.Msg) + lang.TraceText(e.Trace, func(f string) string { return placeOf(path, f) })
 	case *lang.SyntaxError:
 		return fmt.Sprintf("%s, line %d: %s", path, e.Line, e.Msg)
 	}
