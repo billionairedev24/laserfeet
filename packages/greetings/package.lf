@@ -1,0 +1,15 @@
+-- greetings: friendly greetings, built on textkit.
+-- Use it with:  lf get github.com/billionairedev24/laserfeet/packages/greetings
+--               use "github.com/billionairedev24/laserfeet/packages/greetings"
+
+use "github.com/billionairedev24/laserfeet/packages/textkit"
+
+-- "ada lovelace" becomes "Hello, Ada Lovelace!"
+beam hello(name: Text) gives Text {
+    send "Hello, {textkit.title(name)}!"
+}
+
+-- a greeting for a time of day, like "Good morning, Ada!"
+beam good(part: Text, name: Text) gives Text {
+    send "Good {part}, {textkit.title(name)}!"
+}

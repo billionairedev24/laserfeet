@@ -1,0 +1,22 @@
+-- letters: short letters with a greeting and a preview, built on greetings
+-- and textkit.
+-- Use it with:  lf get github.com/billionairedev24/laserfeet/packages/letters
+--               use "github.com/billionairedev24/laserfeet/packages/letters"
+
+use "github.com/billionairedev24/laserfeet/packages/greetings"
+use "github.com/billionairedev24/laserfeet/packages/textkit"
+
+-- a letter: the greeting, then the body
+beam letter(to: Text, body: Text) gives Text {
+    send "{greetings.hello(to)}\n\n{body}"
+}
+
+-- the first words of a letter's body, for a list of letters
+beam preview(body: Text) gives Text {
+    send textkit.shorten(body, 40)
+}
+
+-- a web-friendly name for a letter, like "letter-to-ada-lovelace"
+beam slug(to: Text) gives Text {
+    send textkit.slug("letter to {to}")
+}
