@@ -7,8 +7,8 @@ use "github.com/billionairedev24/laserfeet/packages/greetings"
 use "github.com/billionairedev24/laserfeet/packages/textkit"
 
 -- a letter: the greeting, then the body
-beam letter(to: Text, body: Text) gives Text {
-    send "{greetings.hello(to)}\n\n{body}"
+beam letter(name: Text, body: Text) gives Text {
+    send "{greetings.hello(name)}\n\n{body}"
 }
 
 -- the first words of a letter's body, for a list of letters
@@ -17,6 +17,6 @@ beam preview(body: Text) gives Text {
 }
 
 -- a web-friendly name for a letter, like "letter-to-ada-lovelace"
-beam slug(to: Text) gives Text {
-    send textkit.slug("letter to {to}")
+beam slug(name: Text) gives Text {
+    send textkit.slug("letter to {name}")
 }
