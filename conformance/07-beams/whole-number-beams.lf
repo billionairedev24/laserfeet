@@ -1,0 +1,88 @@
+-- Beams that only work with Ints run on fast whole-number code; the answers
+-- and the problems are the same as anywhere else.
+beam fib(n: Int) gives Int {
+    when n < 2 {
+        send n
+    }
+    send fib(n - 1) + fib(n - 2)
+}
+
+beam gcd(a: Int, b: Int) gives Int {
+    when b is 0 {
+        send a
+    }
+    send gcd(b, a % b)
+}
+
+beam sumOdd(limit: Int) gives Int {
+    total = 0
+    each i in 1 to limit {
+        when i % 2 is 0 {
+            skip
+        }
+        when i > 15 {
+            stop
+        }
+        total = total + i
+    }
+    send total
+}
+
+beam sign(x: Int) gives Int {
+    when x < 0 {
+        r = -1
+    } otherwise when x is 0 {
+        r = 0
+    } otherwise {
+        r = 1
+    }
+    send r
+}
+
+beam grow(n: Int) gives Int {
+    send n * n * n * n * n
+}
+
+beam half(n: Int) gives Int {
+    send n % 0
+}
+
+beam label(n: Int) gives Text {
+    send "n={n}"
+}
+
+beam usesText(n: Int) gives Int {
+    send label(n).size()
+}
+
+beam first(a: Int, b: Int, c: Int, d: Int, e: Int) gives Int {
+    when a > 0 and not (b > 0) or c is d {
+        send e
+    }
+    send -e
+}
+
+launch {
+    show fib(20)
+    show gcd(1071, 462)
+    show sumOdd(100)
+    show sign(-7)
+    show sign(0)
+    show sign(9)
+    show grow(10)
+    show grow(1000)
+    show first(1, 0, 3, 4, 5)
+    show first(0, 0, 3, 4, 5)
+    show first(0, 0, 4, 4, 5)
+    show usesText(42)
+    attempt {
+        show grow(10000000)
+    } fails problem {
+        show "problem: {problem}"
+    }
+    attempt {
+        show half(4)
+    } fails problem {
+        show "problem: {problem}"
+    }
+}

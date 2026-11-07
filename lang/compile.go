@@ -31,6 +31,9 @@ type beamCode struct {
 	// reuse: nothing in the beam keeps its names after it finishes (no beam
 	// written inside, no work started), so its call frame can be used again.
 	reuse bool
+	// the whole-number tier (inttier.go), made on the first call
+	intOnce sync.Once
+	ints    *intCode
 }
 
 // Reusable call frames. Only the code holding the engine's lock uses them,
@@ -790,6 +793,19 @@ func (in *Interp) fastCall(f *Beam, code *beamCode, firstVal Value, hasFirst boo
 	}
 	for i, a := range args {
 		e.binds[k+i].v = a(caller)
+	}
+	code.intOnce.Do(func() { code.ints = in.intTier(f) })
+	if ic := code.ints; ic != nil && !ic.broken.Load() {
+		if v, ok := in.runInt(ic, e.binds[:n]); ok {
+			if code.reuse {
+				if f1 != nil {
+					in.putFrame1(f1)
+				} else if f3 != nil {
+					in.putFrame3(f3)
+				}
+			}
+			return box(v)
+		}
 	}
 	ptypes, rtype := in.sigTypes(f)
 	for i, pt := range ptypes {
