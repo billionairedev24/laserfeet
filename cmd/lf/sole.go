@@ -377,11 +377,11 @@ func newer(a, b [3]int) bool {
 // once. When two ask for different vX.Y.Z versions of one package, the newer
 // is used (a newer version is meant to keep working for code written for the
 // older); any other difference is a conflict the person must settle. Packages
-// already installed that match the lock aren't fetched again. fresh names a
+// already installed that match the lock aren't fetched again. fresh names the
 // package to fetch anew (lf get name@version). offline works only from what
 // is installed and locked, fetching nothing (for lf remove). The new lock is
 // returned. dropped is a package lf remove takes away.
-func settle(dir string, needs []pkgNeed, lock map[string]lockEntry, fresh, dropped string, offline bool, say func(string)) (map[string]lockEntry, error) {
+func settle(dir string, needs []pkgNeed, lock map[string]lockEntry, fresh map[string]bool, dropped string, offline bool, say func(string)) (map[string]lockEntry, error) {
 	missing := false              // offline, and some package isn't installed, so what it needs is unknown
 	chosen := map[string]string{} // package -> version
 	wantedBy := map[string]string{}
@@ -421,12 +421,12 @@ func settle(dir string, needs []pkgNeed, lock map[string]lockEntry, fresh, dropp
 				missing = true
 			}
 		} else {
-			e, err = ensure(dir, pkgNeed{p, version}, lock, p == fresh, say)
+			e, err = ensure(dir, pkgNeed{p, version}, lock, fresh[p], say)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("%s (needed by %s): %v", p, wantedBy[p], err)
 		}
-		if p == fresh { // lf get name: what it resolved to is now the version
+		if fresh[p] { // lf get name: what it resolved to is now the version
 			chosen[p] = e.Version
 		}
 		done[p] = e
@@ -523,8 +523,38 @@ func soleGet(args []string) int {
 		return soleFail(err)
 	}
 	say := func(s string) { fmt.Println(s) }
-	fresh := ""
-	if len(args) > 0 { // add or update one package
+	update := len(args) > 0 && args[0] == "-u"
+	if update {
+		args = args[1:]
+	}
+	fresh := map[string]bool{}
+	added := ""
+	switch {
+	case update: // newer versions of every package listed, or the one named
+		if len(needs) == 0 {
+			fmt.Println("No packages to update.")
+			return 0
+		}
+		found := len(args) == 0
+		for i := range needs {
+			if len(args) > 0 && needs[i].Path != args[0] {
+				continue
+			}
+			found = true
+			newer, err := newestCompatible(needs[i])
+			if err != nil {
+				return soleFail(fmt.Errorf("%s: %v", needs[i].Path, err))
+			}
+			if newer != needs[i].Version {
+				fmt.Printf("  %s %s → %s\n", needs[i].Path, needs[i].Version, newer)
+				needs[i].Version = newer
+			}
+			fresh[needs[i].Path] = true
+		}
+		if !found {
+			return soleFail(fmt.Errorf("%s isn't in %s", args[0], listFile))
+		}
+	case len(args) > 0: // add or change one package
 		p, version, _ := strings.Cut(args[0], "@")
 		if !lang.IsPackagePath(p) {
 			return soleFail(fmt.Errorf("%q isn't a package path. Packages look like github.com/someone/greetings", p))
@@ -541,8 +571,8 @@ func soleGet(args []string) int {
 		if !found {
 			needs = append(needs, pkgNeed{p, version})
 		}
-		fresh = p
-	} else if len(needs) == 0 {
+		fresh[p], added = true, p
+	case len(needs) == 0:
 		fmt.Println("No packages to install. Add one with: lf get github.com/someone/greetings")
 		return 0
 	}
@@ -550,10 +580,10 @@ func soleGet(args []string) int {
 	if err != nil {
 		return soleFail(err)
 	}
-	if fresh != "" {
+	if len(fresh) > 0 {
 		for i := range needs {
-			if needs[i].Path == fresh {
-				needs[i].Version = newLock[fresh].Version
+			if fresh[needs[i].Path] {
+				needs[i].Version = newLock[needs[i].Path].Version
 			}
 		}
 		if err := writeList(dir, needs); err != nil {
@@ -565,11 +595,42 @@ func soleGet(args []string) int {
 	}
 	// .sole is rebuilt from sole.list and sole.lock, so it doesn't belong in git
 	os.WriteFile(filepath.Join(dir, lang.SoleDir, ".gitignore"), []byte("*\n"), 0o644)
-	if fresh != "" {
-		e := newLock[fresh]
-		fmt.Printf("Added %s %s (commit %s)\nUse it with: use \"%s\"\n", fresh, e.Version, e.Commit[:12], fresh)
+	if added != "" {
+		e := newLock[added]
+		fmt.Printf("Added %s %s (commit %s)\nUse it with: use \"%s\"\n", added, e.Version, e.Commit[:12], added)
+	}
+	if code := reportAdvisories(dir, newLock); code != 0 {
+		return code
 	}
 	return 0
+}
+
+// newestCompatible is the version lf get -u moves a package to: the newest
+// vX.Y.Z tag with the same X (a new X may change how the package is used, so
+// it's taken only when asked for by name). A branch stays the branch, at its
+// newest commit; a commit stays.
+func newestCompatible(n pkgNeed) (string, error) {
+	cur, ok := semver(n.Version)
+	if !ok {
+		return n.Version, nil
+	}
+	repo, _ := splitPackage(n.Path)
+	out, err := git("ls-remote", "--tags", "--", repoURL(repo))
+	if err != nil {
+		return "", fmt.Errorf("couldn't reach it: %v", err)
+	}
+	best, bestKey := n.Version, cur
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) != 2 {
+			continue
+		}
+		tag := strings.TrimSuffix(strings.TrimPrefix(f[1], "refs/tags/"), "^{}")
+		if k, ok := semver(tag); ok && k[0] == cur[0] && newer(k, bestKey) {
+			best, bestKey = tag, k
+		}
+	}
+	return best, nil
 }
 
 func soleRemove(args []string) int {
@@ -595,7 +656,7 @@ func soleRemove(args []string) int {
 		return soleFail(fmt.Errorf("%s isn't in %s", args[0], listFile))
 	}
 	// what's left may still need it (or what it needed): work it out again
-	newLock, err := settle(dir, kept, lock, "", args[0], true, func(string) {})
+	newLock, err := settle(dir, kept, lock, nil, args[0], true, func(string) {})
 	if err != nil {
 		return soleFail(err)
 	}

@@ -1,0 +1,10 @@
+-- Known security problems in Laser Feet packages. lf audit and lf get read
+-- this list. To report one, use the Security tab of this repository.
+--
+-- One block per advisory, blocks split by a blank line:
+--
+--   advisory LF-2026-0001
+--   package github.com/someone/greetings
+--   introduced v1.1.0
+--   fixed v1.2.3
+--   summary What the problem is, in one line.

@@ -30,7 +30,9 @@ Usage:
   lf fix [files]       update code written for an older Laser Feet
   lf get <package>     add a package, like: lf get github.com/someone/greetings@v1.2.0
   lf get               install the packages in sole.list, checked against sole.lock
+  lf get -u [package]  update packages to their newest version with the same first number
   lf remove <package>  stop using a package
+  lf audit             check installed packages against known security problems
   lf lsp               start the language server for editors (VS Code uses this)
   lf build <file.lf>   make a standalone program (add -o name to pick its name)
   lf version           show the version
@@ -70,6 +72,8 @@ func main() {
 		os.Exit(soleGet(args[1:]))
 	case "remove":
 		os.Exit(soleRemove(args[1:]))
+	case "audit":
+		os.Exit(soleAudit())
 	case "migrate":
 		os.Exit(migrate(args[1:]))
 	case "secret":

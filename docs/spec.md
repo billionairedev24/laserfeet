@@ -538,6 +538,12 @@ transaction with db as tx {
   difference (a branch, a commit) is a conflict `lf get` explains.
   `sole.lock` pins every package installed, including the ones packages
   need, and a package's `sole.list` is part of the code its SHA-256 covers.
+- `lf get -u` moves each package in `sole.list` (or the one named) to its
+  newest `vX.Y.Z` with the same `X`; a new `X` is taken only when asked for by
+  name (`lf get name@v2.0.0`). A branch is fetched at its newest commit.
+- `lf audit` checks every installed package against the list of known security
+  problems kept in the Laser Feet repository (`advisories/advisories.list`)
+  and fails if one is affected; `lf get` warns about them too.
 
 ## 15. Grammar
 

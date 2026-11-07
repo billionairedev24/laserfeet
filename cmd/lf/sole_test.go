@@ -307,3 +307,47 @@ func TestPackagesThatNeedPackages(t *testing.T) {
 		t.Error("a failed lf get must not change sole.list")
 	}
 }
+
+// lf get -u moves to the newest version with the same first number, and
+// security advisories are reported by lf get and lf audit.
+func TestPackageUpdatesAndAdvisories(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git isn't installed")
+	}
+	repos := t.TempDir()
+	project := t.TempDir()
+	t.Setenv("LF_SOLE_BASE", "file://"+repos)
+	repo := filepath.Join(repos, "example.com", "acme", "words")
+	for _, v := range []string{"v1.0.0", "v1.4.0", "v2.0.0"} {
+		makeRepo(t, repo, v, map[string]string{"package.lf": "beam version() gives Text {\n    send \"" + v + "\"\n}\n"})
+	}
+	advisories := filepath.Join(t.TempDir(), "advisories.list")
+	write(t, advisories, "advisory LF-2026-0042\npackage example.com/acme/words\nintroduced v1.0.0\nfixed v1.3.0\nsummary Words could be read past their end.\n")
+	t.Setenv("LF_ADVISORIES", advisories)
+	old, _ := os.Getwd()
+	os.Chdir(project)
+	defer os.Chdir(old)
+
+	if code := soleGet([]string{"example.com/acme/words@v1.0.0"}); code != 0 {
+		t.Fatal("lf get failed")
+	}
+	if code := soleAudit(); code == 0 {
+		t.Error("lf audit must fail: v1.0.0 has a known problem")
+	}
+	if code := soleGet([]string{"-u"}); code != 0 {
+		t.Fatal("lf get -u failed")
+	}
+	lock, _ := readLock(".")
+	if v := lock["example.com/acme/words"].Version; v != "v1.4.0" {
+		t.Errorf("lf get -u must move to the newest v1, got %s", v)
+	}
+	if list, _ := os.ReadFile(listFile); !strings.Contains(string(list), "v1.4.0") {
+		t.Errorf("sole.list must say the new version:\n%s", list)
+	}
+	if code := soleAudit(); code != 0 {
+		t.Error("v1.4.0 is past the fix: lf audit must pass")
+	}
+	if code := soleGet([]string{"-u", "example.com/acme/nope"}); code == 0 {
+		t.Error("updating a package that isn't listed must fail")
+	}
+}

@@ -89,7 +89,7 @@ lf fix               # update code written for an older Laser Feet
 lf get github.com/billionairedev24/laserfeet/packages/textkit@main
 ```
 
-Packages are git repositories (or folders in them) with a `package.lf`. `sole.list` lists them and `sole.lock` pins each to a commit and a SHA-256 of its code, checked at install and before every run. Packages can need packages (their own `sole.list`): each is installed once, at the newest `vX.Y.Z` anything asks for, and locked like the rest. Installing never runs code. `packages/textkit` is an example package.
+Packages are git repositories (or folders in them) with a `package.lf`. `sole.list` lists them and `sole.lock` pins each to a commit and a SHA-256 of its code, checked at install and before every run. Packages can need packages (their own `sole.list`): each is installed once, at the newest `vX.Y.Z` anything asks for, and locked like the rest. `lf get -u` updates packages within their major version, and `lf audit` checks them against known security problems (`advisories/advisories.list`). Installing never runs code. `packages/textkit` is an example package.
 
 ## Share a program
 
