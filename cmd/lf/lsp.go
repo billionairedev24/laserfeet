@@ -144,6 +144,7 @@ func (s *server) handle(m *rpcMessage) {
 				"referencesProvider":         true,
 				"renameProvider":             true,
 				"documentSymbolProvider":     true,
+				"signatureHelpProvider":      map[string]any{"triggerCharacters": []string{"(", ","}},
 			},
 			"serverInfo": map[string]any{"name": "Laser Feet", "version": version},
 		})
@@ -209,6 +210,9 @@ func (s *server) handle(m *rpcMessage) {
 		}
 		json.Unmarshal(m.Params, &p)
 		s.rename(m.ID, uri, pos, p.NewName)
+	case "textDocument/signatureHelp":
+		uri, pos := docPosition(m.Params)
+		s.reply(m.ID, s.signatureHelp(uri, pos))
 	case "textDocument/documentSymbol":
 		uri, _ := docPosition(m.Params)
 		s.reply(m.ID, s.symbols(uri))
@@ -408,6 +412,17 @@ func analyzeWhileTyping(text string, a *lang.Analysis, read func(string) (string
 		bad := a.Problems[0].Line - 1
 		if bad < 0 || bad >= len(lines) {
 			return nil, nil
+		}
+		// a closing bracket found where a value was due: the line being typed
+		// is above it (like "show area(")
+		for strings.TrimSpace(lines[bad]) == "}" && bad > 0 {
+			bad--
+			for bad > 0 && strings.TrimSpace(lines[bad]) == "" {
+				bad--
+			}
+			if strings.TrimSpace(lines[bad]) != "}" {
+				break
+			}
 		}
 		lines[bad] = ""
 		blanked[bad+1] = true

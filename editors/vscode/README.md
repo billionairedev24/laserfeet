@@ -6,6 +6,7 @@ Language support for [Laser Feet](https://billionairedev24.github.io/laserfeet/)
 - **Autocomplete**: fields and beams after a dot, names in scope, keywords, built-in beams and types
 - **Hover** over a name to see its type
 - **Go to definition** (F12), into files you `use` too; **find all references** (Shift+F12); **rename** (F2), which changes only the names that mean the same thing
+- **Signature help**: a beam's inputs and their types as you type a call, with the one you're on picked out
 - **Outline** of each file: objects with their fields and beams, choices, beams, routes and top-level names (also Go to Symbol, Ctrl/⌘ + Shift + O)
 - VS Code recognizes `.lf` files as **Laser Feet** (shown in the status bar, with a file icon)
 - Syntax highlighting, including types and `{values}` inside text

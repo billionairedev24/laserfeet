@@ -1,6 +1,6 @@
 // Laser Feet for VS Code: connects the editor to `lf lsp`, the Laser Feet
 // language server, for live errors, autocomplete, hover, go to definition,
-// references, rename and the outline. No third-party
+// references, rename, the outline and signature help. No third-party
 // packages: it speaks the Language Server Protocol directly over stdin/stdout.
 "use strict";
 
@@ -204,6 +204,22 @@ function activate(context) {
         return edit;
       },
     }),
+    vscode.languages.registerSignatureHelpProvider(LANG, {
+      async provideSignatureHelp(doc, pos) {
+        flush(doc);
+        const h = await client.request("textDocument/signatureHelp", at(doc, pos)).catch(() => null);
+        if (!h || !h.signatures || !h.signatures.length) return null;
+        const help = new vscode.SignatureHelp();
+        help.signatures = h.signatures.map((sig) => {
+          const info = new vscode.SignatureInformation(sig.label);
+          info.parameters = (sig.parameters || []).map((p) => new vscode.ParameterInformation(p.label));
+          return info;
+        });
+        help.activeSignature = h.activeSignature || 0;
+        help.activeParameter = h.activeParameter || 0;
+        return help;
+      },
+    }, "(", ","),
     vscode.languages.registerDocumentSymbolProvider(LANG, {
       async provideDocumentSymbols(doc) {
         flush(doc);

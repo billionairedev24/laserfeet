@@ -2,7 +2,7 @@
   "name": "laserfeet",
   "displayName": "Laser Feet",
   "description": "Live errors, autocomplete, hover types, go to definition, references, rename, outline, syntax highlighting and snippets for the Laser Feet programming language (.lf files).",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "laserfeet",
   "license": "SEE LICENSE IN README.md",
   "icon": "icons/extension.png",

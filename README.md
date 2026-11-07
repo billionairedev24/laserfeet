@@ -125,7 +125,7 @@ Download `laserfeet.vsix` from the [latest release](https://github.com/billionai
 code --install-extension laserfeet.vsix
 ```
 
-You get live errors as you type, autocomplete (fields after a dot, names, keywords, types), types on hover, go to definition (into other files too), find references, rename, the outline of each file, syntax colors and snippets. Definitions, references and rename come from `lf check` itself, so a name means exactly what it means to the language: a beam's own `x` is not the `x` outside it. Live features come from `lf lsp`, a standard language server, so other editors that speak LSP can use it too. The extension (in `editors/vscode`) uses no third-party packages.
+You get live errors as you type, autocomplete (fields after a dot, names, keywords, types), types on hover, go to definition (into other files too), find references, rename, the outline of each file, the inputs of the beam you're calling as you type, syntax colors and snippets. Definitions, references and rename come from `lf check` itself, so a name means exactly what it means to the language: a beam's own `x` is not the `x` outside it. Live features come from `lf lsp`, a standard language server, so other editors that speak LSP can use it too. The extension (in `editors/vscode`) uses no third-party packages.
 
 ## Doing things at the same time
 

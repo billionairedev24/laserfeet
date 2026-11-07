@@ -308,3 +308,155 @@ func routeOf(x *lang.ExprStmt) (string, string, int, bool) {
 	}
 	return method, p.Value, c.Line, true
 }
+
+// signatureHelp shows a beam's inputs while a call to it is being typed,
+// with the input being written picked out.
+func (s *server) signatureHelp(uri string, pos position) any {
+	d := s.docs[uri]
+	if d == nil || d.last == nil {
+		return nil
+	}
+	lines := strings.Split(d.text, "\n")
+	if pos.Line < 0 || pos.Line >= len(lines) {
+		return nil
+	}
+	rs := []rune(lines[pos.Line])
+	if pos.Character > len(rs) {
+		return nil
+	}
+	// read the line up to the cursor, keeping the brackets still open and the
+	// commas inside each; the innermost open round bracket is the call
+	type opened struct {
+		at     int
+		kind   rune
+		commas int
+	}
+	var stack []opened
+	inText := false
+	for i := 0; i < pos.Character; i++ {
+		switch r := rs[i]; {
+		case r == '"':
+			inText = !inText
+		case inText:
+		case r == '(' || r == '[' || r == '{':
+			stack = append(stack, opened{at: i, kind: r})
+		case r == ')' || r == ']' || r == '}':
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		case r == ',' && len(stack) > 0:
+			stack[len(stack)-1].commas++
+		}
+	}
+	open, commas := -1, 0
+	for k := len(stack) - 1; k >= 0; k-- {
+		if stack[k].kind == '(' {
+			open, commas = stack[k].at, stack[k].commas
+			break
+		}
+	}
+	if open <= 0 {
+		return nil
+	}
+	def, word, ok := s.definitionOf(uri, position{pos.Line, open - 1})
+	if !ok && word != "" {
+		// a line being typed often doesn't check yet: use another place the name is used
+		a := open - len([]rune(word))
+		dotted := a > 0 && rs[a-1] == '.'
+		for _, r := range d.last.Refs {
+			if r.Name == word && r.Member == dotted {
+				def, ok = r.Def, true
+				break
+			}
+		}
+	}
+	if !ok {
+		return nil
+	}
+	src := d.text
+	if def.File != "" {
+		var found bool
+		if _, src, found = uriFor(uri, def); !found {
+			return nil
+		}
+	}
+	beam := beamAt(src, def.Line, word)
+	if beam == nil {
+		return nil
+	}
+	var params []any
+	var parts []string
+	for i, p := range beam.Params {
+		label := p
+		if beam.Sig != nil && i < len(beam.Sig.Params) && beam.Sig.Params[i] != nil {
+			label += ": " + beam.Sig.Params[i].String()
+		}
+		parts = append(parts, label)
+		params = append(params, map[string]any{"label": label})
+	}
+	label := beam.Name + "(" + strings.Join(parts, ", ") + ")"
+	if beam.Sig != nil && beam.Sig.Result != nil {
+		label += " gives " + beam.Sig.Result.String()
+	}
+	active := commas
+	if active >= len(params) {
+		active = len(params) - 1
+	}
+	return map[string]any{
+		"signatures":      []any{map[string]any{"label": label, "parameters": params}},
+		"activeSignature": 0,
+		"activeParameter": max(active, 0),
+	}
+}
+
+// beamAt finds the beam declared on a line of source: a top-level beam or an
+// object's.
+func beamAt(src string, line int, name string) *lang.BeamDecl {
+	prog := parseWhileTyping(src)
+	if prog == nil {
+		return nil
+	}
+	for _, st := range prog.Stmts {
+		switch x := st.(type) {
+		case *lang.BeamDecl:
+			if x.Line == line && x.Name == name {
+				return x
+			}
+		case *lang.ObjectDecl:
+			for _, m := range x.Methods {
+				if m.Line == line && m.Name == name {
+					return m
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// parseWhileTyping parses code that may have a line still being written: it
+// leaves out the lines that don't read (as analyzeWhileTyping does).
+func parseWhileTyping(src string) *lang.Program {
+	lines := strings.Split(src, "\n")
+	for tries := 0; tries < 5; tries++ {
+		prog, err := lang.Parse(strings.Join(lines, "\n"))
+		if err == nil {
+			return prog
+		}
+		se, ok := err.(*lang.SyntaxError)
+		if !ok || se.Line < 1 || se.Line > len(lines) {
+			return nil
+		}
+		bad := se.Line - 1
+		for strings.TrimSpace(lines[bad]) == "}" && bad > 0 {
+			bad--
+			for bad > 0 && strings.TrimSpace(lines[bad]) == "" {
+				bad--
+			}
+			if strings.TrimSpace(lines[bad]) != "}" {
+				break
+			}
+		}
+		lines[bad] = ""
+	}
+	return nil
+}

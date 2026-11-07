@@ -212,3 +212,32 @@ func TestLanguageServerNavigation(t *testing.T) {
 		}
 	}
 }
+
+func TestLanguageServerSignatureHelp(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir+"/helpers.lf", "beam pad(text: Text, width: Int) gives Text {\n    send text\n}\n")
+	c := startServer(t)
+	c.write("initialize", 1, map[string]any{})
+	c.read()
+	uri := "file://" + dir + "/app.lf"
+	doc := "use \"helpers.lf\"\n\nbeam area(w: Int, h: Int) gives Int {\n    send w * h\n}\n\nlaunch {\n    show area(2, 3)\n    show helpers.pad(\"x\", 4)\n    show area(\n}\n"
+	c.write("textDocument/didOpen", 0, map[string]any{"textDocument": map[string]any{"uri": uri, "text": doc}})
+	c.read()
+	help := func(id, line, char int) string {
+		c.write("textDocument/signatureHelp", id, map[string]any{"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": line, "character": char}})
+		r := c.read()
+		if r["result"] == nil {
+			t.Logf("reply: %v", r)
+		}
+		return fmt.Sprint(r["result"])
+	}
+	if got := help(2, 7, 16); !strings.Contains(got, "area(w: Int, h: Int) gives Int") || !strings.Contains(got, "activeParameter:1") {
+		t.Errorf("inside area(2, 3), after the comma: %s", got)
+	}
+	if got := help(3, 8, 22); !strings.Contains(got, "pad(text: Text, width: Int) gives Text") || !strings.Contains(got, "activeParameter:0") {
+		t.Errorf("inside helpers.pad: %s", got)
+	}
+	if got := help(4, 9, 14); !strings.Contains(got, "area(w: Int, h: Int)") {
+		t.Errorf("a call still being typed: %s", got)
+	}
+}

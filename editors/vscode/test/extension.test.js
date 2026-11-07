@@ -18,6 +18,9 @@ const fakeVscode = {
   Uri: { parse: (s) => ({ toString: () => s }) },
   Location: class { constructor(uri, range) { this.uri = uri; this.range = range; } },
   WorkspaceEdit: class { constructor() { this.edits = []; } replace(uri, range, text) { this.edits.push({ uri: uri.toString(), range, text }); } },
+  SignatureHelp: class { constructor() { this.signatures = []; } },
+  SignatureInformation: class { constructor(label) { this.label = label; this.parameters = []; } },
+  ParameterInformation: class { constructor(label) { this.label = label; } },
   DocumentSymbol: class { constructor(name, detail, kind, range, sel) { Object.assign(this, { name, detail, kind, range, selectionRange: sel, children: [] }); } },
   window: {
     createOutputChannel: () => ({ appendLine() {}, dispose() {} }),
@@ -40,6 +43,7 @@ const fakeVscode = {
     registerReferenceProvider: (lang, p) => { state.references = p; return { dispose() {} }; },
     registerRenameProvider: (lang, p) => { state.rename = p; return { dispose() {} }; },
     registerDocumentSymbolProvider: (lang, p) => { state.symbols = p; return { dispose() {} }; },
+    registerSignatureHelpProvider: (lang, p) => { state.signature = p; return { dispose() {} }; },
   },
 };
 const realLoad = Module._load;
@@ -95,10 +99,12 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const ren = await state.rename.provideRenameEdits(nav, { line: 5, character: 4 }, "y");
   assert.strictEqual(ren.edits.length, 2, "renaming x changes 2 places");
   await assert.rejects(state.rename.provideRenameEdits(nav, { line: 5, character: 4 }, "show"), /can't be a name/);
+  const sig = await state.signature.provideSignatureHelp(nav, { line: 6, character: 15 });
+  assert.ok(sig && sig.signatures[0].label === "twice(n: Int) gives Int", "signature help shows twice's inputs, got " + JSON.stringify(sig));
   const syms = await state.symbols.provideDocumentSymbols(nav);
   assert.ok(syms.some((s) => s.name === "twice"), "the outline has twice");
 
   subs.forEach((s) => s.dispose && s.dispose());
-  console.log("VS Code extension: live errors, completion, hover, formatting, definition, references, rename and outline all work");
+  console.log("VS Code extension: live errors, completion, hover, formatting, definition, references, rename, outline and signature help all work");
   setTimeout(() => process.exit(0), 200);
 })().catch((e) => { console.error(e.message); process.exit(1); });
