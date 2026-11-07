@@ -1,0 +1,40 @@
+-- 'name = value' changes a name that exists in this beam; launch and tests
+-- may change names made at the top of the file. A beam's input may share a
+-- name with something outside: it's the beam's own.
+object Counter {
+    n: Int
+
+    beam bump() {
+        n = n + 1
+    }
+}
+
+total = 0
+
+beam sumTo(limit: Int) gives Int {
+    acc = 0
+    each i in 1 to limit {
+        when i % 2 is 0 {
+            acc = acc + i
+        }
+    }
+    send acc
+}
+
+beam double(total: Int) gives Int {
+    total = total * 2
+    send total
+}
+
+launch {
+    show sumTo(10)
+    show double(21)
+    total = total + 5
+    show total
+    c = Counter(0)
+    c.bump()
+    c.bump()
+    show c.n
+    adder = beam(by: Int) gives Int { send by + total }
+    show adder(1)
+}

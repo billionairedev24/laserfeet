@@ -38,11 +38,27 @@ type cvar struct {
 type cscope struct {
 	vars   map[string]*cvar
 	parent *cscope
-	obj    *Class // inside an object's beam: its fields and beams are visible
-	scope  bool   // a beam, launch, test or file: new names land here
-	open   bool   // a rule about Json items: any field name may be used
-	fast   bool   // the edge of fast work: outside values can be read here, never changed
-	route  bool   // with fast: the edge is a web route, whose requests run at the same time
+	obj    *Class          // inside an object's beam: its fields and beams are visible
+	scope  bool            // a beam, launch, test or file: new names land here
+	open   bool            // a rule about Json items: any field name may be used
+	fast   bool            // the edge of fast work: outside values can be read here, never changed
+	route  bool            // with fast: the edge is a web route, whose requests run at the same time
+	beam   bool            // a beam's own names: assignments inside can't reach past it
+	later  map[string]bool // the top of a file: names made there, including further down
+}
+
+// outsideBeam reports whether name is made outside the beam that sc is in.
+func (s *cscope) outsideBeam(name string) bool {
+	crossed := false
+	for c := s; c != nil; c = c.parent {
+		if _, ok := c.vars[name]; ok || c.later[name] {
+			return crossed
+		}
+		if c.beam {
+			crossed = true
+		}
+	}
+	return false
 }
 
 // fromFastWork reports whether name lives outside the fast work (or web
@@ -241,6 +257,15 @@ func (c *checker) checkProgram(prog *Program, main bool) *cscope {
 		}
 	}()
 	top := &cscope{vars: map[string]*cvar{}, scope: true}
+	// names made at the top of the file, even below a beam: a beam can't change them
+	top.later = map[string]bool{}
+	for _, s := range prog.Stmts {
+		if a, ok := s.(*AssignStmt); ok {
+			if id, ok := a.Target.(*Ident); ok {
+				top.later[id.Name] = true
+			}
+		}
+	}
 
 	// declarations first, so they can be used before they appear
 	for _, s := range prog.Stmts {
@@ -563,7 +588,7 @@ func (c *checker) beamBody(name string, params []string, sig *Sig, body []Stmt, 
 		return
 	}
 	bt := c.sigType(params, sig)
-	sc := &cscope{vars: map[string]*cvar{}, parent: parent, scope: true}
+	sc := &cscope{vars: map[string]*cvar{}, parent: parent, scope: true, beam: true}
 	for i, p := range params {
 		c.declare(sc.vars, p, &cvar{t: bt.Params[i], declared: true}, line)
 		c.note(line, p, bt.Params[i])
@@ -823,6 +848,20 @@ func (c *checker) assign(s *AssignStmt, sc *cscope) {
 			declared = c.resolve(s.Type)
 		}
 		existing, _ := sc.find(t.Name)
+		if declared == nil && !s.Lock && sc.outsideBeam(t.Name) {
+			// a beam changes only its own names: this would quietly make a
+			// second name that hides the outside one, so it's refused
+			if crossed, edge := sc.fromFastWork(t.Name); crossed && edge.route {
+				c.noChange(s.Line, sc, t.Name)
+			} else {
+				c.report(s.Line, "'%s' is made outside this beam, and a beam can only change its own names. Use another name for a value of its own here, or send the new value back as the beam's result", t.Name)
+			}
+			vt := c.expr(s.Value, sc, nil)
+			if existing == nil { // so later lines don't report it again
+				sc.home().vars[t.Name] = &cvar{t: vt}
+			}
+			return
+		}
 		if existing != nil && declared == nil && !s.Lock {
 			c.ref(s.Line, t.Name, existing.at)
 		}
@@ -1533,7 +1572,7 @@ func didYouMean(name string, options []string) string {
 // ---------- calls ----------
 
 func (c *checker) lambda(x *Lambda, sc *cscope, want *Type, implicit map[string]*Type) *Type {
-	inner := &cscope{vars: map[string]*cvar{}, parent: sc, scope: true}
+	inner := &cscope{vars: map[string]*cvar{}, parent: sc, scope: true, beam: true}
 	for k, v := range implicit {
 		inner.vars[k] = &cvar{t: v}
 	}

@@ -227,8 +227,9 @@ func (in *Interp) compileAssign(s *AssignStmt, name string) cblock {
 	val := in.compileExpr(s.Value)
 	return func(e *Env) (ctrl, Value) {
 		v := val(e)
+		inBeam := true // names past the beam's own can't be changed, only fields of its object
 		for env := e; env != nil && !env.isBuiltins; env = env.parent {
-			if b := env.find(name); b != nil {
+			if b := env.find(name); b != nil && inBeam {
 				if b.locked {
 					in.fail(s.Line, "'%s' is locked, so it can't be changed", name)
 				}
@@ -245,6 +246,9 @@ func (in *Interp) compileAssign(s *AssignStmt, name string) cblock {
 					env.obj.Slots[i] = in.fieldValue(s.Line, env.obj.Class, i, v)
 					return cNone, nil
 				}
+			}
+			if env.isBeam {
+				inBeam = false
 			}
 		}
 		sc := e.scope()
@@ -778,7 +782,7 @@ func (in *Interp) fastCall(f *Beam, code *beamCode, firstVal Value, hasFirst boo
 		e = new(Env)
 		e.binds = make([]binding, n)
 	}
-	e.parent, e.isScope, e.names, e.born = f.Closure, true, f.Params[:n:n], genNow.Load()
+	e.parent, e.isScope, e.isBeam, e.names, e.born = f.Closure, true, true, f.Params[:n:n], genNow.Load()
 	k := 0
 	if hasFirst {
 		e.binds[0].v = firstVal

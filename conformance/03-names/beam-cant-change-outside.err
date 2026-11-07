@@ -1,0 +1,1 @@
+line 2: 'last' is made outside this beam, and a beam can only change its own names. Use another name for a value of its own here, or send the new value back as the beam's result

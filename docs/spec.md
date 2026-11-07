@@ -124,6 +124,12 @@ running anything. If there is a problem, nothing runs.
 ## 3. Names
 
 - `name = value` makes a name, or changes it if it exists in this beam.
+  A beam (including one written inline) changes only its own names and the
+  fields of its object, never a name made outside it: `lf check` refuses
+  `name = value` in a beam when the name is made outside, so a second name
+  never quietly hides the first. A beam's inputs are its own names, even when
+  they share a name with something outside. `launch` and tests may change
+  names made at the top of the file.
 - `name: Type = value` makes a name with a stated type.
 - `lock name = value` makes a name that can never change.
 - A name made inside a `when`, `otherwise`, `each` or `loop` block belongs to the

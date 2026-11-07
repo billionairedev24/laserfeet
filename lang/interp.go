@@ -46,6 +46,9 @@ type Env struct {
 	isBuiltins bool
 	// a beam call, launch, a test or a file: new names made in its blocks live here
 	isScope bool
+	// a beam call: 'name = value' inside changes only names made in the beam
+	// (and the fields of its object), never names outside it
+	isBeam bool
 }
 
 const smallScope = 8
@@ -596,8 +599,9 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 			sc.find(t.Name).t = declared
 			return
 		}
+		inBeam := true // names past the beam's own can't be changed, only fields of its object
 		for e := env; e != nil && !e.isBuiltins; e = e.parent {
-			if b := e.find(t.Name); b != nil {
+			if b := e.find(t.Name); b != nil && inBeam {
 				if b.locked {
 					in.fail(s.Line, "'%s' is locked, so it can't be changed", t.Name)
 				}
@@ -614,6 +618,9 @@ func (in *Interp) assign(s *AssignStmt, env *Env) {
 					e.obj.Slots[i] = in.fieldValue(s.Line, e.obj.Class, i, v)
 					return
 				}
+			}
+			if e.isBeam {
+				inBeam = false
 			}
 		}
 		sc := env.scope()
@@ -949,7 +956,7 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 				vals[i] = out
 			}
 		}
-		e := &Env{parent: parent, isScope: true, born: genNow.Load()}
+		e := &Env{parent: parent, isScope: true, isBeam: true, born: genNow.Load()}
 		if len(f.Params) <= smallScope {
 			e.names = append(make([]string, 0, len(f.Params)+2), f.Params...)
 			e.binds = make([]binding, len(f.Params), len(f.Params)+2)

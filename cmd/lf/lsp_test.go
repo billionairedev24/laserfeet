@@ -128,8 +128,8 @@ object Point {
     y: Int
 }
 
-beam total(p: Point) gives Int {
-    x = p.x + p.y
+beam total(p: Point, x: Int) gives Int {
+    x = p.x + p.y + x
     send x
 }
 
@@ -141,7 +141,7 @@ server.get("/hi") {
 
 launch {
     p = Point(1, 2)
-    show total(p) + x
+    show total(p, 1) + x
     show helpers.twice(x)
 }
 `
@@ -182,10 +182,10 @@ func TestLanguageServerNavigation(t *testing.T) {
 	if !strings.HasSuffix(fmt.Sprint(def["uri"]), "/helpers.lf") || !strings.Contains(fmt.Sprint(def["range"]), "line:2") {
 		t.Errorf("definition of helpers.twice: %v", def)
 	}
-	// the x inside total is its own: two uses there, none outside
+	// total's input x is its own: four appearances there, none outside
 	refs := ask(5, "textDocument/references", at(9, 9)).([]any)
-	if len(refs) != 2 {
-		t.Errorf("x inside total has 2 appearances, got %v", refs)
+	if len(refs) != 4 {
+		t.Errorf("x inside total has 4 appearances, got %v", refs)
 	}
 	// the top-level x: made on line 13, used twice in launch
 	refs = ask(6, "textDocument/references", at(12, 0)).([]any)

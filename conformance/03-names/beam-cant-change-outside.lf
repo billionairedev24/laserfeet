@@ -1,0 +1,10 @@
+beam remember(item: Text) {
+    last = item
+}
+
+last = ""
+
+launch {
+    remember("tea")
+    show last
+}
