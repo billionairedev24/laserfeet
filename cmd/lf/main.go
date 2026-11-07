@@ -368,7 +368,7 @@ func placeOf(main, file string) string {
 func describeError(path string, err error) string {
 	switch e := err.(type) {
 	case *lang.RuntimeError:
-		return fmt.Sprintf("%s, line %d: %s", placeOf(path, e.File), e.Line, e.Msg) + lang.TraceText(e.Trace, func(f string) string { return placeOf(path, f) })
+		return fmt.Sprintf("%s, line %d: %s", placeOf(path, e.File), e.Line, e.Msg) + e.TraceText(func(f string) string { return placeOf(path, f) })
 	case *lang.SyntaxError:
 		return fmt.Sprintf("%s, line %d: %s", path, e.Line, e.Msg)
 	}

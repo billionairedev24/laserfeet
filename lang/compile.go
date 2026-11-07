@@ -766,9 +766,11 @@ type frame3 struct {
 // fastCall runs a compiled beam: inputs go straight into its frame.
 func (in *Interp) fastCall(f *Beam, code *beamCode, firstVal Value, hasFirst bool, args []cexpr, caller *Env, line int) Value {
 	defer func() {
-		if r := recover(); r != nil {
-			in.note(r, f, line)
-			panic(r)
+		if !in.traceFull.Load() {
+			if r := recover(); r != nil {
+				in.note(r, f, line)
+				panic(r)
+			}
 		}
 	}()
 	n := len(args)

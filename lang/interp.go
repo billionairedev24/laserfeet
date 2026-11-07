@@ -22,6 +22,7 @@ type RuntimeError struct {
 	// innermost first.
 	File    string
 	Trace   []TraceStep
+	More    bool // there were more calls than Trace holds
 	located bool
 }
 
@@ -47,8 +48,12 @@ func (in *Interp) note(r any, f *Beam, line int) {
 	if n := len(re.Trace); n > 0 {
 		re.Trace[n-1].CallFile = file // the call it records happened in this beam's file
 	}
-	if len(re.Trace) < 1000 && line > 0 { // line 0: called by the engine itself (a route, a rule)
+	if line > 0 { // line 0: called by the engine itself (a route, a rule)
 		re.Trace = append(re.Trace, TraceStep{Beam: f.Name, CallLine: line})
+	}
+	if len(re.Trace) >= traceLimit {
+		re.More = true
+		in.traceFull.Store(true) // beams further out let it pass untouched
 	}
 }
 
@@ -93,6 +98,15 @@ func TraceText(trace []TraceStep, place func(string) string) string {
 	return b.String()
 }
 
+// TraceText is TraceText for this problem, noting calls it didn't record.
+func (e *RuntimeError) TraceText(place func(string) string) string {
+	s := TraceText(e.Trace, place)
+	if e.More {
+		s += "\n    ... and more calls before these"
+	}
+	return s
+}
+
 // Describe is the problem with where it happened and how it got there, for
 // test results and server logs (files as written in 'use').
 func (e *RuntimeError) Describe() string {
@@ -100,7 +114,7 @@ func (e *RuntimeError) Describe() string {
 	if e.File != "" {
 		at = " of " + e.File
 	}
-	return fmt.Sprintf("Problem on line %d%s: %s", e.Line, at, e.Msg) + TraceText(e.Trace, func(f string) string { return f })
+	return fmt.Sprintf("Problem on line %d%s: %s", e.Line, at, e.Msg) + e.TraceText(func(f string) string { return f })
 }
 
 // fileOf finds which file a beam's surroundings belong to.
@@ -275,6 +289,7 @@ type Interp struct {
 	frames      frames       // call frames to use again
 	files       sync.Map     // *Env of each used file -> its path, for traces
 	Cover       *Coverage    // set before running to record which statements run
+	traceFull   atomic.Bool  // the problem being raised has recorded traceLimit calls
 	regionStart atomic.Int64 // when the outermost one began
 	region      regions      // bookkeeping for parallel regions
 	serving     atomic.Int32 // web requests being answered right now
@@ -292,8 +307,15 @@ func NewInterp(out io.Writer) *Interp {
 }
 
 func (in *Interp) fail(line int, format string, args ...any) {
+	in.traceFull.Store(false) // a new problem: its calls are recorded afresh
 	panic(&RuntimeError{Line: line, Msg: fmt.Sprintf(format, args...)})
 }
+
+// traceLimit is how many calls a problem records. Recording means catching
+// the problem and raising it again in each beam it leaves, and in Go that
+// costs more the deeper the calls go; past this many (runaway recursion),
+// the rest are only counted as "more".
+const traceLimit = 64
 
 // logLine writes a log line (from use log) to Log, or with the output if Log isn't set.
 func (in *Interp) logLine(s string) {
@@ -394,6 +416,7 @@ func (in *Interp) declareObject(d *ObjectDecl, env *Env) {
 
 func (in *Interp) catch(err *error) {
 	if r := recover(); r != nil {
+		in.traceFull.Store(false)
 		switch e := r.(type) {
 		case *RuntimeError:
 			*err = e
@@ -634,6 +657,7 @@ func (in *Interp) attempt(s *AttemptStmt, env *Env) (c ctrl, v Value) {
 			if r := recover(); r != nil {
 				if re, ok := r.(*RuntimeError); ok {
 					caught = re
+					in.traceFull.Store(false)
 					return
 				}
 				panic(r)
@@ -1039,9 +1063,11 @@ func (in *Interp) call(fn Value, args []Value, names []string, line int, extra m
 		return f.Fn(in, line, args)
 	case *Beam:
 		defer func() {
-			if r := recover(); r != nil {
-				in.note(r, f, line)
-				panic(r)
+			if !in.traceFull.Load() {
+				if r := recover(); r != nil {
+					in.note(r, f, line)
+					panic(r)
+				}
 			}
 		}()
 		label := "this beam"
