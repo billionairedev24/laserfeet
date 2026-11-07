@@ -58,6 +58,8 @@ func loadModule(in *Interp, name string) *Module {
 		return authModule()
 	case "log":
 		return logModule()
+	case "config":
+		return configModule()
 	}
 	return nil
 }

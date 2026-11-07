@@ -94,6 +94,8 @@ whose administrator is the attacker, and bugs in Go itself (tracked through
 |---|---|---|
 | Other users reading app data | Store files are `0600` | `TestStoreSavesSafely` |
 | Half-written data after a crash | Writes go to a temporary file renamed into place | `TestStoreSavesSafely` |
+| A settings file that expands without end, or runs code while being read | `config` refuses YAML anchors, aliases, merge keys and tags; files are limited to 10 MB, nesting to 100 levels, and `.properties` lists must be numbered 0, 1, 2 with none missing | `TestYAMLRefusals`, `TestPropertiesSettings`, `FuzzConfig` |
+| Secrets written into settings files | `${NAME}` takes a value from the environment, and a setting that isn't set and has no default stops the program | `TestYAMLSettings` |
 | `use` loading unexpected code | Only `.lf` files inside the program's folder, no loops | `TestUseFiles` |
 | A runaway program | The playground's step limit; the engine's limits on ranges, text and numbers (overflow is a problem, never a wrap) | `FuzzEngines` |
 

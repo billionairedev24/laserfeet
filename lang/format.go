@@ -242,6 +242,9 @@ func unaryMinus(toks []Token, i int) bool {
 
 // sameCode checks that formatting changed nothing but layout.
 func sameCode(before, after string) error {
+	if !strings.HasSuffix(before, "\n") {
+		before += "\n" // a missing last newline is layout, not meaning
+	}
 	a, err1 := Lex(before, 1)
 	b, err2 := Lex(after, 1)
 	if err1 != nil || err2 != nil || len(a) != len(b) {

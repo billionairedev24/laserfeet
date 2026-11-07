@@ -91,3 +91,13 @@ func TestFixUpdatesOldCode(t *testing.T) {
 		t.Fatalf("expected 4 edits, got %v", edits)
 	}
 }
+
+func TestFormatWithoutLastNewline(t *testing.T) {
+	out, err := Format("launch {\nshow 1\n}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "launch {\n    show 1\n}\n" {
+		t.Fatalf("got %q", out)
+	}
+}

@@ -1,6 +1,6 @@
 # The Laser Feet Language Specification
 
-Version 0.15, the 1.0 candidate: the language is frozen, so from here it
+Version 0.16, the 1.0 candidate: the language is frozen, so from here it
 only gains additions and fixes, under the promise in
 [COMPATIBILITY.md](../COMPATIBILITY.md). This document says exactly what Laser Feet code means. Where the
 website explains, this specification decides. Every section has matching
@@ -533,7 +533,28 @@ transaction with db as tx {
 ## 14. Programs and files
 
 - `use name` brings in a library: `web`, `store`, `json`, `files`, `time`,
-  `postgres`, `auth` and `log`.
+  `postgres`, `auth`, `log` and `config`.
+- `config.read(path, ...)` reads a settings file by its kind (`.yaml` or
+  `.yml`, `.properties`, `.json`) and gives `Json`, the same values
+  `json.read` gives; with several files, later ones override earlier ones key
+  by key. `config.yaml(text)` and `config.properties(text)` read text.
+  `Settings.from(config.read("app.yaml"))` turns it into a typed object, so a
+  missing, misspelled or wrongly typed setting is a problem at start-up.
+  `${NAME}` in a value is the setting `NAME` from the environment (or `.env`),
+  `${NAME:default}` gives a default, `$${` writes `${`, and a `${NAME}` that
+  isn't set and has no default is a problem.
+  - YAML: mappings, lists, plain, `'single'` and `"double"` quoted text, `|`
+    and `>` blocks (with `-` and `+`), `[flow]` and `{flow}` collections and
+    `#` comments. Only `true`/`false` are flags (`no` stays text), `~` and
+    `null` are nothing, and a number with a leading zero (`01234`) stays text.
+    Anchors, aliases, merge keys, tags, `?` keys and more than one document
+    are refused, as are tabs for indenting and a key given twice.
+  - Properties: `name=value`, `name: value` or `name value`; `#` and `!`
+    comments; `\` at the end of a line carries on; `\t`, `\n`, `\uXXXX`
+    escapes. Dotted names nest (`server.port=8080` is `{server: {port:
+    8080}}`) and `name[0]`, `name[1]` make a list, numbered from 0 with none
+    missing.
+  - A settings file may be at most 10 MB.
 - `auth.hash(password)` hashes a password with Argon2id (19 MiB, 2 passes) into
   text to store; `auth.check(password, hash)` gives `yes` when they match,
   comparing in constant time; `auth.token()` gives 32 random bytes as URL-safe

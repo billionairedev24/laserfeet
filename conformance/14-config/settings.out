@@ -1,0 +1,8 @@
+Corner Shop on port 8080
+01234
+localhost:5432
+["https://a.example", "https://b.example"]
+bo@example.com
+{database: {host: "db.internal"}, limits: {perMinute: 60}}
+port must be Int, but got text
+the YAML, line 1: YAML anchors and aliases aren't supported: write the settings out

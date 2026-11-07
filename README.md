@@ -33,6 +33,7 @@ lf run app.lf
 | `use web` | Web servers and replies (`server.post("/x") as request { }`; `request.json` reads JSON bodies) |
 | `use store` | A built-in database saved safely to a JSON file |
 | `use json` | `json.read`, `json.write`, `json.pretty` |
+| `use config` | `Settings.from(config.read("app.yaml", "prod.properties"))`: settings from YAML, `.properties` or JSON, typed and checked, with `${NAME:default}` from the environment |
 | `use files` | `files.read`, `files.write`, `files.exists`, `files.list` |
 | `use auth` | `auth.hash(password)`, `auth.check(password, hash)` (Argon2id, our own, RFC-tested), `auth.token()` |
 | `use log` | `log.info(message, {details})`: JSON lines on standard error |

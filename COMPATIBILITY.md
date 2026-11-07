@@ -11,7 +11,7 @@ can still change.
   program that `lf check` accepts keeps being accepted and keeps giving the
   same answers.
 - **The built-in libraries** (`web`, `store`, `json`, `files`, `time`, `log`,
-  `auth`, `postgres`): their names, what they take and what they give.
+  `auth`, `postgres`, `config`): their names, what they take and what they give.
 - **The `lf` commands** and the options they take, the layout `lf fmt` writes,
   and the format of `sole.list` and `sole.lock`.
 - **What a web app sends**: security headers, cookie settings and request

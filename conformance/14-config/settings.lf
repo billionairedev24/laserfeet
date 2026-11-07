@@ -1,0 +1,42 @@
+use config
+
+object DbSettings {
+    host: Text
+    port: Int
+}
+
+object Admin {
+    name: Text
+    email: Text
+}
+
+object Settings {
+    name: Text
+    port: Int
+    zip: Text
+    database: DbSettings
+    origins: List[Text]
+    admins: List[Admin]
+}
+
+launch {
+    yaml = "name: Corner Shop\nport: ${LF_CONFORMANCE_PORT:8080}\nzip: 01234\ndatabase:\n  host: localhost\n  port: 5432\norigins: [https://a.example, \"https://b.example\"]\nadmins:\n  - name: Ada\n    email: ada@example.com\n  - name: Bo\n    email: bo@example.com"
+    s = Settings.from(config.yaml(yaml))
+    show "{s.name} on port {s.port}"
+    show s.zip
+    show "{s.database.host}:{s.database.port}"
+    show s.origins
+    show s.admins[1].email
+    p = config.properties("database.host = db.internal\nlimits.perMinute = 60")
+    show p
+    attempt {
+        Settings.from(config.yaml("name: x\nport: eighty"))
+    } fails problem {
+        show problem
+    }
+    attempt {
+        config.yaml("base: &b {x: 1}\nother: *b")
+    } fails problem {
+        show problem
+    }
+}

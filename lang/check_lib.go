@@ -29,6 +29,7 @@ func libraryModule(name string) *Type {
 		"postgres": {"open"},
 		"auth":     {"hash", "check", "token"},
 		"log":      {"info", "warn", "error"},
+		"config":   {"read", "yaml", "properties"},
 	}[name]
 	if members == nil {
 		return nil
@@ -314,6 +315,18 @@ func (c *checker) builtin(line int, fn *Type, a []*Type, exprs []Expr, sc *cscop
 	case "json.read":
 		if c.argCount(line, n, a, 1, 1) {
 			c.need(line, a[0], tText, "the JSON text")
+		}
+		return tJson
+	case "config.read":
+		if c.argCount(line, n, a, 1, 16) {
+			for _, x := range a {
+				c.need(line, x, tText, "the settings file name")
+			}
+		}
+		return tJson
+	case "config.yaml", "config.properties":
+		if c.argCount(line, n, a, 1, 1) {
+			c.need(line, a[0], tText, "the settings text")
 		}
 		return tJson
 	case "json.write", "json.pretty":

@@ -868,6 +868,35 @@ launch {
           <tr><td><code>env(name, default)</code></td><td>A setting from the environment, like <code>PORT</code></td></tr>
         </table></div>
         <p>In a web route, <code>request.json</code> holds the request body already read as JSON (or nothing if it isn't JSON).</p>
+        <h3>Settings files: YAML, properties and JSON</h3>
+        <p><code>use config</code> reads settings files. Describe your settings as an object, and <code>.from</code> checks every one when the program starts: a missing setting, a misspelled name or a word where a number belongs stops the program with a message saying which.</p>
+<lf-code data-try>use config
+
+object DbSettings {
+    host: Text
+    port: Int
+}
+
+object Settings {
+    name: Text
+    port: Int
+    database: DbSettings
+    origins: List[Text]
+}
+
+launch {
+    -- in a real app: config.read("app.yaml", "prod.properties")
+    yaml = "name: shop\nport: ${PORT:8080}\ndatabase:\n  host: localhost\n  port: 5432\norigins: [https://shop.example]"
+    s = Settings.from(config.yaml(yaml))
+    show "{s.name} on {s.port}, database at {s.database.host}"
+}</lf-code>
+        <div class="tablewrap"><table>
+          <tr><th>Beam</th><th>What it does</th></tr>
+          <tr><td><code>config.read(file, ...)</code></td><td>Reads <code>.yaml</code>/<code>.yml</code>, <code>.properties</code> or <code>.json</code> by its name; later files override earlier ones key by key</td></tr>
+          <tr><td><code>config.yaml(text)</code> / <code>config.properties(text)</code></td><td>Read settings from text</td></tr>
+          <tr><td><code>${NAME}</code> / <code>${NAME:default}</code></td><td>In any value: a setting from the environment or <code>.env</code>, so secrets stay out of the file</td></tr>
+        </table></div>
+        <p>In a <code>.properties</code> file, <code>server.port=8080</code> becomes <code>{server: {port: 8080}}</code> and <code>origins[0]=...</code> makes a list. YAML anchors, aliases and tags are refused on purpose: write settings out in full, and a small file can't grow into a huge one.</p>
 
         <h2 id="g14"><span class="num">15</span>Splitting code into files</h2>
         <p>Put beams and objects in another <code>.lf</code> file and bring them in with <code>use</code>. The file's name becomes the name you reach them by.</p>
@@ -1201,6 +1230,7 @@ curl localhost:8080/books</lf-code>
           <tr><td><code>use web</code></td><td>Web servers and replies</td></tr>
           <tr><td><code>use store</code></td><td>A built-in database saved to a file</td></tr>
           <tr><td><code>use json</code></td><td>Reading and writing JSON</td></tr>
+          <tr><td><code>use config</code></td><td>Settings from YAML, <code>.properties</code> or JSON files, typed with <code>.from</code></td></tr>
           <tr><td><code>use files</code></td><td>Reading, writing and listing files</td></tr>
           <tr><td><code>use time</code></td><td>The current time and date</td></tr>
           <tr><td><code>use postgres</code></td><td>PostgreSQL databases, with Laser Feet's own driver; <code>db.migrate("migrations")</code></td></tr>
